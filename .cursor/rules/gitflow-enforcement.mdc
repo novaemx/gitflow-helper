@@ -1,0 +1,13 @@
+---
+description: Gitflow enforcement — triggers mandatory pre-flight from gitflow SKILL before any code change
+alwaysApply: true
+---
+
+# Gitflow Enforcement
+
+**Before modifying ANY code, read and follow `.cursor/skills/gitflow/SKILL.md`.**
+
+Skill has: pre-flight check sequence, branch routing, CLI reference (all 14 commands),
+guardrails, decision flowchart, TUI mode, and release notes workflow.
+
+Do not skip. Do not shortcut. Run `gitflow --json status` first, every time.

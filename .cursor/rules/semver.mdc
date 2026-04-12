@@ -1,0 +1,50 @@
+---
+description: Semantic Versioning discipline for gitflow-helper
+alwaysApply: true
+---
+
+# Semantic Versioning (SemVer) Discipline
+
+This project follows **Semantic Versioning 2.0.0** (<https://semver.org>).
+
+## Version Format
+
+`MAJOR.MINOR.PATCH` — e.g. `1.4.2`
+
+| Increment | When                                                                  |
+|-----------|-----------------------------------------------------------------------|
+| **MAJOR** | Breaking change in CLI flags, JSON output schema, or config format    |
+| **MINOR** | New subcommand, new flag, new IDE detection, new feature              |
+| **PATCH** | Bug fix, docs-only change, internal refactor with no behavior change  |
+
+## Source of Truth
+
+- **`VERSION`** file at repo root — single line, e.g. `0.1.0`
+- Git tags use `v` prefix: `v0.1.0`
+- `main.version` is injected at build time via `-ldflags -X main.version=...`
+
+## Rules
+
+1. **Never** commit code that changes user-facing behavior without bumping `VERSION`.
+2. **Never** create a release tag that doesn't match the `VERSION` file.
+3. **Pre-release** identifiers are allowed: `0.2.0-rc.1`, `1.0.0-beta.3`.
+4. When starting a `release/` branch, bump `VERSION` to the target version.
+5. When starting a `hotfix/` branch, bump `VERSION` to the next patch.
+6. After merging a release or hotfix, the tag on `main` must equal `v` + `VERSION`.
+
+## Commit Messages (Conventional Commits)
+
+Use Conventional Commits to signal version impact:
+
+- `feat:` → at least MINOR bump
+- `fix:` → at least PATCH bump
+- `feat!:` or `BREAKING CHANGE:` → MAJOR bump
+- `chore:`, `docs:`, `test:`, `ci:` → no version bump needed
+
+## Checklist Before Tagging
+
+- [ ] `VERSION` file matches the intended release version
+- [ ] `CHANGELOG.md` or release notes are updated
+- [ ] All tests pass (`make test`)
+- [ ] `go vet ./...` is clean
+- [ ] No uncommitted changes on the release branch

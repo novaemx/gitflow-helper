@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>gitflow-helper</id>
+    <version>0.1.0</version>
+    <title>Gitflow Helper</title>
+    <authors>luis-lozano</authors>
+    <owners>luis-lozano</owners>
+    <projectUrl>https://github.com/luis-lozano/gitflow-helper</projectUrl>
+    <licenseUrl>https://github.com/luis-lozano/gitflow-helper/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Git Flow workflow helper with interactive TUI and CLI subcommands. Only requires git — no git-flow extensions needed. Detects IDE (Cursor, VS Code, Claude Code, Windsurf, Zed, etc.) and auto-initializes gitflow structure.</description>
+    <summary>Interactive Git Flow helper CLI and TUI</summary>
+    <tags>git gitflow workflow cli tui devtools</tags>
+    <dependencies>
+      <dependency id="git" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
