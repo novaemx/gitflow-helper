@@ -11,16 +11,16 @@ func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Detect IDE and generate gitflow preflight rules/instructions",
-		Long:  "Detects whether you're in Cursor or VSCode (Copilot) and generates the appropriate rule/instruction files for gitflow preflight enforcement.",
+		Long:  "Detects which IDE is running and generates the appropriate rule/instruction files for gitflow preflight enforcement.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			detected := forceIDE
 			if detected == "" {
-				detected = ide.Detect(Cfg.ProjectRoot)
+				detected = ide.DetectPrimary(GF.Config.ProjectRoot).ID
 			}
 
 			output.Infof("  Detected IDE: %s%s%s", output.Cyan, detected, output.Reset)
 
-			files, err := ide.Generate(Cfg.ProjectRoot, detected)
+			files, err := ide.Generate(GF.Config.ProjectRoot, detected)
 			if err != nil {
 				output.Infof("  %sError generating files: %v%s", output.Red, err, output.Reset)
 				if output.IsJSONMode() {
@@ -44,6 +44,6 @@ func newSetupCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&forceIDE, "ide", "", "Force IDE type (cursor, copilot, both)")
+	cmd.Flags().StringVar(&forceIDE, "ide", "", "Force IDE type (cursor, copilot, both, claude-code, windsurf, cline, zed, neovim, jetbrains)")
 	return cmd
 }

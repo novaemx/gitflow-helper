@@ -17,9 +17,10 @@ func newHealthCmd() *cobra.Command {
 		Use:   "health",
 		Short: "Comprehensive repo health check",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := GF.Config
 			var issues, warnings, okItems []string
 
-			gitVer := git.RunQuiet("git --version")
+			gitVer := git.ExecQuiet("--version")
 			if gitVer == "" {
 				issues = append(issues, "git is not installed or not in PATH")
 			} else {
@@ -37,35 +38,35 @@ func newHealthCmd() *cobra.Command {
 			for _, b := range allLocal {
 				localSet[b] = true
 			}
-			if !localSet[Cfg.DevelopBranch] {
-				issues = append(issues, fmt.Sprintf("'%s' branch missing", Cfg.DevelopBranch))
+			if !localSet[cfg.DevelopBranch] {
+				issues = append(issues, fmt.Sprintf("'%s' branch missing", cfg.DevelopBranch))
 			}
-			if !localSet[Cfg.MainBranch] {
-				issues = append(issues, fmt.Sprintf("'%s' branch missing", Cfg.MainBranch))
+			if !localSet[cfg.MainBranch] {
+				issues = append(issues, fmt.Sprintf("'%s' branch missing", cfg.MainBranch))
 			}
 
-			fetchCode, _, _ := git.RunResult(fmt.Sprintf("git ls-remote --exit-code %s HEAD", Cfg.Remote))
+			fetchCode, _, _ := git.ExecResult("ls-remote", "--exit-code", cfg.Remote, "HEAD")
 			if fetchCode != 0 {
-				warnings = append(warnings, fmt.Sprintf("Remote '%s' unreachable", Cfg.Remote))
+				warnings = append(warnings, fmt.Sprintf("Remote '%s' unreachable", cfg.Remote))
 			} else {
-				okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", Cfg.Remote))
+				okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", cfg.Remote))
 			}
 
-			if localSet[Cfg.DevelopBranch] && localSet[Cfg.MainBranch] {
-				mainAhead := git.RunQuiet(fmt.Sprintf("git rev-list --count %s..%s", Cfg.DevelopBranch, Cfg.MainBranch))
+			if localSet[cfg.DevelopBranch] && localSet[cfg.MainBranch] {
+				mainAhead := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch)
 				n, _ := strconv.Atoi(mainAhead)
 				if n > 0 {
-					files := git.RunLines(fmt.Sprintf("git diff --name-only %s...%s", Cfg.DevelopBranch, Cfg.MainBranch))
+					files := git.ExecLines("diff", "--name-only", cfg.DevelopBranch+"..."+cfg.MainBranch)
 					issues = append(issues, fmt.Sprintf("%s is %d commit(s) ahead of %s (%d file(s)) — run backmerge",
-						Cfg.MainBranch, n, Cfg.DevelopBranch, len(files)))
+						cfg.MainBranch, n, cfg.DevelopBranch, len(files)))
 				} else {
-					okItems = append(okItems, fmt.Sprintf("%s contains all of %s", Cfg.DevelopBranch, Cfg.MainBranch))
+					okItems = append(okItems, fmt.Sprintf("%s contains all of %s", cfg.DevelopBranch, cfg.MainBranch))
 				}
 			}
 
-			for _, branch := range []string{Cfg.MainBranch, Cfg.DevelopBranch} {
+			for _, branch := range []string{cfg.MainBranch, cfg.DevelopBranch} {
 				if localSet[branch] {
-					unpushed := git.RunQuiet(fmt.Sprintf("git rev-list --count %s/%s..%s 2>/dev/null", Cfg.Remote, branch, branch))
+					unpushed := git.ExecQuiet("rev-list", "--count", cfg.Remote+"/"+branch+".."+branch)
 					n, _ := strconv.Atoi(unpushed)
 					if n > 0 {
 						warnings = append(warnings, fmt.Sprintf("'%s' has %d unpushed commit(s)", branch, n))
@@ -78,20 +79,29 @@ func newHealthCmd() *cobra.Command {
 			for _, b := range allLocal {
 				if strings.HasPrefix(b, "feature/") || strings.HasPrefix(b, "bugfix/") ||
 					strings.HasPrefix(b, "release/") || strings.HasPrefix(b, "hotfix/") {
-					ts := git.RunQuiet(fmt.Sprintf("git log -1 --format=%%ct %s 2>/dev/null", b))
+					ts := git.ExecQuiet("log", "-1", "--format=%ct", b)
 					if epoch, err := strconv.ParseInt(ts, 10, 64); err == nil {
 						ageDays := int(time.Since(time.Unix(epoch, 0)).Hours() / 24)
 						if ageDays > 30 {
 							warnings = append(warnings, fmt.Sprintf("stale branch: %s (inactive %d days)", b, ageDays))
 						}
+						if ageDays > 14 {
+							parentBehind := git.ExecQuiet("rev-list", "--count", b+".."+cfg.DevelopBranch)
+							if pn, _ := strconv.Atoi(parentBehind); pn > 20 {
+								warnings = append(warnings, fmt.Sprintf("merge-hell risk: %s is %d commits behind %s (inactive %d days)",
+									b, pn, cfg.DevelopBranch, ageDays))
+							}
+						}
 					}
 				}
 			}
 
-			dirtyCount := len(git.RunLines("git status --porcelain"))
+			dirtyCount := len(git.ExecLines("status", "--porcelain"))
 			if dirtyCount > 0 {
 				warnings = append(warnings, fmt.Sprintf("%d uncommitted file(s) in working tree", dirtyCount))
 			}
+
+			okItems = append(okItems, fmt.Sprintf("IDE: %s", GF.IDEDisplay()))
 
 			if output.IsJSONMode() {
 				output.JSONOutput(map[string]any{
@@ -100,6 +110,7 @@ func newHealthCmd() *cobra.Command {
 					"warnings": warnings,
 					"ok":       okItems,
 					"healthy":  len(issues) == 0,
+					"ide":      GF.IDE,
 				})
 				if len(issues) > 0 {
 					os.Exit(1)

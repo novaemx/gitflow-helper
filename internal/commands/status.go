@@ -12,11 +12,18 @@ import (
 var statusCmd *cobra.Command
 
 func newStatusCmd() *cobra.Command {
+	var autoHeal bool
 	statusCmd = &cobra.Command{
 		Use:   "status",
 		Short: "Show repository state",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := state.DetectState(Cfg)
+			if output.IsJSONMode() && autoHeal {
+				result := GF.StatusWithHealing(true)
+				output.JSONOutput(result)
+				return nil
+			}
+
+			s := GF.Status()
 			if output.IsJSONMode() {
 				output.JSONOutput(s)
 				return nil
@@ -25,10 +32,12 @@ func newStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+	statusCmd.Flags().BoolVar(&autoHeal, "auto-heal", false, "Automatically fix divergence (backmerge) if detected")
 	return statusCmd
 }
 
 func printDashboard(s state.RepoState) {
+	cfg := GF.Config
 	btype := git.BranchTypeOf(s.Current)
 	tagDisplay := s.LastTag
 	if tagDisplay == "none" {
@@ -55,21 +64,23 @@ func printDashboard(s state.RepoState) {
     Version:   %s%s%s
     Last tag:  %s
     Git Flow:  %s
+    IDE:       %s
     Uncommitted files: %s%d%s`,
 		output.Bold, output.Reset,
 		output.Bold, output.Reset,
 		output.Cyan, s.Current, output.Reset,
 		output.Green, s.Version, output.Reset,
 		tagDisplay, gfStatus,
+		GF.IDEDisplay(),
 		dirtyColor, s.UncommittedCount, output.Reset)
 
 	if s.DevelopAheadOfMain > 0 {
 		output.Infof("    %s is %s%d%s commit(s) ahead of %s",
-			Cfg.DevelopBranch, output.Yellow, s.DevelopAheadOfMain, output.Reset, Cfg.MainBranch)
+			cfg.DevelopBranch, output.Yellow, s.DevelopAheadOfMain, output.Reset, cfg.MainBranch)
 	}
 	if s.MainAheadOfDevelop > 0 {
 		output.Infof("    %s%s is %d commit(s) ahead of %s%s",
-			output.Red, Cfg.MainBranch, s.MainAheadOfDevelop, Cfg.DevelopBranch, output.Reset)
+			output.Red, cfg.MainBranch, s.MainAheadOfDevelop, cfg.DevelopBranch, output.Reset)
 		output.Infof("    %s⚠  Branch divergence detected!%s", output.Red, output.Reset)
 	}
 
@@ -134,13 +145,13 @@ func printDashboard(s state.RepoState) {
 		output.Infof("    You are on release branch %s%s%s.", output.Green, s.Current, output.Reset)
 	case btype == "hotfix":
 		output.Infof("    You are on hotfix %s%s%s.", output.Red, s.Current, output.Reset)
-	case s.Current == Cfg.DevelopBranch:
-		output.Infof("    You are on %s%s%s — the integration branch.", output.Cyan, Cfg.DevelopBranch, output.Reset)
+	case s.Current == cfg.DevelopBranch:
+		output.Infof("    You are on %s%s%s — the integration branch.", output.Cyan, cfg.DevelopBranch, output.Reset)
 		if s.MainAheadOfDevelop > 0 {
 			output.Infof("    %sCRITICAL:%s Back-merge required before any work.", output.Red, output.Reset)
 		}
-	case s.Current == Cfg.MainBranch:
-		output.Infof("    You are on %s%s%s — the production branch.", output.Bold, Cfg.MainBranch, output.Reset)
+	case s.Current == cfg.MainBranch:
+		output.Infof("    You are on %s%s%s — the production branch.", output.Bold, cfg.MainBranch, output.Reset)
 	default:
 		output.Infof("    You are on '%s', not a standard git-flow branch.", s.Current)
 	}

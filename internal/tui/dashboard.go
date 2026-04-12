@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/state"
 )
 
@@ -117,7 +117,7 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 	lines = append(lines, dashLine{" Phase analysis:", "section"})
 	lines = append(lines, dashLine{"", "normal"})
 
-	btype := git.BranchTypeOf(s.Current)
+	btype := branch.TypeOf(s.Current)
 	switch {
 	case s.Merge.InMerge && len(s.Merge.ConflictedFiles) > 0:
 		if s.Merge.OperationType != "" {
@@ -178,6 +178,12 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		lines = append(lines, dashLine{"   Switch to develop to start work.", "dim"})
 	default:
 		lines = append(lines, dashLine{fmt.Sprintf("   Branch '%s' is not a standard gitflow branch.", s.Current), "dim"})
+	}
+
+	if s.Dirty {
+		lines = append(lines, dashLine{"", "normal"})
+		lines = append(lines, dashLine{fmt.Sprintf(" ⚠  Dirty working tree (%d file(s))", s.UncommittedCount), "warn"})
+		lines = append(lines, dashLine{"    Commit or stash before start/finish operations.", "dim"})
 	}
 
 	if len(s.Releases) > 0 && btype != "release" && !s.Merge.InMerge {

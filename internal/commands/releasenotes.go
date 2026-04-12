@@ -16,7 +16,7 @@ func newReleaseNotesCmd() *cobra.Command {
 			if len(args) > 0 {
 				fromTag = args[0]
 			}
-			meta := flow.WriteReleaseNotes(Cfg, fromTag)
+			meta := GF.ReleaseNotes(fromTag)
 			if meta == nil {
 				output.Infof("  %sNo commits found for release notes.%s", output.Yellow, output.Reset)
 				if output.IsJSONMode() {

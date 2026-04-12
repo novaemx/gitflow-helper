@@ -14,7 +14,7 @@ func newUndoCmd() *cobra.Command {
 		Short: "Undo last gitflow operation (soft reset via reflog)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cur := git.CurrentBranch()
-			reflog := git.RunLines("git reflog --format='%H %gs' -n 20")
+			reflog := git.ExecLines("reflog", "--format=%H %gs", "-n", "20")
 
 			if len(reflog) == 0 {
 				output.Infof("  %sNo reflog entries found.%s", output.Red, output.Reset)
