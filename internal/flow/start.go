@@ -10,8 +10,6 @@ import (
 	"github.com/luis-lozano/gitflow-helper/internal/version"
 )
 
-// startFlowBranch creates a new branch from the correct parent using raw git.
-// Equivalent to `git flow <type> start <name>` but without the git-flow extension.
 func startFlowBranch(cfg config.FlowConfig, branchType, name string) error {
 	parent := cfg.DevelopBranch
 	if branchType == "hotfix" {
@@ -23,12 +21,12 @@ func startFlowBranch(cfg config.FlowConfig, branchType, name string) error {
 
 	if cur != parent {
 		output.Infof("  Switching to %s before creating %s...", parent, branchName)
-		if err := git.Run("git checkout " + parent); err != nil {
+		if err := git.Exec("checkout", parent); err != nil {
 			return fmt.Errorf("failed to checkout %s: %w", parent, err)
 		}
 	}
 
-	if err := git.Run("git checkout -b " + branchName); err != nil {
+	if err := git.Exec("checkout", "-b", branchName); err != nil {
 		return fmt.Errorf("failed to create branch %s: %w", branchName, err)
 	}
 	return nil
@@ -57,9 +55,9 @@ func StartRelease(cfg config.FlowConfig, ver string) error {
 		version.RunBumpCommand(cfg, "minor")
 		version.RunBuildBumpCommand(cfg)
 		if cfg.VersionFile != "" {
-			_ = git.Run(fmt.Sprintf(`git add "%s"`, cfg.VersionFile))
+			_ = git.Exec("add", cfg.VersionFile)
 		}
-		_ = git.Run(fmt.Sprintf(`git commit -m "chore: bump version to %s"`, ver))
+		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: bump version to %s", ver))
 	}
 
 	return startFlowBranch(cfg, "release", git.FlowVersion(ver))
@@ -74,9 +72,9 @@ func StartHotfix(cfg config.FlowConfig, ver string) error {
 		version.RunBumpCommand(cfg, "patch")
 		version.RunBuildBumpCommand(cfg)
 		if cfg.VersionFile != "" {
-			_ = git.Run(fmt.Sprintf(`git add "%s"`, cfg.VersionFile))
+			_ = git.Exec("add", cfg.VersionFile)
 		}
-		_ = git.Run(fmt.Sprintf(`git commit -m "chore: bump version to %s (hotfix)"`, ver))
+		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: bump version to %s (hotfix)", ver))
 	}
 
 	return startFlowBranch(cfg, "hotfix", git.FlowVersion(ver))
@@ -147,8 +145,6 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	return 0, result
 }
 
-// InitGitFlow sets up the main/develop branch structure using raw git commands.
-// No git-flow extensions required.
 func InitGitFlow(cfg config.FlowConfig) (bool, string) {
 	if git.IsGitFlowInitialized() {
 		return true, "already_initialized"
@@ -160,29 +156,26 @@ func InitGitFlow(cfg config.FlowConfig) (bool, string) {
 		localSet[b] = true
 	}
 
-	// Ensure at least one commit exists
-	code, _, _ := git.RunResult("git rev-parse HEAD")
+	code, _, _ := git.ExecResult("rev-parse", "HEAD")
 	if code != 0 {
 		output.Infof("  %sCreating initial commit...%s", output.Dim, output.Reset)
-		_ = git.Run("git checkout -b " + cfg.MainBranch)
-		_ = git.Run(`git commit --allow-empty -m "chore: initial commit"`)
+		_ = git.Exec("checkout", "-b", cfg.MainBranch)
+		_ = git.Exec("commit", "--allow-empty", "-m", "chore: initial commit")
 		localSet[cfg.MainBranch] = true
 	}
 
-	// Ensure main branch exists
 	if !localSet[cfg.MainBranch] {
 		cur := git.CurrentBranch()
 		if cur == "master" && cfg.MainBranch == "main" {
-			_ = git.Run("git branch -m master main")
+			_ = git.Exec("branch", "-m", "master", "main")
 		} else {
-			_ = git.Run("git branch " + cfg.MainBranch)
+			_ = git.Exec("branch", cfg.MainBranch)
 		}
 	}
 
-	// Ensure develop branch exists, branched from main
 	if !localSet[cfg.DevelopBranch] {
 		output.Infof("  %sCreating %s branch from %s...%s", output.Dim, cfg.DevelopBranch, cfg.MainBranch, output.Reset)
-		_ = git.Run("git branch " + cfg.DevelopBranch + " " + cfg.MainBranch)
+		_ = git.Exec("branch", cfg.DevelopBranch, cfg.MainBranch)
 	}
 
 	ok := git.IsGitFlowInitialized()
@@ -194,10 +187,8 @@ func InitGitFlow(cfg config.FlowConfig) (bool, string) {
 	return false, "error"
 }
 
-// EnsureGitFlowReady validates the working directory and ensures gitflow is ready.
-// Called automatically on binary startup.
 func EnsureGitFlowReady(cfg config.FlowConfig) (bool, string) {
-	gitVer := git.RunQuiet("git --version")
+	gitVer := git.ExecQuiet("--version")
 	if gitVer == "" {
 		return false, "git not found in PATH"
 	}

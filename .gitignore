@@ -1,3 +1,37 @@
+# Build artifacts
 dist/
 /gitflow
 *.exe
+
+# Test & coverage output
+*.out
+*.test
+*.prof
+cover.html
+
+# Debugging
+__debug_bin*
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editor / IDE temp files
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+
+# Environment / secrets
+.env
+.env.*
+
+# Temp files
+tmp/
+
+# Packaging artifacts
+*.nupkg
+
+# Log files
+*.log

@@ -16,8 +16,7 @@ func newSwitchCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cur := git.CurrentBranch()
-			allLocal := git.RunLines("git branch --format='%(refname:short)'")
-			flowBranches := flow.ListSwitchableBranches(allLocal, Cfg, cur)
+			flowBranches := GF.ListSwitchable()
 
 			if len(flowBranches) == 0 {
 				output.Infof("  %sNo other branches to switch to.%s", output.Yellow, output.Reset)
@@ -51,7 +50,6 @@ func newSwitchCmd() *cobra.Command {
 				return nil
 			}
 
-			// Find match
 			var chosen string
 			for _, b := range flowBranches {
 				if b == target || len(b) > len(target) && b[len(b)-len(target)-1:] == "/"+target {
@@ -87,7 +85,7 @@ func newSwitchCmd() *cobra.Command {
 				stashed = flow.SmartStashSave(cur)
 			}
 
-			code, _, _ := git.RunResult("git checkout " + chosen)
+			code, _, _ := git.ExecResult("checkout", chosen)
 			if code != 0 {
 				output.Infof("  %sFailed to switch to '%s'.%s", output.Red, chosen, output.Reset)
 				if stashed {

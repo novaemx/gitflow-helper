@@ -1,19 +1,79 @@
 package git
 
 import (
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
+	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/output"
 )
 
+// ProjectRoot is the working directory for all git commands.
+// Deprecated: will be removed once all callers migrate to GitClient.
 var ProjectRoot string
 
+// Exec runs git with explicit arguments (no shell interpretation).
+// This is the safe replacement for Run() that prevents shell injection.
+func Exec(args ...string) error {
+	output.Infof("  %s→ git %s%s", output.Dim, strings.Join(args, " "), output.Reset)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = ProjectRoot
+	cmd.Stdout = output.Writer()
+	cmd.Stderr = output.Writer()
+	return cmd.Run()
+}
+
+// ExecResult runs git with explicit arguments and captures output.
+func ExecResult(args ...string) (int, string, string) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = ProjectRoot
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		} else {
+			code = 1
+		}
+	}
+	return code, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String())
+}
+
+// ExecQuiet runs git with explicit arguments and returns only stdout.
+func ExecQuiet(args ...string) string {
+	_, stdout, _ := ExecResult(args...)
+	return stdout
+}
+
+// ExecLines runs git with explicit arguments and returns stdout split by newline.
+func ExecLines(args ...string) []string {
+	raw := ExecQuiet(args...)
+	if raw == "" {
+		return nil
+	}
+	var result []string
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// --- Legacy wrappers (delegate to safe Exec functions) ---
+// These exist to minimize churn during migration. New code should call Exec* directly.
+
 func Run(cmdStr string) error {
+	args := splitCommand(cmdStr)
+	if len(args) > 0 && args[0] == "git" {
+		return Exec(args[1:]...)
+	}
 	output.Infof("  %s→ %s%s", output.Dim, cmdStr, output.Reset)
-	cmd := exec.Command("sh", "-c", cmdStr)
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = ProjectRoot
 	cmd.Stdout = output.Writer()
 	cmd.Stderr = output.Writer()
@@ -21,7 +81,11 @@ func Run(cmdStr string) error {
 }
 
 func RunResult(cmdStr string) (int, string, string) {
-	cmd := exec.Command("sh", "-c", cmdStr)
+	args := splitCommand(cmdStr)
+	if len(args) > 0 && args[0] == "git" {
+		return ExecResult(args[1:]...)
+	}
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = ProjectRoot
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -58,16 +122,58 @@ func RunLines(cmdStr string) []string {
 	return result
 }
 
+// splitCommand splits a shell command string into arguments, respecting
+// single and double quotes. This is used by the legacy wrappers to avoid
+// shell interpretation while maintaining backward compatibility.
+func splitCommand(s string) []string {
+	var args []string
+	var current strings.Builder
+	inSingle := false
+	inDouble := false
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		switch {
+		case ch == '\'' && !inDouble:
+			inSingle = !inSingle
+		case ch == '"' && !inSingle:
+			inDouble = !inDouble
+		case ch == ' ' && !inSingle && !inDouble:
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteByte(ch)
+		}
+	}
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	// Strip shell redirects (2>/dev/null) that callers used with sh -c
+	var clean []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "2>") || a == "/dev/null" {
+			continue
+		}
+		clean = append(clean, a)
+	}
+	return clean
+}
+
+// --- Convenience functions (use safe Exec internally) ---
+
 func CurrentBranch() string {
-	return RunQuiet("git branch --show-current")
+	return ExecQuiet("branch", "--show-current")
 }
 
 func HasUncommittedChanges() bool {
-	return len(RunLines("git status --porcelain")) > 0
+	return len(ExecLines("status", "--porcelain")) > 0
 }
 
 func LatestTag() string {
-	tag := RunQuiet("git describe --tags --abbrev=0 2>/dev/null")
+	tag := ExecQuiet("describe", "--tags", "--abbrev=0")
 	if tag == "" {
 		return "none"
 	}
@@ -75,15 +181,12 @@ func LatestTag() string {
 }
 
 func IsGitRepo() bool {
-	_, err := os.Stat(filepath.Join(ProjectRoot, ".git"))
-	return err == nil
+	code, _, _ := ExecResult("rev-parse", "--is-inside-work-tree")
+	return code == 0
 }
 
-// IsGitFlowInitialized checks whether the repo has both main and develop
-// branches — the defining characteristic of a gitflow-structured repository.
-// We no longer rely on `git flow` extensions being installed.
 func IsGitFlowInitialized() bool {
-	all := RunLines("git branch --format='%(refname:short)'")
+	all := ExecLines("branch", "--format=%(refname:short)")
 	hasMain := false
 	hasDevelop := false
 	for _, b := range all {
@@ -98,7 +201,7 @@ func IsGitFlowInitialized() bool {
 }
 
 func ActiveReleaseBranches() []string {
-	all := RunLines("git branch --format='%(refname:short)'")
+	all := ExecLines("branch", "--format=%(refname:short)")
 	var releases []string
 	for _, b := range all {
 		if strings.HasPrefix(b, "release/") {
@@ -108,18 +211,9 @@ func ActiveReleaseBranches() []string {
 	return releases
 }
 
+// BranchTypeOf delegates to branch.TypeOf for backward compatibility.
 func BranchTypeOf(name string) string {
-	prefixes := []string{"feature/", "bugfix/", "release/", "hotfix/"}
-	types := []string{"feature", "bugfix", "release", "hotfix"}
-	for i, p := range prefixes {
-		if strings.HasPrefix(name, p) {
-			return types[i]
-		}
-	}
-	if name == "develop" || name == "main" || name == "master" {
-		return "base"
-	}
-	return "other"
+	return branch.TypeOf(name)
 }
 
 func RemovePrefix(s, prefix string) string {
@@ -131,10 +225,10 @@ func FlowVersion(version string) string {
 }
 
 func BranchExists(name string) bool {
-	code, _, _ := RunResult("git rev-parse --verify " + name + " 2>/dev/null")
+	code, _, _ := ExecResult("rev-parse", "--verify", name)
 	return code == 0
 }
 
 func AllLocalBranches() []string {
-	return RunLines("git branch --format='%(refname:short)'")
+	return ExecLines("branch", "--format=%(refname:short)")
 }
