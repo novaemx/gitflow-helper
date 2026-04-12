@@ -10,10 +10,31 @@ import (
 )
 
 type action struct {
-	Label       string
-	Tag         string
-	Recommended bool
-	Command     string // shell command to run when selected
+	Label        string
+	Tag          string
+	Recommended  bool
+	Command      string
+	NeedsInput   bool
+	InputPrompt  string
+	InputDefault string
+}
+
+func hasTag(actions []action, tag string) bool {
+	for _, a := range actions {
+		if a.Tag == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTagAndLabel(actions []action, tag, needle string) bool {
+	for _, a := range actions {
+		if a.Tag == tag && strings.Contains(a.Label, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
@@ -21,6 +42,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	ms := s.Merge
 	var actions []action
 
+	// ── Merge conflict state ─────────────────────────────────
 	if ms.InMerge && len(ms.ConflictedFiles) > 0 {
 		actions = append(actions, action{
 			Label:       fmt.Sprintf("Resolve %d merge conflict(s)", len(ms.ConflictedFiles)),
@@ -47,6 +69,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		return actions
 	}
 
+	// ── Always-present actions ────────────────────────────────
 	actions = append(actions, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
 
 	if s.MainAheadOfDevelop > 0 {
@@ -56,17 +79,31 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			Recommended: true,
 			Command:     "gitflow backmerge",
 		})
+		actions = append(actions, action{
+			Label:   fmt.Sprintf("View diff: %s vs %s (%d file(s))", cfg.MainBranch, cfg.DevelopBranch, len(s.MainOnlyFiles)),
+			Tag:     "diff",
+			Command: fmt.Sprintf("git diff --stat %s...%s", cfg.DevelopBranch, cfg.MainBranch),
+		})
+	}
+
+	if s.DevelopAheadOfMain > 0 {
+		actions = append(actions, action{
+			Label:   fmt.Sprintf("View diff: %s vs %s (%d file(s))", cfg.DevelopBranch, cfg.MainBranch, len(s.DevelopOnlyFiles)),
+			Tag:     "diff",
+			Command: fmt.Sprintf("git diff --stat %s...%s", cfg.MainBranch, cfg.DevelopBranch),
+		})
 	}
 
 	if !s.GitFlowInitialized {
 		actions = append(actions, action{
-			Label:       "Initialize git-flow",
+			Label:       "Initialize gitflow",
 			Tag:         "init",
 			Recommended: true,
 			Command:     "gitflow init",
 		})
 	}
 
+	// ── Branch-specific actions ──────────────────────────────
 	switch btype {
 	case "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
@@ -83,6 +120,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			Recommended: hasWork, Command: "gitflow finish",
 		})
 		actions = append(actions, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
+		actions = append(actions, action{Label: "Start a new feature", Tag: "start", Command: "gitflow start feature"})
 
 	case "bugfix":
 		name := strings.TrimPrefix(s.Current, "bugfix/")
@@ -139,9 +177,11 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 	}
 
-	// Switch actions
+	// ── Switch actions ───────────────────────────────────────
 	if s.Current != cfg.DevelopBranch {
-		actions = append(actions, action{Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch", Command: "git checkout " + cfg.DevelopBranch})
+		if !hasTagAndLabel(actions, "switch", cfg.DevelopBranch) {
+			actions = append(actions, action{Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch", Command: "git checkout " + cfg.DevelopBranch})
+		}
 	}
 	if s.Current != cfg.MainBranch {
 		actions = append(actions, action{Label: fmt.Sprintf("Switch to %s", cfg.MainBranch), Tag: "switch", Command: "git checkout " + cfg.MainBranch})
@@ -156,7 +196,33 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			actions = append(actions, action{Label: fmt.Sprintf("Switch to bugfix '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
 		}
 	}
+	for _, b := range s.Releases {
+		if b.Name != s.Current {
+			actions = append(actions, action{Label: fmt.Sprintf("Switch to release '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
+		}
+	}
+	for _, b := range s.Hotfixes {
+		if b.Name != s.Current {
+			actions = append(actions, action{Label: fmt.Sprintf("Switch to hotfix '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
+		}
+	}
 
+	// ── Fallback start actions (always available) ────────────
+	if btype != "release" && btype != "hotfix" && len(s.Releases) == 0 {
+		if !hasTag(actions, "release") {
+			actions = append(actions, action{Label: "Start a release", Tag: "release"})
+		}
+	}
+	if btype != "hotfix" && len(s.Hotfixes) == 0 {
+		if !hasTag(actions, "hotfix") {
+			actions = append(actions, action{Label: "Start a hotfix (urgent)", Tag: "hotfix"})
+		}
+	}
+	if !hasTagAndLabel(actions, "start", "feature") {
+		actions = append(actions, action{Label: "Start a new feature", Tag: "start"})
+	}
+
+	// ── Utility actions ──────────────────────────────────────
 	actions = append(actions, action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"})
 	actions = append(actions, action{Label: "View commit log", Tag: "log", Command: "gitflow log"})
 	actions = append(actions, action{Label: "Repo health check", Tag: "health", Command: "gitflow health"})
