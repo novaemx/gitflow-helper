@@ -1,6 +1,13 @@
 package gitflow
 
 import (
+	"fmt"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/luis-lozano/gitflow-helper/internal/config"
 	"github.com/luis-lozano/gitflow-helper/internal/flow"
 	"github.com/luis-lozano/gitflow-helper/internal/git"
@@ -151,4 +158,245 @@ func (gf *Logic) IDEDisplay() string {
 // Returns the list of files created (empty if all already existed).
 func (gf *Logic) EnsureRules() ([]string, error) {
 	return ide.EnsureRulesForIDE(gf.Config.ProjectRoot, gf.IDE)
+}
+
+// Switch changes to the target branch with auto-stash support.
+func (gf *Logic) Switch(target string) (int, map[string]any) {
+	cur := git.CurrentBranch()
+	available := gf.ListSwitchable()
+
+	var chosen string
+	for _, b := range available {
+		if b == target || (len(b) > len(target) && b[len(b)-len(target)-1:] == "/"+target) {
+			chosen = b
+			break
+		}
+	}
+	if chosen == "" {
+		return 1, map[string]any{"action": "switch", "result": "not_found", "target": target, "available": available}
+	}
+
+	stashed := false
+	if git.HasUncommittedChanges() {
+		stashed = flow.SmartStashSave(cur)
+	}
+
+	code, _, _ := git.ExecResult("checkout", chosen)
+	if code != 0 {
+		if stashed {
+			flow.SmartStashPop(cur)
+		}
+		return 1, map[string]any{"action": "switch", "result": "error", "target": chosen}
+	}
+
+	flow.SmartStashPop(chosen)
+	gf.Refresh()
+	return 0, map[string]any{"action": "switch", "result": "ok", "branch": chosen, "previous": cur}
+}
+
+// Health runs a comprehensive repo health check, returning structured results.
+func (gf *Logic) Health() map[string]any {
+	cfg := gf.Config
+	var issues, warnings, okItems []string
+
+	gitVer := git.ExecQuiet("--version")
+	if gitVer == "" {
+		issues = append(issues, "git is not installed or not in PATH")
+	} else {
+		okItems = append(okItems, "git: "+strings.Replace(gitVer, "git version ", "", 1))
+	}
+
+	if !git.IsGitFlowInitialized() {
+		issues = append(issues, "gitflow not initialized (run: gitflow init)")
+	} else {
+		okItems = append(okItems, "gitflow structure: main + develop branches present")
+	}
+
+	allLocal := git.AllLocalBranches()
+	localSet := make(map[string]bool)
+	for _, b := range allLocal {
+		localSet[b] = true
+	}
+	if !localSet[cfg.DevelopBranch] {
+		issues = append(issues, fmt.Sprintf("'%s' branch missing", cfg.DevelopBranch))
+	}
+	if !localSet[cfg.MainBranch] {
+		issues = append(issues, fmt.Sprintf("'%s' branch missing", cfg.MainBranch))
+	}
+
+	fetchCode, _, _ := git.ExecResult("ls-remote", "--exit-code", cfg.Remote, "HEAD")
+	if fetchCode != 0 {
+		warnings = append(warnings, fmt.Sprintf("remote '%s' unreachable", cfg.Remote))
+	} else {
+		okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", cfg.Remote))
+	}
+
+	if localSet[cfg.DevelopBranch] && localSet[cfg.MainBranch] {
+		mainAhead := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch)
+		n, _ := strconv.Atoi(mainAhead)
+		if n > 0 {
+			files := git.ExecLines("diff", "--name-only", cfg.DevelopBranch+"..."+cfg.MainBranch)
+			issues = append(issues, fmt.Sprintf("%s is %d commit(s) ahead of %s (%d file(s))",
+				cfg.MainBranch, n, cfg.DevelopBranch, len(files)))
+		} else {
+			okItems = append(okItems, fmt.Sprintf("%s contains all of %s", cfg.DevelopBranch, cfg.MainBranch))
+		}
+	}
+
+	for _, b := range allLocal {
+		if strings.HasPrefix(b, "feature/") || strings.HasPrefix(b, "bugfix/") ||
+			strings.HasPrefix(b, "release/") || strings.HasPrefix(b, "hotfix/") {
+			ts := git.ExecQuiet("log", "-1", "--format=%ct", b)
+			if epoch, err := strconv.ParseInt(ts, 10, 64); err == nil {
+				ageDays := int(time.Since(time.Unix(epoch, 0)).Hours() / 24)
+				if ageDays > 30 {
+					warnings = append(warnings, fmt.Sprintf("stale branch: %s (inactive %d days)", b, ageDays))
+				}
+			}
+		}
+	}
+
+	dirtyCount := len(git.ExecLines("status", "--porcelain"))
+	if dirtyCount > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d uncommitted file(s)", dirtyCount))
+	}
+
+	okItems = append(okItems, fmt.Sprintf("IDE: %s", gf.IDEDisplay()))
+
+	return map[string]any{
+		"action":   "health",
+		"issues":   issues,
+		"warnings": warnings,
+		"ok":       okItems,
+		"healthy":  len(issues) == 0,
+		"ide":      gf.IDE,
+	}
+}
+
+// Doctor validates prerequisites and returns structured results.
+func (gf *Logic) Doctor() map[string]any {
+	cfg := gf.Config
+	type check struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+		OK    bool   `json:"ok"`
+	}
+	var checks []check
+
+	checks = append(checks, check{"Go runtime", runtime.Version(), true})
+
+	gitVer := git.ExecQuiet("--version")
+	checks = append(checks, check{"git", strings.Replace(gitVer, "git version ", "", 1), gitVer != ""})
+
+	gfInit := git.IsGitFlowInitialized()
+	gfVal := "yes"
+	if !gfInit {
+		gfVal = "NOT INITIALIZED"
+	}
+	checks = append(checks, check{"gitflow structure", gfVal, gfInit})
+	checks = append(checks, check{"IDE", gf.IDEDisplay(), true})
+	checks = append(checks, check{"project_root", cfg.ProjectRoot, true})
+
+	allOK := true
+	for _, c := range checks {
+		if !c.OK {
+			allOK = false
+			break
+		}
+	}
+
+	return map[string]any{
+		"action": "doctor",
+		"checks": checks,
+		"all_ok": allOK,
+		"ide":    gf.IDE,
+	}
+}
+
+// Log returns structured gitflow-aware commit log entries.
+func (gf *Logic) Log(count int) map[string]any {
+	logFmt := "%H|%h|%s|%an|%ar|%D"
+	entries := git.ExecLines("log", "--all", fmt.Sprintf("--format=%s", logFmt), "-n", fmt.Sprintf("%d", count))
+
+	type logEntry struct {
+		SHA       string `json:"sha"`
+		FullSHA   string `json:"full_sha"`
+		Subject   string `json:"subject"`
+		Author    string `json:"author"`
+		Date      string `json:"date"`
+		Refs      string `json:"refs"`
+		Tag       string `json:"tag"`
+		IsRelease bool   `json:"is_release"`
+	}
+
+	tagRe := regexp.MustCompile(`tag:\s*([^\s,)]+)`)
+	var parsed []logEntry
+	for _, entry := range entries {
+		parts := strings.SplitN(entry, "|", 6)
+		if len(parts) < 6 {
+			continue
+		}
+		e := logEntry{
+			FullSHA: parts[0], SHA: parts[1], Subject: parts[2],
+			Author: parts[3], Date: parts[4], Refs: strings.TrimSpace(parts[5]),
+		}
+		if e.Refs != "" && strings.Contains(e.Refs, "tag:") {
+			m := tagRe.FindStringSubmatch(e.Refs)
+			if len(m) > 1 {
+				e.Tag = m[1]
+				e.IsRelease = true
+			}
+		}
+		parsed = append(parsed, e)
+	}
+
+	return map[string]any{"action": "log", "entries": parsed}
+}
+
+// Undo analyzes reflog for undoable operations and returns candidates.
+func (gf *Logic) Undo() map[string]any {
+	cur := git.CurrentBranch()
+	reflog := git.ExecLines("reflog", "--format=%H %gs", "-n", "20")
+
+	if len(reflog) == 0 {
+		return map[string]any{"action": "undo", "result": "no_reflog"}
+	}
+
+	keywords := []string{"merge", "checkout: moving", "commit", "finish", "start"}
+	type candidate struct {
+		SHA  string `json:"sha"`
+		Desc string `json:"description"`
+	}
+	var candidates []candidate
+	for _, entry := range reflog {
+		parts := strings.SplitN(entry, " ", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		sha, desc := parts[0], parts[1]
+		descLower := strings.ToLower(desc)
+		for _, kw := range keywords {
+			if strings.Contains(descLower, kw) {
+				if len(sha) > 12 {
+					sha = sha[:12]
+				}
+				candidates = append(candidates, candidate{sha, desc})
+				break
+			}
+		}
+		if len(candidates) >= 10 {
+			break
+		}
+	}
+
+	if len(candidates) == 0 {
+		return map[string]any{"action": "undo", "result": "nothing_to_undo"}
+	}
+
+	return map[string]any{
+		"action":         "undo",
+		"result":         "candidates",
+		"current_branch": cur,
+		"entries":        candidates,
+	}
 }

@@ -172,6 +172,44 @@ func HasUncommittedChanges() bool {
 	return len(ExecLines("status", "--porcelain")) > 0
 }
 
+type WorkTreeStatus struct {
+	Staged    int
+	Unstaged  int
+	Untracked int
+	Total     int
+}
+
+func WorkingTreeStatus() WorkTreeStatus {
+	lines := ExecLines("status", "--porcelain")
+	var s WorkTreeStatus
+	for _, l := range lines {
+		if len(l) < 2 {
+			continue
+		}
+		x, y := l[0], l[1]
+		if x == '?' {
+			s.Untracked++
+		} else {
+			if x != ' ' {
+				s.Staged++
+			}
+			if y != ' ' {
+				s.Unstaged++
+			}
+		}
+	}
+	s.Total = len(lines)
+	return s
+}
+
+func StashSave(msg string) error {
+	return Exec("stash", "push", "-m", msg)
+}
+
+func StashPop() error {
+	return Exec("stash", "pop")
+}
+
 func LatestTag() string {
 	tag := ExecQuiet("describe", "--tags", "--abbrev=0")
 	if tag == "" {

@@ -100,6 +100,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newUndoCmd(),
 		newReleaseNotesCmd(),
 		newSetupCmd(),
+		newServeCmd(),
 	)
 
 	return root

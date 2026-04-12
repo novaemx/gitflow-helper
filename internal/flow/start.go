@@ -105,6 +105,30 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 		"name":   name,
 	}
 
+	wt := git.WorkingTreeStatus()
+	if wt.Total > 0 {
+		var parts []string
+		if wt.Staged > 0 {
+			parts = append(parts, fmt.Sprintf("%d staged", wt.Staged))
+		}
+		if wt.Unstaged > 0 {
+			parts = append(parts, fmt.Sprintf("%d modified", wt.Unstaged))
+		}
+		if wt.Untracked > 0 {
+			parts = append(parts, fmt.Sprintf("%d untracked", wt.Untracked))
+		}
+		detail := strings.Join(parts, ", ")
+		output.Infof("  %sWarning:%s Working tree is dirty (%s).", output.Yellow, output.Reset, detail)
+		output.Infof("  %sAuto-stashing changes before branch switch...%s", output.Dim, output.Reset)
+		if err := git.StashSave("gitflow: auto-stash before " + branchType + "/" + name); err != nil {
+			result["result"] = "error"
+			result["error"] = "failed to stash uncommitted changes: " + err.Error()
+			return 1, result
+		}
+		result["stashed"] = true
+		result["stash_detail"] = detail
+	}
+
 	if branch != expectedParent {
 		output.Infof("  %sWarning:%s '%s' branches should start from '%s' (currently on '%s').",
 			output.Yellow, output.Reset, branchType, expectedParent, branch)
@@ -133,9 +157,24 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	}
 
 	if err != nil {
+		if wt.Total > 0 {
+			output.Infof("  %sRestoring stashed changes...%s", output.Dim, output.Reset)
+			_ = git.StashPop()
+		}
 		result["result"] = "error"
 		result["error"] = err.Error()
 		return 1, result
+	}
+
+	if wt.Total > 0 {
+		output.Infof("  %sRestoring stashed changes on new branch...%s", output.Dim, output.Reset)
+		if popErr := git.StashPop(); popErr != nil {
+			output.Infof("  %sWarning:%s Could not restore stash (may need manual 'git stash pop'): %s",
+				output.Yellow, output.Reset, popErr.Error())
+			result["stash_restore"] = "failed"
+		} else {
+			result["stash_restore"] = "ok"
+		}
 	}
 
 	branchName := branchType + "/" + name

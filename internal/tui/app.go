@@ -2,10 +2,13 @@ package tui
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +16,7 @@ import (
 	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/gitflow"
 	"github.com/luis-lozano/gitflow-helper/internal/ide"
+	mcpserver "github.com/luis-lozano/gitflow-helper/internal/mcp"
 )
 
 type viewMode int
@@ -45,13 +49,33 @@ type model struct {
 	paletteQuery string
 
 	// Input overlay
-	inputPrompt   string
-	inputValue    string
-	inputDefault  string
-	inputCallback func(string)
+	inputPrompt  string
+	inputValue   string
+	inputDefault string
+	pendingAction *action
+
+	// IDE activity from MCP server
+	mcpActivity []mcpserver.ActivityEntry
 }
 
 type refreshMsg struct{}
+type activityTickMsg struct{}
+
+// #region agent log
+func debugLog(projectRoot, location, message string, data map[string]any) {
+	logPath := filepath.Join(projectRoot, ".cursor", "debug-5fe3b1.log")
+	entry := map[string]any{"sessionId": "5fe3b1", "location": location, "message": message, "data": data, "timestamp": time.Now().UnixMilli()}
+	line, _ := json.Marshal(entry)
+	line = append(line, '\n')
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.Write(line)
+}
+
+// #endregion
 
 type cmdDoneMsg struct {
 	title  string
@@ -82,7 +106,11 @@ func (m *model) refresh() {
 	}
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd {
+	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		return activityTickMsg{}
+	})
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -106,6 +134,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case refreshMsg:
 		m.refresh()
 		return m, nil
+
+	case activityTickMsg:
+		m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 10)
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return activityTickMsg{}
+		})
 
 	case tea.KeyMsg:
 		switch m.mode {
@@ -146,24 +180,41 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		if m.selected < len(m.actions) {
 			a := m.actions[m.selected]
+			// #region agent log
+			debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:enter", "action selected", map[string]any{
+				"hypothesisId": "H1", "runId": "run1",
+				"tag": a.Tag, "label": a.Label, "command": a.Command,
+				"needsInput": a.NeedsInput, "inputPrompt": a.InputPrompt,
+			})
+			// #endregion
 			if a.Tag == "exit" {
 				m.quitting = true
 				return m, tea.Quit
 			}
-			// Actions that need user input before executing
 			if a.NeedsInput {
+				pending := a
+				m.pendingAction = &pending
 				m.inputPrompt = a.InputPrompt
 				m.inputDefault = a.InputDefault
 				m.inputValue = a.InputDefault
-				m.inputCallback = func(val string) {
-					// will be handled via the action's Command template
-				}
 				m.mode = viewInput
+				// #region agent log
+				debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:input", "opening input overlay", map[string]any{
+					"hypothesisId": "H2", "runId": "run1",
+					"prompt": a.InputPrompt, "cmdTemplate": a.Command,
+				})
+				// #endregion
 				return m, nil
 			}
 			if a.Command != "" {
 				return m, m.runCommandAsync(a)
 			}
+			// #region agent log
+			debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:noop", "action has no command and no input", map[string]any{
+				"hypothesisId": "H1", "runId": "run1",
+				"tag": a.Tag, "label": a.Label,
+			})
+			// #endregion
 		}
 	case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
 		m.mode = viewPalette
@@ -245,15 +296,36 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
 		m.mode = viewDashboard
+		m.pendingAction = nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		val := m.inputValue
 		if val == "" {
 			val = m.inputDefault
 		}
+		// #region agent log
+		debugLog(m.gf.Config.ProjectRoot, "app.go:handleInputKey:enter", "input submitted", map[string]any{
+			"hypothesisId": "H2", "runId": "run1",
+			"value": val, "hasPending": m.pendingAction != nil,
+		})
+		// #endregion
 		m.mode = viewDashboard
-		if val != "" && m.inputCallback != nil {
-			m.inputCallback(val)
+		if val != "" && m.pendingAction != nil {
+			finalCmd := fmt.Sprintf(m.pendingAction.Command, val)
+			a := action{
+				Label:   m.pendingAction.Label,
+				Tag:     m.pendingAction.Tag,
+				Command: finalCmd,
+			}
+			m.pendingAction = nil
+			// #region agent log
+			debugLog(m.gf.Config.ProjectRoot, "app.go:handleInputKey:run", "running constructed command", map[string]any{
+				"hypothesisId": "H2", "runId": "run1",
+				"finalCommand": finalCmd,
+			})
+			// #endregion
+			return m, m.runCommandAsync(a)
 		}
+		m.pendingAction = nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("backspace"))):
 		if len(m.inputValue) > 0 {
 			m.inputValue = m.inputValue[:len(m.inputValue)-1]
@@ -332,10 +404,15 @@ func (m model) renderBase() string {
 	sections = append(sections, "")
 
 	dashContent := m.renderDashboard()
+	activityContent := m.renderIDEActivity()
 	actionContent := m.renderActions()
 
 	contentHeight := m.height - 3
-	content := dashContent + "\n" + actionContent
+	content := dashContent
+	if activityContent != "" {
+		content += "\n" + activityContent
+	}
+	content += "\n" + actionContent
 	lines := strings.Split(content, "\n")
 
 	dashLineCount := len(m.dashLines) + 2
@@ -456,6 +533,40 @@ func (m model) renderDashboard() string {
 		}
 		lines = append(lines, " "+s.Render(text))
 	}
+	return strings.Join(lines, "\n")
+}
+
+func (m model) renderIDEActivity() string {
+	if len(m.mcpActivity) == 0 {
+		return ""
+	}
+
+	var lines []string
+	lines = append(lines, "")
+	lines = append(lines, " "+sectionStyle.Render("IDE Activity (MCP):"))
+
+	for _, entry := range m.mcpActivity {
+		ts := entry.Timestamp
+		if len(ts) > 19 {
+			ts = ts[11:19]
+		}
+		icon := okStyle.Render("✓")
+		if entry.Error != "" || entry.Result == "error" {
+			icon = errorStyle.Render("✗")
+		}
+
+		detail := entry.Tool
+		if entry.Args != "" {
+			detail += " " + entry.Args
+		}
+
+		line := fmt.Sprintf("   %s %s %s", icon, dimStyle.Render(ts), detail)
+		if len(line) > m.width-4 {
+			line = line[:m.width-4]
+		}
+		lines = append(lines, " "+line)
+	}
+
 	return strings.Join(lines, "\n")
 }
 
@@ -671,8 +782,8 @@ func placeOverlay(base, overlay string, w, h int) string {
 	boxH := len(overlayLines)
 	boxW := 0
 	for _, l := range overlayLines {
-		if lipgloss.Width(l) > boxW {
-			boxW = lipgloss.Width(l)
+		if lw := lipgloss.Width(l); lw > boxW {
+			boxW = lw
 		}
 	}
 
@@ -690,22 +801,13 @@ func placeOverlay(base, overlay string, w, h int) string {
 		if row >= len(baseLines) {
 			break
 		}
-		baseLine := baseLines[row]
-		for lipgloss.Width(baseLine) < w {
-			baseLine += " "
+		olw := lipgloss.Width(overlayLine)
+		pad := strings.Repeat(" ", startCol)
+		rightPad := w - startCol - olw
+		if rightPad < 0 {
+			rightPad = 0
 		}
-		runes := []rune(baseLine)
-		oRunes := []rune(overlayLine)
-		if startCol+len(oRunes) <= len(runes) {
-			copy(runes[startCol:], oRunes)
-		} else {
-			for j, r := range oRunes {
-				if startCol+j < len(runes) {
-					runes[startCol+j] = r
-				}
-			}
-		}
-		baseLines[row] = string(runes)
+		baseLines[row] = pad + overlayLine + strings.Repeat(" ", rightPad)
 	}
 
 	return strings.Join(baseLines[:h], "\n")
