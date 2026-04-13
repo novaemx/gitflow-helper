@@ -17,36 +17,37 @@ func Pull(cfg config.FlowConfig) (int, map[string]any) {
 	stashed := false
 	if git.HasUncommittedChanges() {
 		output.Infof("  %sStashing uncommitted changes before pull...%s", output.Yellow, output.Reset)
-		_ = git.Run("git stash push -m 'gitflow-auto-stash'")
+		_ = git.Exec("stash", "push", "-m", "gitflow-auto-stash")
 		stashed = true
 	}
 
 	output.Infof("\n  %sFetching from all remotes...%s", output.Bold, output.Reset)
-	_ = git.Run("git fetch --all --prune")
+	_ = git.Exec("fetch", "--all", "--prune")
 
-	remoteBranch := git.RunQuiet("git config --get branch." + branch + ".remote")
+	remoteBranch := git.ExecQuiet("config", "--get", "branch."+branch+".remote")
 	if remoteBranch == "" {
 		remoteBranch = cfg.Remote
 	}
 
-	mergeBranch := git.RunQuiet("git config --get branch." + branch + ".merge")
+	mergeBranch := git.ExecQuiet("config", "--get", "branch."+branch+".merge")
 	if mergeBranch == "" {
 		trackingRef := remoteBranch + "/" + branch
-		code, _, _ := git.RunResult("git rev-parse --verify " + trackingRef)
+		code, _, _ := git.ExecResult("rev-parse", "--verify", trackingRef)
 		if code != 0 {
 			output.Infof("  %sNo upstream tracking for '%s'. Nothing to pull.%s", output.Dim, branch, output.Reset)
 			if stashed {
-				_ = git.Run("git stash pop")
+				_ = git.Exec("stash", "pop")
 			}
 			return 0, map[string]any{"action": "pull", "branch": branch, "result": "no_upstream"}
 		}
 	}
 
-	code, _, _ := git.RunResult(fmt.Sprintf("git merge --ff-only %s/%s", remoteBranch, branch))
+	mergeRef := fmt.Sprintf("%s/%s", remoteBranch, branch)
+	code, _, _ := git.ExecResult("merge", "--ff-only", mergeRef)
 	if code == 0 {
 		output.Infof("  %sFast-forward merge successful for '%s'.%s", output.Green, branch, output.Reset)
 		if stashed {
-			popCode, _, _ := git.RunResult("git stash pop")
+			popCode, _, _ := git.ExecResult("stash", "pop")
 			if popCode != 0 {
 				return 2, map[string]any{"action": "pull", "branch": branch, "result": "ok_stash_conflict"}
 			}
@@ -57,11 +58,11 @@ func Pull(cfg config.FlowConfig) (int, map[string]any) {
 	output.Infof("  %sFast-forward not possible — branches have diverged.%s", output.Yellow, output.Reset)
 	output.Infof("  %sAttempting rebase...%s", output.Dim, output.Reset)
 
-	rebaseCode, _, _ := git.RunResult(fmt.Sprintf("git rebase %s/%s", remoteBranch, branch))
+	rebaseCode, _, _ := git.ExecResult("rebase", mergeRef)
 	if rebaseCode == 0 {
 		output.Infof("  %sRebase successful for '%s'.%s", output.Green, branch, output.Reset)
 		if stashed {
-			popCode, _, _ := git.RunResult("git stash pop")
+			popCode, _, _ := git.ExecResult("stash", "pop")
 			if popCode != 0 {
 				return 2, map[string]any{"action": "pull", "branch": branch, "result": "rebase_ok_stash_conflict"}
 			}
@@ -70,9 +71,9 @@ func Pull(cfg config.FlowConfig) (int, map[string]any) {
 	}
 
 	output.Infof("  %sRebase has conflicts. Aborting to preserve your code.%s", output.Red, output.Reset)
-	_ = git.Run("git rebase --abort")
+	_ = git.Exec("rebase", "--abort")
 	if stashed {
-		_ = git.Run("git stash pop")
+		_ = git.Exec("stash", "pop")
 	}
 	return 2, map[string]any{"action": "pull", "branch": branch, "result": "conflict", "needs_human": true}
 }
@@ -92,19 +93,26 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 	}
 
 	output.Infof("\n  %sSyncing '%s' with '%s'...%s", output.Bold, branch, parent, output.Reset)
-	_ = git.Run(fmt.Sprintf("git fetch %s %s", cfg.Remote, parent))
+	// Fetch from remote if available, but don't fail if remote doesn't exist
+	_ = git.Exec("fetch", cfg.Remote, parent)
 
-	code, _, _ := git.RunResult(fmt.Sprintf("git merge --no-ff %s/%s", cfg.Remote, parent))
+	// Merge from local parent if remote ref doesn't exist
+	mergeRef := fmt.Sprintf("%s/%s", cfg.Remote, parent)
+	code, _, _ := git.ExecResult("rev-parse", "--verify", mergeRef)
+	if code != 0 {
+		mergeRef = parent
+	}
+	code, _, _ = git.ExecResult("merge", "--no-ff", mergeRef)
 	if code == 0 {
 		output.Infof("  %sSync successful.%s", output.Green, output.Reset)
 		return 0, map[string]any{"action": "sync", "branch": branch, "parent": parent, "result": "ok"}
 	}
 
-	conflicts := git.RunLines("git diff --name-only --diff-filter=U")
+	conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
 	if len(conflicts) > 0 {
 		output.Infof("  %sMerge conflicts during sync:%s", output.Red, output.Reset)
 		if output.IsJSONMode() {
-			_ = git.Run("git merge --abort")
+			_ = git.Exec("merge", "--abort")
 			return 2, map[string]any{
 				"action": "sync", "branch": branch, "parent": parent,
 				"result": "conflict", "files": conflicts, "needs_human": true,
@@ -116,7 +124,7 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 }
 
 func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
-	behind := git.RunQuiet(fmt.Sprintf("git rev-list --count %s..%s 2>/dev/null", cfg.DevelopBranch, cfg.MainBranch))
+	behind := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch)
 	behindCount := 0
 	fmt.Sscanf(behind, "%d", &behindCount)
 
@@ -130,21 +138,21 @@ func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
 	output.Infof("  %s has %s%d%s commit(s) not in %s.",
 		cfg.MainBranch, output.Yellow, behindCount, output.Reset, cfg.DevelopBranch)
 
-	changedFiles := git.RunLines(fmt.Sprintf("git diff --name-only %s...%s", cfg.DevelopBranch, cfg.MainBranch))
+	changedFiles := git.ExecLines("diff", "--name-only", cfg.DevelopBranch+"..."+cfg.MainBranch)
 
 	originalBranch := git.CurrentBranch()
 	if originalBranch != cfg.DevelopBranch {
 		output.Infof("  Switching to %s...", cfg.DevelopBranch)
-		err := git.Run("git checkout " + cfg.DevelopBranch)
+		err := git.Exec("checkout", cfg.DevelopBranch)
 		if err != nil {
 			return 1, map[string]any{"action": "backmerge", "result": "error", "detail": "checkout_failed"}
 		}
 	}
 
-	_ = git.Run(fmt.Sprintf("git fetch %s %s", cfg.Remote, cfg.MainBranch))
-	code, _, _ := git.RunResult(fmt.Sprintf(
-		`git merge --no-ff %s -m "Merge %s into %s (backmerge)"`,
-		cfg.MainBranch, cfg.MainBranch, cfg.DevelopBranch))
+	// Fetch from remote if available
+	_ = git.Exec("fetch", cfg.Remote, cfg.MainBranch)
+	mergeMsg := fmt.Sprintf("Merge %s into %s (backmerge)", cfg.MainBranch, cfg.DevelopBranch)
+	code, _, _ := git.ExecResult("merge", "--no-ff", cfg.MainBranch, "-m", mergeMsg)
 
 	if code == 0 {
 		output.Infof("  %sBack-merge successful. %s now contains all of %s.%s",
@@ -155,10 +163,10 @@ func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
 		}
 	}
 
-	conflicts := git.RunLines("git diff --name-only --diff-filter=U")
+	conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
 	if len(conflicts) > 0 {
 		if output.IsJSONMode() {
-			_ = git.Run("git merge --abort")
+			_ = git.Exec("merge", "--abort")
 			return 2, map[string]any{
 				"action": "backmerge", "result": "conflict",
 				"files": conflicts, "needs_human": true,

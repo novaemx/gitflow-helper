@@ -2,26 +2,55 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/state"
 )
 
 type action struct {
-	Label       string
-	Tag         string
-	Recommended bool
-	Command     string // shell command to run when selected
+	Label        string
+	Tag          string
+	Recommended  bool
+	Command      string
+	NeedsInput   bool
+	InputPrompt  string
+	InputDefault string
 }
 
-func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
-	btype := git.BranchTypeOf(s.Current)
-	ms := s.Merge
-	var actions []action
+func hasTag(actions []action, tag string) bool {
+	for _, a := range actions {
+		if a.Tag == tag {
+			return true
+		}
+	}
+	return false
+}
 
+func hasTagAndLabel(actions []action, tag, needle string) bool {
+	for _, a := range actions {
+		if a.Tag == tag && strings.Contains(a.Label, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildActions builds the action list ordered by priority tiers:
+//
+//	T1 CRITICAL  — backmerge / continue merge / init
+//	T2 HIGH      — finish flow branch / sync with parent
+//	T3 NORMAL    — pull, start recommended work, view diffs
+//	T4 LOW       — switch branches, utilities, exit
+func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
+	btype := branch.TypeOf(s.Current)
+	ms := s.Merge
+
+	// ── Merge conflict — locked menu ────────────────────────
 	if ms.InMerge && len(ms.ConflictedFiles) > 0 {
+		var actions []action
 		actions = append(actions, action{
 			Label:       fmt.Sprintf("Resolve %d merge conflict(s)", len(ms.ConflictedFiles)),
 			Tag:         "resolve",
@@ -36,37 +65,51 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		return actions
 	}
 
+	// ── In-merge, no conflicts — continue finish ────────────
 	if ms.InMerge && len(ms.ConflictedFiles) == 0 && ms.OperationType != "" {
-		actions = append(actions, action{
-			Label:       fmt.Sprintf("Continue %s finish v%s", ms.OperationType, ms.OperationVersion),
-			Tag:         "continue",
-			Recommended: true,
-			Command:     "gitflow finish",
-		})
-		actions = append(actions, action{Label: "Exit", Tag: "exit"})
-		return actions
+		return []action{
+			{
+				Label:       fmt.Sprintf("Continue %s finish v%s", ms.OperationType, ms.OperationVersion),
+				Tag:         "continue",
+				Recommended: true,
+				Command:     "gitflow finish",
+			},
+			{Label: "Exit", Tag: "exit"},
+		}
 	}
 
-	actions = append(actions, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
+	// ── Tiered action accumulation ──────────────────────────
+	var critical, high, normal, low []action
 
+	// T1 CRITICAL: gitflow invariant violations
 	if s.MainAheadOfDevelop > 0 {
-		actions = append(actions, action{
+		critical = append(critical, action{
 			Label:       fmt.Sprintf("Back-merge %s into %s (%d commit(s) behind)", cfg.MainBranch, cfg.DevelopBranch, s.MainAheadOfDevelop),
 			Tag:         "backmerge",
 			Recommended: true,
 			Command:     "gitflow backmerge",
 		})
+		critical = append(critical, action{
+			Label:   fmt.Sprintf("View diff: %s vs %s (%d file(s))", cfg.MainBranch, cfg.DevelopBranch, len(s.MainOnlyFiles)),
+			Tag:     "diff",
+			Command: fmt.Sprintf("git diff --stat %s...%s", cfg.DevelopBranch, cfg.MainBranch),
+		})
 	}
 
 	if !s.GitFlowInitialized {
-		actions = append(actions, action{
-			Label:       "Initialize git-flow",
+		critical = append(critical, action{
+			Label:       "Initialize gitflow",
 			Tag:         "init",
 			Recommended: true,
 			Command:     "gitflow init",
 		})
 	}
 
+	// T2 HIGH: finish current flow branch / sync with parent
+	dirtyNote := ""
+	if s.Dirty {
+		dirtyNote = " ⚠ commit changes first"
+	}
 	switch btype {
 	case "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
@@ -78,11 +121,15 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			}
 		}
 		hasWork := bi != nil && bi.CommitsAhead > 0 && !s.Dirty
-		actions = append(actions, action{
-			Label: fmt.Sprintf("Finish feature '%s'", name), Tag: "finish",
+		label := fmt.Sprintf("Finish feature '%s'", name)
+		if s.Dirty {
+			label += dirtyNote
+		}
+		high = append(high, action{
+			Label: label, Tag: "finish",
 			Recommended: hasWork, Command: "gitflow finish",
 		})
-		actions = append(actions, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
+		high = append(high, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
 
 	case "bugfix":
 		name := strings.TrimPrefix(s.Current, "bugfix/")
@@ -94,74 +141,191 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			}
 		}
 		hasWork := bi != nil && bi.CommitsAhead > 0 && !s.Dirty
-		actions = append(actions, action{
-			Label: fmt.Sprintf("Finish bugfix '%s'", name), Tag: "finish",
+		label := fmt.Sprintf("Finish bugfix '%s'", name)
+		if s.Dirty {
+			label += dirtyNote
+		}
+		high = append(high, action{
+			Label: label, Tag: "finish",
 			Recommended: hasWork, Command: "gitflow finish",
 		})
-		actions = append(actions, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
+		high = append(high, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
 
 	case "release":
 		ver := strings.TrimPrefix(strings.TrimPrefix(s.Current, "release/v"), "release/")
-		actions = append(actions, action{
-			Label: fmt.Sprintf("Finish release v%s", ver), Tag: "finish",
+		label := fmt.Sprintf("Finish release v%s", ver)
+		if s.Dirty {
+			label += dirtyNote
+		}
+		high = append(high, action{
+			Label: label, Tag: "finish",
 			Recommended: !s.Dirty, Command: "gitflow finish",
 		})
 
 	case "hotfix":
 		ver := strings.TrimPrefix(strings.TrimPrefix(s.Current, "hotfix/v"), "hotfix/")
-		actions = append(actions, action{
-			Label: fmt.Sprintf("Finish hotfix v%s", ver), Tag: "finish",
+		label := fmt.Sprintf("Finish hotfix v%s", ver)
+		if s.Dirty {
+			label += dirtyNote
+		}
+		high = append(high, action{
+			Label: label, Tag: "finish",
 			Recommended: !s.Dirty, Command: "gitflow finish",
 		})
+	}
 
-	default:
-		if s.Current == cfg.DevelopBranch {
-			if len(s.Releases) > 0 {
-				rel := s.Releases[0]
-				actions = append(actions, action{
-					Label: fmt.Sprintf("Switch to release '%s' and finish it", rel.Name), Tag: "finish",
-					Recommended: true, Command: fmt.Sprintf("git checkout %s && gitflow finish", rel.Name),
-				})
-			}
-			if len(s.Releases) == 0 {
-				actions = append(actions, action{Label: "Start a new feature", Tag: "start", Recommended: true})
-			}
-			actions = append(actions, action{Label: "Start a bugfix", Tag: "start"})
-			if s.DevelopAheadOfMain > 0 && len(s.Releases) == 0 {
-				actions = append(actions, action{Label: "Start a release", Tag: "release", Recommended: true})
-			}
-		} else if s.Current == cfg.MainBranch {
-			actions = append(actions, action{Label: "Start a hotfix (urgent)", Tag: "hotfix"})
-			actions = append(actions, action{
-				Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch",
-				Recommended: true, Command: "git checkout " + cfg.DevelopBranch,
+	// T3 NORMAL: pull, start work, diffs
+	normal = append(normal, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
+
+	if s.DevelopAheadOfMain > 0 {
+		normal = append(normal, action{
+			Label:   fmt.Sprintf("View diff: %s vs %s (%d file(s))", cfg.DevelopBranch, cfg.MainBranch, len(s.DevelopOnlyFiles)),
+			Tag:     "diff",
+			Command: fmt.Sprintf("git diff --stat %s...%s", cfg.MainBranch, cfg.DevelopBranch),
+		})
+	}
+
+	switch {
+	case btype == "base" && s.Current == cfg.DevelopBranch:
+		if len(s.Releases) > 0 {
+			rel := s.Releases[0]
+			normal = append(normal, action{
+				Label: fmt.Sprintf("Switch to release '%s' and finish it", rel.Name), Tag: "finish",
+				Recommended: true, Command: fmt.Sprintf("git checkout %s && gitflow finish", rel.Name),
 			})
 		}
+		if len(s.Releases) == 0 {
+			normal = append(normal, action{
+				Label: "Start a new feature", Tag: "start", Recommended: true,
+				NeedsInput: true, InputPrompt: "Feature name:", Command: "gitflow start feature %s",
+			})
+		}
+		normal = append(normal, action{
+			Label: "Start a bugfix", Tag: "start",
+			NeedsInput: true, InputPrompt: "Bugfix name:", Command: "gitflow start bugfix %s",
+		})
+		if s.DevelopAheadOfMain > 0 && len(s.Releases) == 0 {
+			normal = append(normal, action{
+				Label:       fmt.Sprintf("Start a release (%d unreleased commit(s))", s.DevelopAheadOfMain),
+				Tag:         "release",
+				Recommended: true,
+				NeedsInput:  true, InputPrompt: "Release version:", InputDefault: suggestReleaseVersion(s),
+				Command: "gitflow start release %s",
+			})
+		}
+
+	case btype == "base" && s.Current == cfg.MainBranch:
+		normal = append(normal, action{
+			Label: "Start a hotfix (urgent)", Tag: "hotfix",
+			NeedsInput: true, InputPrompt: "Hotfix version:", Command: "gitflow start hotfix %s",
+		})
+		normal = append(normal, action{
+			Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch",
+			Recommended: true, Command: "git checkout " + cfg.DevelopBranch,
+		})
+
+	case btype == "feature":
+		normal = append(normal, action{
+			Label: "Start a new feature", Tag: "start",
+			NeedsInput: true, InputPrompt: "Feature name:", Command: "gitflow start feature %s",
+		})
 	}
 
-	// Switch actions
+	// Recommend release from any branch when develop is ahead and no release exists
+	if s.DevelopAheadOfMain > 0 && len(s.Releases) == 0 && !hasTag(normal, "release") {
+		normal = append(normal, action{
+			Label:       fmt.Sprintf("Start a release (%d unreleased commit(s))", s.DevelopAheadOfMain),
+			Tag:         "release",
+			Recommended: btype == "base" && s.Current == cfg.DevelopBranch,
+			NeedsInput:  true, InputPrompt: "Release version:", InputDefault: suggestReleaseVersion(s),
+			Command: "gitflow start release %s",
+		})
+	}
+
+	// T4 LOW: switch branches
 	if s.Current != cfg.DevelopBranch {
-		actions = append(actions, action{Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch", Command: "git checkout " + cfg.DevelopBranch})
+		if !hasTagAndLabel(normal, "switch", cfg.DevelopBranch) {
+			low = append(low, action{Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch", Command: "git checkout " + cfg.DevelopBranch})
+		}
 	}
 	if s.Current != cfg.MainBranch {
-		actions = append(actions, action{Label: fmt.Sprintf("Switch to %s", cfg.MainBranch), Tag: "switch", Command: "git checkout " + cfg.MainBranch})
+		low = append(low, action{Label: fmt.Sprintf("Switch to %s", cfg.MainBranch), Tag: "switch", Command: "git checkout " + cfg.MainBranch})
 	}
 	for _, b := range s.Features {
 		if b.Name != s.Current {
-			actions = append(actions, action{Label: fmt.Sprintf("Switch to feature '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
+			low = append(low, action{Label: fmt.Sprintf("Switch to feature '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
 		}
 	}
 	for _, b := range s.Bugfixes {
 		if b.Name != s.Current {
-			actions = append(actions, action{Label: fmt.Sprintf("Switch to bugfix '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
+			low = append(low, action{Label: fmt.Sprintf("Switch to bugfix '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
+		}
+	}
+	for _, b := range s.Releases {
+		if b.Name != s.Current {
+			low = append(low, action{Label: fmt.Sprintf("Switch to release '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
+		}
+	}
+	for _, b := range s.Hotfixes {
+		if b.Name != s.Current {
+			low = append(low, action{Label: fmt.Sprintf("Switch to hotfix '%s'", b.ShortName), Tag: "switch", Command: "git checkout " + b.Name})
 		}
 	}
 
-	actions = append(actions, action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"})
-	actions = append(actions, action{Label: "View commit log", Tag: "log", Command: "gitflow log"})
-	actions = append(actions, action{Label: "Repo health check", Tag: "health", Command: "gitflow health"})
-	actions = append(actions, action{Label: "Undo last operation", Tag: "undo", Command: "gitflow undo"})
-	actions = append(actions, action{Label: "Exit", Tag: "exit"})
+	// Fallback start actions
+	if btype != "release" && btype != "hotfix" && len(s.Releases) == 0 {
+		if !hasTag(low, "release") && !hasTag(normal, "release") {
+			low = append(low, action{
+				Label: "Start a release", Tag: "release",
+				NeedsInput: true, InputPrompt: "Release version:", InputDefault: suggestReleaseVersion(s),
+				Command: "gitflow start release %s",
+			})
+		}
+	}
+	if btype != "hotfix" && len(s.Hotfixes) == 0 {
+		if !hasTag(low, "hotfix") && !hasTag(normal, "hotfix") {
+			low = append(low, action{
+				Label: "Start a hotfix (urgent)", Tag: "hotfix",
+				NeedsInput: true, InputPrompt: "Hotfix version:", Command: "gitflow start hotfix %s",
+			})
+		}
+	}
+	if !hasTagAndLabel(normal, "start", "feature") && !hasTagAndLabel(low, "start", "feature") {
+		low = append(low, action{
+			Label: "Start a new feature", Tag: "start",
+			NeedsInput: true, InputPrompt: "Feature name:", Command: "gitflow start feature %s",
+		})
+	}
 
+	// Utilities
+	low = append(low,
+		action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"},
+		action{Label: "View commit log", Tag: "log", Command: "gitflow log"},
+		action{Label: "Repo health check", Tag: "health", Command: "gitflow health"},
+		action{Label: "Undo last operation", Tag: "undo", Command: "gitflow undo"},
+		action{Label: "Exit", Tag: "exit"},
+	)
+
+	// Concatenate tiers
+	var actions []action
+	actions = append(actions, critical...)
+	actions = append(actions, high...)
+	actions = append(actions, normal...)
+	actions = append(actions, low...)
 	return actions
+}
+
+func suggestReleaseVersion(s state.RepoState) string {
+	tag := s.LastTag
+	if tag == "" || tag == "none" {
+		return "0.1.0"
+	}
+	tag = strings.TrimPrefix(tag, "v")
+	parts := strings.SplitN(tag, ".", 3)
+	if len(parts) == 3 {
+		if minor, err := strconv.Atoi(parts[1]); err == nil {
+			return fmt.Sprintf("%s.%d.0", parts[0], minor+1)
+		}
+	}
+	return tag
 }

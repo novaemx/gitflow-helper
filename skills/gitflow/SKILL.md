@@ -19,14 +19,33 @@ a workflow.
 
 ---
 
-## Step 0 — Verify the helper exists
+## Step 0 — Choose transport: MCP or CLI
+
+### 0a. Check if gitflow MCP tools are available
+
+If you are running inside an IDE with MCP support (Cursor, Claude Code,
+VS Code + Copilot, Windsurf), check whether the `gitflow` MCP server tools
+are registered. MCP tools have these names: `status`, `init`, `pull`, `sync`,
+`switch`, `backmerge`, `cleanup`, `health`, `doctor`, `log`, `undo`,
+`releasenotes`, `start`, `finish`.
+
+**If MCP tools are available → use them for all gitflow operations.**
+MCP is preferred because it returns structured JSON directly without
+spawning shell processes, and the interactive TUI shows MCP activity
+in real time.
+
+### 0b. Fall back to CLI
+
+If MCP tools are NOT available (running in an external terminal, or
+IDE does not support MCP), verify the CLI binary exists:
 
 ```bash
 command -v gitflow && echo "available" || echo "not found"
 ```
 
-If not found, install the `gitflow` binary from the project's GitHub releases
-or fall back to manual `git` commands while following the pre-flight logic below.
+If not found, install via `make install` from the project root, or
+download from GitHub releases. Then use `gitflow --json <command>`
+for all operations.
 
 The binary requires **only `git`** — no git-flow extensions needed. It
 implements the full nvie gitflow model using raw git commands.
@@ -210,6 +229,7 @@ gitflow --json log -n 20                  # gitflow commit log
 gitflow --json undo                       # undo last operation
 gitflow --json releasenotes               # generate release notes
 gitflow --json init                       # initialize git-flow
+gitflow serve                             # start MCP server (stdio)
 gitflow setup                             # detect IDE & generate rules
 gitflow setup --ide cursor                # force Cursor rules
 gitflow setup --ide copilot               # force Copilot instructions
@@ -217,16 +237,42 @@ gitflow setup --ide copilot               # force Copilot instructions
 
 Exit codes: `0` success, `1` error, `2` conflict needing human intervention.
 
+## MCP Tool Reference (when MCP server is available)
+
+All 14 tools return JSON. Use MCP tools when available instead of CLI.
+
+| MCP Tool       | Parameters                                 | Equivalent CLI                    |
+|----------------|--------------------------------------------|------------------------------------|
+| `status`       | (none)                                     | `gitflow --json status`            |
+| `init`         | (none)                                     | `gitflow --json init`              |
+| `pull`         | (none)                                     | `gitflow --json pull`              |
+| `sync`         | (none)                                     | `gitflow --json sync`              |
+| `backmerge`    | (none)                                     | `gitflow --json backmerge`         |
+| `cleanup`      | (none)                                     | `gitflow --json cleanup`           |
+| `health`       | (none)                                     | `gitflow --json health`            |
+| `doctor`       | (none)                                     | `gitflow --json doctor`            |
+| `log`          | `{"count": 20}`                            | `gitflow --json log -n 20`         |
+| `undo`         | (none)                                     | `gitflow --json undo`              |
+| `releasenotes` | `{"from_tag": "v0.5.1"}` (optional)        | `gitflow --json releasenotes`      |
+| `start`        | `{"type": "feature", "name": "my-feat"}`   | `gitflow --json start feature ...` |
+| `finish`       | `{"name": ""}` (optional)                  | `gitflow --json finish`            |
+| `switch`       | `{"branch": "develop"}`                    | `gitflow --json switch develop`    |
+
 ---
 
 ## IDE Setup
 
 Run `gitflow setup` to auto-detect your IDE and generate the appropriate
-pre-flight enforcement rules:
+pre-flight enforcement rules **and MCP configuration**:
 
-- **Cursor**: Creates `.cursor/rules/gitflow-preflight.mdc`
-- **VSCode Copilot**: Creates/appends `.github/copilot-instructions.md`
+- **Cursor**: Creates `.cursor/rules/gitflow-preflight.mdc` + `.cursor/mcp.json`
+- **VSCode / Copilot**: Creates `.github/copilot-instructions.md` + `.vscode/mcp.json`
+- **Claude Code**: Creates `CLAUDE.md` + `.claude/mcp.json`
+- **Windsurf**: Creates `.windsurfrules` + `.windsurf/mcp.json`
 - **Both/Unknown**: Creates all of the above plus `AGENTS.md`
+
+MCP config is auto-generated only when `gitflow` is in PATH. The config
+points to `gitflow serve` which starts the MCP server over stdio.
 
 Detected IDEs (shown in TUI title bar): Cursor, VS Code, VS Code + Copilot,
 Claude Code, Windsurf, Cline, Zed, Neovim, JetBrains.

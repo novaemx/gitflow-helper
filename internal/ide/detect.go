@@ -66,17 +66,60 @@ func DetectPrimary(projectRoot string) DetectedIDE {
 	return DetectedIDE{ID: IDEUnknown, DisplayName: "Terminal"}
 }
 
-// Detect returns legacy string for backward compatibility with Generate().
-func Detect(projectRoot string) string {
-	primary := DetectPrimary(projectRoot)
-	switch primary.ID {
-	case IDECursor:
-		return IDECursor
-	case IDECopilot, IDEVSCode:
-		return IDECopilot
-	default:
-		return IDEBoth
+// ideRuleSpec maps an IDE to its existence-check and generator functions.
+type ideRuleSpec struct {
+	exists   func(string) bool
+	generate func(string) (string, error)
+}
+
+var ideRuleRegistry = map[string]ideRuleSpec{
+	IDECursor:     {cursorRuleExists, generateCursorRule},
+	IDEVSCode:     {copilotRuleExists, generateCopilotInstructions},
+	IDECopilot:    {copilotRuleExists, generateCopilotInstructions},
+	IDEClaudeCode: {claudeCodeRuleExists, generateClaudeCodeRule},
+	IDEWindsurf:   {windsurfRuleExists, generateWindsurfRule},
+	IDECline:      {clineRuleExists, generateClineRule},
+	IDEZed:        {zedRuleExists, generateZedRule},
+	IDENeovim:     {neovimRuleExists, generateNeovimRule},
+	IDEJetBrains:  {jetbrainsRuleExists, generateJetBrainsRule},
+}
+
+// EnsureRulesForIDE checks if rules exist for the detected IDE.
+// If missing, it creates them. Also ensures AGENTS.md is present as a
+// universal fallback, and MCP config for IDEs that support it.
+// Returns list of newly created files (empty if all exist).
+func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
+	var created []string
+
+	// Generate IDE-specific rules
+	if spec, ok := ideRuleRegistry[detected.ID]; ok {
+		if !spec.exists(projectRoot) {
+			path, err := spec.generate(projectRoot)
+			if err != nil {
+				return created, err
+			}
+			created = append(created, path)
+		}
 	}
+
+	// Always ensure AGENTS.md as universal fallback
+	if !agentsRuleExists(projectRoot) {
+		path, err := generateAgentsMD(projectRoot)
+		if err != nil {
+			return created, err
+		}
+		created = append(created, path)
+	}
+
+	// Auto-provision MCP config for IDEs that support it
+	if MCPSupportedIDEs[detected.ID] && !MCPConfigExists(projectRoot, detected.ID) {
+		path, err := EnsureMCPConfig(projectRoot, detected.ID)
+		if err == nil && path != "" {
+			created = append(created, path)
+		}
+	}
+
+	return created, nil
 }
 
 // --- Individual IDE detectors ---
@@ -220,42 +263,50 @@ func matchParentProcess(name string) bool {
 }
 
 // Generate dispatches to the appropriate rule/instruction file generators.
+// For explicit setup: always generates for the specified IDE + AGENTS.md + MCP config.
 func Generate(projectRoot, ideType string) ([]string, error) {
 	var files []string
 
-	switch ideType {
-	case IDECursor:
-		f, err := generateCursorRule(projectRoot)
+	if spec, ok := ideRuleRegistry[ideType]; ok {
+		f, err := spec.generate(projectRoot)
 		if err != nil {
 			return nil, err
 		}
 		files = append(files, f)
+	}
 
-	case IDECopilot:
-		f, err := generateCopilotInstructions(projectRoot)
-		if err != nil {
-			return nil, err
+	// For "both" or unknown, generate Cursor + Copilot + AGENTS.md
+	if ideType == IDEBoth || ideType == IDEUnknown {
+		for _, id := range []string{IDECursor, IDECopilot} {
+			if spec, ok := ideRuleRegistry[id]; ok {
+				f, err := spec.generate(projectRoot)
+				if err != nil {
+					return nil, err
+				}
+				files = append(files, f)
+			}
 		}
-		files = append(files, f)
+	}
 
-	case IDEBoth, IDEUnknown:
-		f1, err := generateCursorRule(projectRoot)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, f1)
+	// Always generate AGENTS.md as universal fallback
+	f, err := generateAgentsMD(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	files = append(files, f)
 
-		f2, err := generateCopilotInstructions(projectRoot)
-		if err != nil {
-			return nil, err
+	// Generate MCP config for supported IDEs
+	mcpTargets := []string{ideType}
+	if ideType == IDEBoth || ideType == IDEUnknown {
+		mcpTargets = []string{IDECursor, IDECopilot}
+	}
+	for _, id := range mcpTargets {
+		if MCPSupportedIDEs[id] {
+			p, err := EnsureMCPConfig(projectRoot, id)
+			if err == nil && p != "" {
+				files = append(files, p)
+			}
 		}
-		files = append(files, f2)
-
-		f3, err := generateAgentsMD(projectRoot)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, f3)
 	}
 
 	return files, nil

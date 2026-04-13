@@ -15,7 +15,7 @@ import (
 )
 
 func getPreviousTag(currentTag string) string {
-	tags := git.RunLines("git tag --sort=-version:refname")
+	tags := git.ExecLines("tag", "--sort=-version:refname")
 	found := false
 	for _, t := range tags {
 		if found {
@@ -61,7 +61,7 @@ func classifyCommit(subject string) string {
 }
 
 func generateReleaseNotes(cfg config.FlowConfig, fromRef, toRef, ver string) string {
-	entries := git.RunLines(fmt.Sprintf("git log --format='%%s' %s..%s", fromRef, toRef))
+	entries := git.ExecLines("log", "--format=%s", fromRef+".."+toRef)
 
 	groups := map[string][]string{
 		"features":     {},
@@ -159,11 +159,11 @@ func WriteReleaseNotes(cfg config.FlowConfig, fromTag string) map[string]any {
 	}
 
 	if fromRef == "" {
-		entries := git.RunLines("git log --format='%s' -n 50")
+		entries := git.ExecLines("log", "--format=%s", "-n", "50")
 		if len(entries) == 0 {
 			return nil
 		}
-		fromRef = git.RunQuiet("git rev-list --max-parents=0 HEAD")
+		fromRef = git.ExecQuiet("rev-list", "--max-parents=0", "HEAD")
 	}
 
 	toRef := "HEAD"

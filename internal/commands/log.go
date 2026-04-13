@@ -17,7 +17,7 @@ func newLogCmd() *cobra.Command {
 		Short: "Gitflow-aware commit log with release boundaries",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logFmt := "%H|%h|%s|%an|%ar|%D"
-			entries := git.RunLines(fmt.Sprintf("git log --all --format='%s' -n %d", logFmt, count))
+			entries := git.ExecLines("log", "--all", fmt.Sprintf("--format=%s", logFmt), "-n", fmt.Sprintf("%d", count))
 
 			if len(entries) == 0 {
 				output.Infof("  %sNo commits found.%s", output.Dim, output.Reset)

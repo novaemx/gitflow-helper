@@ -19,17 +19,36 @@ a workflow.
 
 ---
 
-## Step 0 — Verify the helper exists
+## Step 0 — Choose transport: MCP or CLI
+
+### 0a. Check if gitflow MCP tools are available
+
+If you are running inside an IDE with MCP support (Cursor, Claude Code,
+VS Code + Copilot, Windsurf), check whether the `gitflow` MCP server tools
+are registered. MCP tools have these names: `status`, `init`, `pull`, `sync`,
+`switch`, `backmerge`, `cleanup`, `health`, `doctor`, `log`, `undo`,
+`releasenotes`, `start`, `finish`.
+
+**If MCP tools are available → use them for all gitflow operations.**
+MCP is preferred because it returns structured JSON directly without
+spawning shell processes, and the interactive TUI shows MCP activity
+in real time.
+
+### 0b. Fall back to CLI
+
+If MCP tools are NOT available (running in an external terminal, or
+IDE does not support MCP), verify the CLI binary exists:
 
 ```bash
-test -f scripts/gitflow.py && echo "available" || echo "not found"
+command -v gitflow && echo "available" || echo "not found"
 ```
 
-If not found, fall back to manual `git` commands but still follow the
-pre-flight logic described below.
+If not found, install via `make install` from the project root, or
+download from GitHub releases. Then use `gitflow --json <command>`
+for all operations.
 
-The script requires only Python 3 (any version) and `git` with `git-flow`.
-No venv or third-party packages needed.
+The binary requires **only `git`** — no git-flow extensions needed. It
+implements the full nvie gitflow model using raw git commands.
 
 ---
 
@@ -38,7 +57,7 @@ No venv or third-party packages needed.
 Before writing a single line of code, execute this analysis **every time**:
 
 ```bash
-python3 scripts/gitflow.py --json status
+gitflow --json status
 ```
 
 Then evaluate the JSON response in this exact order:
@@ -48,7 +67,7 @@ Then evaluate the JSON response in this exact order:
 If `git_flow_initialized` is `false`:
 
 ```bash
-python3 scripts/gitflow.py --json init
+gitflow --json init
 ```
 
 ### 1b. Is there a merge conflict?
@@ -61,7 +80,7 @@ Do not modify any code. The user must resolve conflicts first.
 If `main_ahead_of_develop > 0` → **STOP all other work.** Fix immediately:
 
 ```bash
-python3 scripts/gitflow.py --json backmerge
+gitflow --json backmerge
 ```
 
 This is a gitflow invariant violation. Nothing else should happen until
@@ -100,14 +119,14 @@ one. Present the options clearly:
 Then execute the appropriate `start` command:
 
 ```bash
-python3 scripts/gitflow.py --json start feature <name>
-python3 scripts/gitflow.py --json start bugfix <name>
-python3 scripts/gitflow.py --json start hotfix <version>
+gitflow --json start feature <name>
+gitflow --json start bugfix <name>
+gitflow --json start hotfix <version>
 ```
 
 ### 1f. Are there uncommitted changes?
 
-If `dirty` is `true` and we need to switch branches, the script handles
+If `dirty` is `true` and we need to switch branches, the tool handles
 auto-stashing. But warn the user if they have uncommitted work that might
 belong to a different task.
 
@@ -124,11 +143,11 @@ While making code changes on the flow branch:
 
 - **Sync regularly** if the branch is long-lived:
   ```bash
-  python3 scripts/gitflow.py --json sync
+  gitflow --json sync
   ```
 - **Pull before pushing** to avoid conflicts:
   ```bash
-  python3 scripts/gitflow.py --json pull
+  gitflow --json pull
   ```
 
 ---
@@ -138,29 +157,21 @@ While making code changes on the flow branch:
 When the user's task is complete and code is committed:
 
 ```bash
-python3 scripts/gitflow.py --json finish
+gitflow --json finish
 ```
 
-For releases, this automatically generates release notes (see below).
+For releases, this automatically generates release notes.
 
 ---
 
 ## Step 4 — Release Notes (automatic on release finish)
 
-When finishing a release, the script generates a `RELEASE_NOTES.md` file:
+When finishing a release, the tool generates a `RELEASE_NOTES.md` file:
 
 ```bash
-python3 scripts/gitflow.py --json releasenotes           # from last tag to HEAD
-python3 scripts/gitflow.py --json releasenotes v0.5.1    # from specific tag
+gitflow --json releasenotes           # from last tag to HEAD
+gitflow --json releasenotes v0.5.1    # from specific tag
 ```
-
-- Collects all commits between the previous release tag and now.
-- Groups them by type: features, fixes, improvements, other.
-- Writes a user-facing markdown file focused on what matters to end users
-  (no commit hashes, no file paths, no internal jargon).
-- Outputs the content both to the file and to stdout (JSON includes `content`
-  and `file` fields).
-- The file is created at the project root as `RELEASE_NOTES.md`.
 
 ---
 
@@ -201,67 +212,81 @@ release branch instead of develop.
 ## CLI Reference (always use `--json` for agent mode)
 
 ```bash
-python3 scripts/gitflow.py --json status                     # repo state
-python3 scripts/gitflow.py --json pull                       # safe fetch + merge
-python3 scripts/gitflow.py --json start feature my-feature   # start feature
-python3 scripts/gitflow.py --json start bugfix fix-name      # start bugfix
-python3 scripts/gitflow.py --json start release 1.2.0        # start release
-python3 scripts/gitflow.py --json start hotfix 1.1.1         # start hotfix
-python3 scripts/gitflow.py --json finish                     # finish current branch
-python3 scripts/gitflow.py --json sync                       # sync with parent
-python3 scripts/gitflow.py --json switch develop             # switch branch
-python3 scripts/gitflow.py --json backmerge                  # merge main→develop
-python3 scripts/gitflow.py --json cleanup                    # delete merged branches
-python3 scripts/gitflow.py --json health                     # full repo audit
-python3 scripts/gitflow.py --json doctor                     # validate prerequisites
-python3 scripts/gitflow.py --json log -n 20                  # gitflow commit log
-python3 scripts/gitflow.py --json undo                       # undo last operation
-python3 scripts/gitflow.py --json releasenotes               # generate release notes
-python3 scripts/gitflow.py --json init                       # initialize git-flow
+gitflow --json status                     # repo state
+gitflow --json pull                       # safe fetch + merge
+gitflow --json start feature my-feature   # start feature
+gitflow --json start bugfix fix-name      # start bugfix
+gitflow --json start release 1.2.0        # start release
+gitflow --json start hotfix 1.1.1         # start hotfix
+gitflow --json finish                     # finish current branch
+gitflow --json sync                       # sync with parent
+gitflow --json switch develop             # switch branch
+gitflow --json backmerge                  # merge main→develop
+gitflow --json cleanup                    # delete merged branches
+gitflow --json health                     # full repo audit
+gitflow --json doctor                     # validate prerequisites
+gitflow --json log -n 20                  # gitflow commit log
+gitflow --json undo                       # undo last operation
+gitflow --json releasenotes               # generate release notes
+gitflow --json init                       # initialize git-flow
+gitflow serve                             # start MCP server (stdio)
+gitflow setup                             # detect IDE & generate rules
+gitflow setup --ide cursor                # force Cursor rules
+gitflow setup --ide copilot               # force Copilot instructions
 ```
 
 Exit codes: `0` success, `1` error, `2` conflict needing human intervention.
+
+## MCP Tool Reference (when MCP server is available)
+
+All 14 tools return JSON. Use MCP tools when available instead of CLI.
+
+| MCP Tool       | Parameters                                 | Equivalent CLI                    |
+|----------------|--------------------------------------------|------------------------------------|
+| `status`       | (none)                                     | `gitflow --json status`            |
+| `init`         | (none)                                     | `gitflow --json init`              |
+| `pull`         | (none)                                     | `gitflow --json pull`              |
+| `sync`         | (none)                                     | `gitflow --json sync`              |
+| `backmerge`    | (none)                                     | `gitflow --json backmerge`         |
+| `cleanup`      | (none)                                     | `gitflow --json cleanup`           |
+| `health`       | (none)                                     | `gitflow --json health`            |
+| `doctor`       | (none)                                     | `gitflow --json doctor`            |
+| `log`          | `{"count": 20}`                            | `gitflow --json log -n 20`         |
+| `undo`         | (none)                                     | `gitflow --json undo`              |
+| `releasenotes` | `{"from_tag": "v0.5.1"}` (optional)        | `gitflow --json releasenotes`      |
+| `start`        | `{"type": "feature", "name": "my-feat"}`   | `gitflow --json start feature ...` |
+| `finish`       | `{"name": ""}` (optional)                  | `gitflow --json finish`            |
+| `switch`       | `{"branch": "develop"}`                    | `gitflow --json switch develop`    |
+
+---
+
+## IDE Setup
+
+Run `gitflow setup` to auto-detect your IDE and generate the appropriate
+pre-flight enforcement rules **and MCP configuration**:
+
+- **Cursor**: Creates `.cursor/rules/gitflow-preflight.mdc` + `.cursor/mcp.json`
+- **VSCode / Copilot**: Creates `.github/copilot-instructions.md` + `.vscode/mcp.json`
+- **Claude Code**: Creates `CLAUDE.md` + `.claude/mcp.json`
+- **Windsurf**: Creates `.windsurfrules` + `.windsurf/mcp.json`
+- **Both/Unknown**: Creates all of the above plus `AGENTS.md`
+
+MCP config is auto-generated only when `gitflow` is in PATH. The config
+points to `gitflow serve` which starts the MCP server over stdio.
+
+Detected IDEs (shown in TUI title bar): Cursor, VS Code, VS Code + Copilot,
+Claude Code, Windsurf, Cline, Zed, Neovim, JetBrains.
 
 ---
 
 ## Interactive TUI Mode (for humans)
 
-When the user wants to manage git-flow interactively, run without `--json`:
+Run `gitflow` without arguments to launch the full-screen TUI with:
 
-```bash
-python3 scripts/gitflow.py
-```
-
-This launches a full-screen TUI (inspired by OpenCode) with:
-
-- **Title bar**: project name, current branch (color-coded), version, tag, dirty indicator
-- **Dashboard panel**: scrollable phase analysis, in-flight branches, divergence warnings
-- **Action menu**: selectable actions with highlighted selection and recommended markers
-- **Status bar**: key hints at the bottom row
-- **Overlay dialogs**: confirmation, input, help, command palette, diff viewer
-
-### Key Bindings
-
-| Key | Action |
-|-----|--------|
-| `j` / `Down` | Move selection down |
-| `k` / `Up` | Move selection up |
-| `g` / `Home` | Jump to first item |
-| `G` / `End` | Jump to last item |
-| `Enter` | Execute selected action |
-| `/` | Open command palette (type to filter) |
-| `?` | Toggle help overlay |
-| `r` | Refresh dashboard |
-| `q` / `Ctrl+C` | Quit |
-
-### Backend
-
-The TUI uses Python's `curses` stdlib (macOS/Linux) for full-screen rendering.
-On systems without curses (Windows), it falls back to ANSI escape codes with
-raw terminal input -- same UX, slightly reduced visual fidelity.
-
-When an action executes (e.g., `git flow feature start`), the TUI temporarily
-yields the screen so git output is visible, then resumes on Enter.
+- Title bar with project name, branch, version, tag, dirty indicator, and detected IDE
+- Dashboard panel with phase analysis and in-flight branches
+- Action menu with highlighted selection and recommended markers
+- Command palette (`/` to search), help (`?`), and refresh (`r`)
 
 ---
 
@@ -271,19 +296,19 @@ yields the screen so git output is visible, then resumes on Enter.
  USER ASKS TO MODIFY CODE
           │
           ▼
- ┌─── Run `status --json` ───┐
- │                            │
- ▼                            ▼
- git_flow_initialized?     merge conflict?
- NO → run `init`           YES → STOP, report to user
- │                            │
- ▼                            ▼
- main_ahead_of_develop?    On correct branch?
- YES → run `backmerge`     NO → `switch` to correct branch
- │                            │
- ▼                            ▼
- On a flow branch?         Has dirty state?
- NO → ask user intent      YES → warn about uncommitted changes
+ ┌─── Run `gitflow --json status` ───┐
+ │                                     │
+ ▼                                     ▼
+ git_flow_initialized?              merge conflict?
+ NO → run `init`                    YES → STOP, report to user
+ │                                     │
+ ▼                                     ▼
+ main_ahead_of_develop?             On correct branch?
+ YES → run `backmerge`              NO → `switch` to correct branch
+ │                                     │
+ ▼                                     ▼
+ On a flow branch?                  Has dirty state?
+ NO → ask user intent               YES → warn about uncommitted changes
       then `start`
  │
  ▼
@@ -297,6 +322,6 @@ yields the screen so git output is visible, then resumes on Enter.
 
 ## Configuration
 
-The script reads `.gitflow.json` in the project root for project-specific
+The tool reads `.gitflow.json` in the project root for project-specific
 settings (version file, bump commands, branch names). If absent, it
 auto-detects common patterns and uses git tags for versioning.

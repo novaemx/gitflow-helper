@@ -4,16 +4,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/flow"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
+	"github.com/luis-lozano/gitflow-helper/internal/gitflow"
 	"github.com/luis-lozano/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
 
 var (
 	jsonFlag bool
-	Cfg      config.FlowConfig
+	GF       *gitflow.Logic
 )
 
 func NewRootCmd(version string) *cobra.Command {
@@ -23,30 +21,25 @@ func NewRootCmd(version string) *cobra.Command {
 		Long:  "A comprehensive Git Flow workflow helper with an interactive TUI and CLI subcommands for agent and human use.\nOnly requires git — no git-flow extensions needed.",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			output.SetJSONMode(jsonFlag)
-			root := config.FindProjectRoot()
-			Cfg = config.LoadConfig(root)
-			git.ProjectRoot = Cfg.ProjectRoot
 
-			// Auto-detect working directory state and initialize if needed.
-			// Skip for help/version/completion subcommands.
+			GF = gitflow.New("")
+
+			// Skip git checks for help/version/completion subcommands.
 			name := cmd.Name()
 			if name == "help" || name == "completion" {
 				return
 			}
 
-			// Check if git is available
-			gitVer := git.RunQuiet("git --version")
-			if gitVer == "" {
+			if !GF.IsGitAvailable() {
 				fmt.Fprintln(os.Stderr, "fatal: git is not installed or not in PATH")
 				os.Exit(1)
 			}
 
-			// Check if inside a git repo
-			if !git.IsGitRepo() {
+			if !GF.IsGitRepo() {
 				if output.IsJSONMode() {
 					output.JSONOutput(map[string]any{
 						"error":   "not_a_git_repo",
-						"cwd":     Cfg.ProjectRoot,
+						"cwd":     GF.Config.ProjectRoot,
 						"message": "Run 'git init' first, then 'gitflow init'.",
 					})
 					os.Exit(1)
@@ -58,11 +51,11 @@ func NewRootCmd(version string) *cobra.Command {
 
 			// Auto-initialize gitflow structure if running a command that needs it
 			if name != "doctor" && name != "health" && name != "setup" {
-				if !git.IsGitFlowInitialized() {
+				if !GF.IsGitFlowInitialized() {
 					if !output.IsJSONMode() {
 						output.Infof("  %sGitflow structure not detected. Auto-initializing...%s", output.Yellow, output.Reset)
 					}
-					ok, msg := flow.InitGitFlow(Cfg)
+					ok, msg := GF.Init()
 					if !ok {
 						if output.IsJSONMode() {
 							output.JSONOutput(map[string]any{
@@ -73,6 +66,11 @@ func NewRootCmd(version string) *cobra.Command {
 						os.Exit(1)
 					}
 				}
+			}
+
+			// Auto-provision IDE rules when missing (silent, idempotent)
+			if name != "doctor" && name != "health" {
+				_, _ = GF.EnsureRules()
 			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,6 +100,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newUndoCmd(),
 		newReleaseNotesCmd(),
 		newSetupCmd(),
+		newServeCmd(),
 	)
 
 	return root

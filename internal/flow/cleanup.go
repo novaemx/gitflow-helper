@@ -15,23 +15,23 @@ func Cleanup(cfg config.FlowConfig) (int, map[string]any) {
 	mergedDevelop := make(map[string]bool)
 	mergedMain := make(map[string]bool)
 
-	code, _, _ := git.RunResult("git rev-parse --verify " + cfg.DevelopBranch)
+	code, _, _ := git.ExecResult("rev-parse", "--verify", cfg.DevelopBranch)
 	if code == 0 {
-		for _, b := range git.RunLines("git branch --merged " + cfg.DevelopBranch + " --format='%(refname:short)'") {
+		for _, b := range git.ExecLines("branch", "--merged", cfg.DevelopBranch, "--format=%(refname:short)") {
 			mergedDevelop[b] = true
 		}
 	}
-	code, _, _ = git.RunResult("git rev-parse --verify " + cfg.MainBranch)
+	code, _, _ = git.ExecResult("rev-parse", "--verify", cfg.MainBranch)
 	if code == 0 {
-		for _, b := range git.RunLines("git branch --merged " + cfg.MainBranch + " --format='%(refname:short)'") {
+		for _, b := range git.ExecLines("branch", "--merged", cfg.MainBranch, "--format=%(refname:short)") {
 			mergedMain[b] = true
 		}
 	}
 
 	protected := map[string]bool{
-		cfg.MainBranch:    true,
-		cfg.DevelopBranch: true,
-		"master":          true,
+		cfg.MainBranch:       true,
+		cfg.DevelopBranch:    true,
+		"master":             true,
 		git.CurrentBranch(): true,
 	}
 
@@ -69,7 +69,7 @@ func Cleanup(cfg config.FlowConfig) (int, map[string]any) {
 	}
 
 	for _, b := range toDelete {
-		_ = git.Run("git branch -d " + b)
+		_ = git.Exec("branch", "-d", b)
 	}
 
 	output.Infof("  %sCleanup complete.%s", output.Green, output.Reset)
@@ -90,16 +90,16 @@ func SmartStashSave(branch string) bool {
 		return false
 	}
 	msg := fmt.Sprintf("gitflow-auto: %s", branch)
-	err := git.Run(fmt.Sprintf(`git stash push -m "%s"`, msg))
+	err := git.Exec("stash", "push", "-m", msg)
 	return err == nil
 }
 
 func SmartStashPop(branch string) bool {
-	stashes := git.RunLines("git stash list")
+	stashes := git.ExecLines("stash", "list")
 	needle := fmt.Sprintf("gitflow-auto: %s", branch)
 	for i, line := range stashes {
 		if strings.Contains(line, needle) {
-			err := git.Run(fmt.Sprintf("git stash pop stash@{%d}", i))
+			err := git.Exec("stash", "pop", fmt.Sprintf("stash@{%d}", i))
 			if err == nil {
 				output.Infof("  %sRestored stashed changes for '%s'.%s", output.Green, branch, output.Reset)
 				return true

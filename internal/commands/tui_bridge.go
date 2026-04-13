@@ -5,5 +5,5 @@ import (
 )
 
 func runTUI() error {
-	return tui.Run(Cfg)
+	return tui.Run(GF)
 }

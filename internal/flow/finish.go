@@ -9,27 +9,26 @@ import (
 	"github.com/luis-lozano/gitflow-helper/internal/output"
 )
 
-// finishFeatureOrBugfix merges the branch into develop and deletes it.
 func finishFeatureOrBugfix(cfg config.FlowConfig, btype, name string) error {
 	branchName := btype + "/" + name
 	if !git.BranchExists(branchName) {
 		return fmt.Errorf("branch %s does not exist", branchName)
 	}
 
-	if err := git.Run("git checkout " + cfg.DevelopBranch); err != nil {
+	if err := git.Exec("checkout", cfg.DevelopBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.DevelopBranch, err)
 	}
 
-	if err := git.Run(fmt.Sprintf(`git merge --no-ff %s -m "Merge %s '%s' into %s"`, branchName, btype, name, cfg.DevelopBranch)); err != nil {
+	mergeMsg := fmt.Sprintf("Merge %s '%s' into %s", btype, name, cfg.DevelopBranch)
+	if err := git.Exec("merge", "--no-ff", branchName, "-m", mergeMsg); err != nil {
 		return fmt.Errorf("merge of %s failed (conflicts?): %w", branchName, err)
 	}
 
-	_ = git.Run("git branch -d " + branchName)
+	_ = git.Exec("branch", "-d", branchName)
 	output.Infof("  %s%s '%s' merged into %s and branch deleted.%s", output.Green, btype, name, cfg.DevelopBranch, output.Reset)
 	return nil
 }
 
-// finishRelease merges release into main (tagged) and back into develop, then deletes.
 func finishRelease(cfg config.FlowConfig, ver string) error {
 	branchName := "release/" + ver
 	if !git.BranchExists(branchName) {
@@ -37,34 +36,32 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 	}
 	tagName := cfg.TagPrefix + ver
 
-	// Merge into main
-	if err := git.Run("git checkout " + cfg.MainBranch); err != nil {
+	if err := git.Exec("checkout", cfg.MainBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.MainBranch, err)
 	}
 
-	if err := git.Run(fmt.Sprintf(`git merge --no-ff %s -m "Merge release '%s' into %s"`, branchName, ver, cfg.MainBranch)); err != nil {
+	mergeMsg := fmt.Sprintf("Merge release '%s' into %s", ver, cfg.MainBranch)
+	if err := git.Exec("merge", "--no-ff", branchName, "-m", mergeMsg); err != nil {
 		return fmt.Errorf("merge of %s into %s failed: %w", branchName, cfg.MainBranch, err)
 	}
 
-	// Tag the release on main
-	_ = git.Run(fmt.Sprintf(`git tag -a %s -m "Release %s"`, tagName, ver))
+	_ = git.Exec("tag", "-a", tagName, "-m", fmt.Sprintf("Release %s", ver))
 
-	// Back-merge into develop
-	if err := git.Run("git checkout " + cfg.DevelopBranch); err != nil {
+	if err := git.Exec("checkout", cfg.DevelopBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.DevelopBranch, err)
 	}
 
-	if err := git.Run(fmt.Sprintf(`git merge --no-ff %s -m "Merge tag '%s' back into %s"`, tagName, tagName, cfg.DevelopBranch)); err != nil {
+	backmergeMsg := fmt.Sprintf("Merge tag '%s' back into %s", tagName, cfg.DevelopBranch)
+	if err := git.Exec("merge", "--no-ff", tagName, "-m", backmergeMsg); err != nil {
 		return fmt.Errorf("back-merge of %s into %s failed: %w", tagName, cfg.DevelopBranch, err)
 	}
 
-	_ = git.Run("git branch -d " + branchName)
+	_ = git.Exec("branch", "-d", branchName)
 	output.Infof("  %sRelease %s merged into %s (tagged %s) and back-merged into %s.%s",
 		output.Green, ver, cfg.MainBranch, tagName, cfg.DevelopBranch, output.Reset)
 	return nil
 }
 
-// finishHotfix merges hotfix into main (tagged), back into develop (or active release), then deletes.
 func finishHotfix(cfg config.FlowConfig, ver string) error {
 	branchName := "hotfix/" + ver
 	if !git.BranchExists(branchName) {
@@ -72,18 +69,17 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 	}
 	tagName := cfg.TagPrefix + ver
 
-	// Merge into main
-	if err := git.Run("git checkout " + cfg.MainBranch); err != nil {
+	if err := git.Exec("checkout", cfg.MainBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.MainBranch, err)
 	}
 
-	if err := git.Run(fmt.Sprintf(`git merge --no-ff %s -m "Merge hotfix '%s' into %s"`, branchName, ver, cfg.MainBranch)); err != nil {
+	mergeMsg := fmt.Sprintf("Merge hotfix '%s' into %s", ver, cfg.MainBranch)
+	if err := git.Exec("merge", "--no-ff", branchName, "-m", mergeMsg); err != nil {
 		return fmt.Errorf("merge of %s into %s failed: %w", branchName, cfg.MainBranch, err)
 	}
 
-	_ = git.Run(fmt.Sprintf(`git tag -a %s -m "Hotfix %s"`, tagName, ver))
+	_ = git.Exec("tag", "-a", tagName, "-m", fmt.Sprintf("Hotfix %s", ver))
 
-	// Merge into develop (or active release branch per nvie model)
 	releases := git.ActiveReleaseBranches()
 	backTarget := cfg.DevelopBranch
 	if len(releases) > 0 {
@@ -92,15 +88,16 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 			output.Yellow, output.Reset, backTarget)
 	}
 
-	if err := git.Run("git checkout " + backTarget); err != nil {
+	if err := git.Exec("checkout", backTarget); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", backTarget, err)
 	}
 
-	if err := git.Run(fmt.Sprintf(`git merge --no-ff %s -m "Merge hotfix '%s' into %s"`, branchName, ver, backTarget)); err != nil {
+	backmergeMsg := fmt.Sprintf("Merge hotfix '%s' into %s", ver, backTarget)
+	if err := git.Exec("merge", "--no-ff", branchName, "-m", backmergeMsg); err != nil {
 		return fmt.Errorf("back-merge of hotfix into %s failed: %w", backTarget, err)
 	}
 
-	_ = git.Run("git branch -d " + branchName)
+	_ = git.Exec("branch", "-d", branchName)
 	output.Infof("  %sHotfix %s merged into %s (tagged %s) and back-merged into %s.%s",
 		output.Green, ver, cfg.MainBranch, tagName, backTarget, output.Reset)
 	return nil
@@ -141,6 +138,40 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		"name":   name,
 	}
 
+	wt := git.WorkingTreeStatus()
+	if wt.Total > 0 {
+		var parts []string
+		if wt.Staged > 0 {
+			parts = append(parts, fmt.Sprintf("%d staged", wt.Staged))
+		}
+		if wt.Unstaged > 0 {
+			parts = append(parts, fmt.Sprintf("%d modified", wt.Unstaged))
+		}
+		if wt.Untracked > 0 {
+			parts = append(parts, fmt.Sprintf("%d untracked", wt.Untracked))
+		}
+		detail := strings.Join(parts, ", ")
+
+		if wt.Staged > 0 || wt.Unstaged > 0 {
+			output.Infof("  %s✗ Cannot finish: working tree has uncommitted changes (%s).%s",
+				output.Red, detail, output.Reset)
+			output.Infof("  %sCommit or stash your changes first, then retry.%s",
+				output.Dim, output.Reset)
+			result["result"] = "error"
+			result["error"] = fmt.Sprintf("dirty working tree: %s", detail)
+			result["dirty"] = map[string]int{
+				"staged": wt.Staged, "modified": wt.Unstaged, "untracked": wt.Untracked,
+			}
+			return 1, result
+		}
+
+		if wt.Untracked > 0 {
+			output.Infof("  %sWarning:%s %d untracked file(s) detected. They won't be affected by the merge, but consider committing or .gitignore-ing them.",
+				output.Yellow, output.Reset, wt.Untracked)
+			result["warning_untracked"] = wt.Untracked
+		}
+	}
+
 	var err error
 	switch btype {
 	case "feature", "bugfix":
@@ -154,7 +185,7 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 	if err != nil {
 		result["result"] = "error"
 		result["error"] = err.Error()
-		conflicts := git.RunLines("git diff --name-only --diff-filter=U")
+		conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
 		if len(conflicts) > 0 {
 			output.Infof("\n  %sMerge conflict detected during %s finish.%s",
 				output.Red, btype, output.Reset)
@@ -174,50 +205,4 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 	}
 
 	return 0, result
-}
-
-func FinishFeature(cfg config.FlowConfig) error {
-	branch := git.CurrentBranch()
-	name := strings.TrimPrefix(branch, "feature/")
-	if name == "" || name == branch {
-		return fmt.Errorf("not on a feature branch")
-	}
-	return finishFeatureOrBugfix(cfg, "feature", name)
-}
-
-func FinishBugfix(cfg config.FlowConfig) error {
-	branch := git.CurrentBranch()
-	name := strings.TrimPrefix(branch, "bugfix/")
-	if name == "" || name == branch {
-		return fmt.Errorf("not on a bugfix branch")
-	}
-	return finishFeatureOrBugfix(cfg, "bugfix", name)
-}
-
-func FinishRelease(cfg config.FlowConfig) error {
-	branch := git.CurrentBranch()
-	ver := strings.TrimPrefix(branch, "release/")
-	ver = strings.TrimPrefix(ver, "v")
-	if ver == "" || ver == branch {
-		return fmt.Errorf("not on a release branch")
-	}
-	err := finishRelease(cfg, ver)
-	if err != nil {
-		return err
-	}
-	meta := WriteReleaseNotes(cfg, "")
-	if meta != nil {
-		PrintReleaseNotes(meta)
-	}
-	return nil
-}
-
-func FinishHotfix(cfg config.FlowConfig) error {
-	branch := git.CurrentBranch()
-	ver := strings.TrimPrefix(branch, "hotfix/")
-	ver = strings.TrimPrefix(ver, "v")
-	if ver == "" || ver == branch {
-		return fmt.Errorf("not on a hotfix branch")
-	}
-	return finishHotfix(cfg, ver)
 }

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "gitflow": {
+      "command": "/Users/luis.lozano/.local/bin/gitflow",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}
