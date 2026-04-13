@@ -77,11 +77,19 @@ func printDashboard(s state.RepoState) {
 	if s.DevelopAheadOfMain > 0 {
 		output.Infof("    %s is %s%d%s commit(s) ahead of %s",
 			cfg.DevelopBranch, output.Yellow, s.DevelopAheadOfMain, output.Reset, cfg.MainBranch)
+		if len(s.DevelopOnlyFiles) == 0 {
+			output.Infof("    %sThis is usually metadata-only back-merge after finishing release/hotfix.%s", output.Dim, output.Reset)
+			output.Infof("    %sNo new release needed for metadata-only ahead.%s", output.Dim, output.Reset)
+		} else {
+			output.Infof("    %sUnreleased changes exist only in develop. Consider starting a release.%s", output.Dim, output.Reset)
+		}
 	}
 	if s.MainAheadOfDevelop > 0 {
 		output.Infof("    %s%s is %d commit(s) ahead of %s%s",
 			output.Red, cfg.MainBranch, s.MainAheadOfDevelop, cfg.DevelopBranch, output.Reset)
 		output.Infof("    %s⚠  Branch divergence detected!%s", output.Red, output.Reset)
+		output.Infof("    %sCommon causes: finished hotfix/release, or direct commit on main.%s", output.Dim, output.Reset)
+		output.Infof("    %sRun: gitflow backmerge%s", output.Dim, output.Reset)
 	}
 
 	if s.Merge.InMerge {
@@ -149,6 +157,12 @@ func printDashboard(s state.RepoState) {
 		output.Infof("    You are on %s%s%s — the integration branch.", output.Cyan, cfg.DevelopBranch, output.Reset)
 		if s.MainAheadOfDevelop > 0 {
 			output.Infof("    %sCRITICAL:%s Back-merge required before any work.", output.Red, output.Reset)
+			output.Infof("    Run: gitflow backmerge")
+		} else if s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0 {
+			output.Infof("    %d unreleased commit(s) detected in develop.", s.DevelopAheadOfMain)
+			output.Infof("    Run: gitflow start release <version>")
+		} else if s.DevelopAheadOfMain > 0 {
+			output.Infof("    Ahead by metadata-only back-merge commit; no release needed.")
 		}
 	case s.Current == cfg.MainBranch:
 		output.Infof("    You are on %s%s%s — the production branch.", output.Bold, cfg.MainBranch, output.Reset)
