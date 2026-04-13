@@ -19,9 +19,10 @@ import (
 // operations. It owns the config, repo state, and detected IDE, and
 // delegates to the existing sub-packages for actual logic.
 type Logic struct {
-	Config config.FlowConfig
-	State  state.RepoState
-	IDE    ide.DetectedIDE
+	Config     config.FlowConfig
+	State      state.RepoState
+	IDE        ide.DetectedIDE
+	AppVersion string
 }
 
 // New creates a Gitflow facade from a project root path.
