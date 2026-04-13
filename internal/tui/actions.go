@@ -220,15 +220,14 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 				Label:       fmt.Sprintf("Start a release (%d unreleased commit(s))", s.DevelopAheadOfMain),
 				Tag:         "release",
 				Recommended: true,
-				NeedsInput:  true, InputPrompt: "Release version:", InputDefault: suggestReleaseVersion(s),
-				Command: "gitflow start release %s",
+				Command:     "gitflow start release auto",
 			})
 		}
 
 	case btype == "base" && s.Current == cfg.MainBranch:
 		normal = append(normal, action{
 			Label: "Start a hotfix (urgent)", Tag: "hotfix",
-			NeedsInput: true, InputPrompt: "Hotfix version:", Command: "gitflow start hotfix %s",
+			Command: "gitflow start hotfix auto",
 		})
 		normal = append(normal, action{
 			Label: fmt.Sprintf("Switch to %s", cfg.DevelopBranch), Tag: "switch",
@@ -248,8 +247,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			Label:       fmt.Sprintf("Start a release (%d unreleased commit(s))", s.DevelopAheadOfMain),
 			Tag:         "release",
 			Recommended: btype == "base" && s.Current == cfg.DevelopBranch,
-			NeedsInput:  true, InputPrompt: "Release version:", InputDefault: suggestReleaseVersion(s),
-			Command: "gitflow start release %s",
+			Command:     "gitflow start release auto",
 		})
 	}
 
@@ -288,8 +286,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		if !hasTag(low, "release") && !hasTag(normal, "release") {
 			low = append(low, action{
 				Label: "Start a release", Tag: "release",
-				NeedsInput: true, InputPrompt: "Release version:", InputDefault: suggestReleaseVersion(s),
-				Command: "gitflow start release %s",
+				Command: "gitflow start release auto",
 			})
 		}
 	}
@@ -297,7 +294,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		if !hasTag(low, "hotfix") && !hasTag(normal, "hotfix") {
 			low = append(low, action{
 				Label: "Start a hotfix (urgent)", Tag: "hotfix",
-				NeedsInput: true, InputPrompt: "Hotfix version:", Command: "gitflow start hotfix %s",
+				Command: "gitflow start hotfix auto",
 			})
 		}
 	}

@@ -135,7 +135,10 @@ Automation rules:
 
 - You can pass `auto` as version (`start release auto`, `start hotfix auto`)
   and gitflow resolves the version from `VERSION` / configured version file.
-- Starting a release/hotfix now fails fast if the target tag already exists.
+- In interactive/TUI mode, release and hotfix start use `auto` by default
+  (no manual version prompt required).
+- If `auto` resolves to an already tagged version, gitflow increments patch
+  (`x.y.z` -> `x.y.(z+1)`) until it finds the next available tag.
 - Finishing a release/hotfix validates that branch version matches the version
   file and aborts on mismatch instead of producing partial success output.
 - During finish, if the intended tag already exists, gitflow automatically
