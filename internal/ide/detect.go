@@ -101,8 +101,9 @@ var ideRuleRegistry = map[string]ideRuleSpec{
 }
 
 // EnsureRulesForIDE checks if rules exist for the detected IDE.
-// If missing, it creates them. Also ensures AGENTS.md is present as a
-// universal fallback, and MCP config for IDEs that support it.
+// If missing, it creates them. Also ensures the embedded gitflow skill is
+// installed, AGENTS.md is present as a universal fallback, and MCP config for
+// IDEs that support it.
 // Returns list of newly created files (empty if all exist).
 func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
 	var created []string
@@ -116,6 +117,12 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 			}
 			created = append(created, path)
 		}
+	}
+
+	if skillPath, err := ensureEmbeddedSkill(projectRoot, detected.ID); err != nil {
+		return created, err
+	} else if skillPath != "" {
+		created = append(created, skillPath)
 	}
 
 	// Always ensure AGENTS.md as universal fallback
@@ -503,11 +510,18 @@ func parseWindowsAncestryOutput(raw string) []string {
 }
 
 // Generate dispatches to the appropriate rule/instruction file generators.
-// For explicit setup: always generates for the specified IDE + AGENTS.md + MCP config.
+// For explicit setup: always generates for the specified IDE, installs the
+// embedded skill, ensures AGENTS.md, and writes MCP config when supported.
 func Generate(projectRoot, ideType string) ([]string, error) {
 	var files []string
 
 	if spec, ok := ideRuleRegistry[ideType]; ok {
+
+		if skillPath, err := ensureEmbeddedSkill(projectRoot, ideType); err != nil {
+			return nil, err
+		} else if skillPath != "" {
+			files = append(files, skillPath)
+		}
 		f, err := spec.generate(projectRoot)
 		if err != nil {
 			return nil, err

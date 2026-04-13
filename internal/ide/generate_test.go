@@ -65,6 +65,9 @@ func TestGenerateCopilotInstructions(t *testing.T) {
 	if !strings.Contains(content, "Gitflow Enforcement") {
 		t.Error("expected Gitflow Enforcement section")
 	}
+	if !strings.Contains(content, "When to use the gitflow skill") {
+		t.Error("expected skill usage guidance section")
+	}
 }
 
 func TestCopilotIdempotent(t *testing.T) {
@@ -77,6 +80,10 @@ func TestCopilotIdempotent(t *testing.T) {
 	count := strings.Count(string(data), "Gitflow Enforcement")
 	if count != 1 {
 		t.Errorf("expected 1 occurrence of Gitflow Enforcement, got %d", count)
+	}
+	guidanceCount := strings.Count(string(data), "When to use the gitflow skill")
+	if guidanceCount != 1 {
+		t.Errorf("expected 1 occurrence of skill guidance, got %d", guidanceCount)
 	}
 }
 
@@ -276,12 +283,15 @@ func TestEnsureRulesForIDE_Cursor(t *testing.T) {
 		t.Fatalf("EnsureRulesForIDE: %v", err)
 	}
 
-	if len(created) < 2 {
-		t.Errorf("expected at least 2 files (cursor rule + AGENTS.md), got %d", len(created))
+	if len(created) < 3 {
+		t.Errorf("expected at least 3 files (cursor rule + skill + AGENTS.md), got %d", len(created))
 	}
 
 	if !cursorRuleExists(dir) {
 		t.Error("expected cursor rule to exist")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".agents", "skills", "gitflow", "SKILL.md")); err != nil {
+		t.Error("expected project skill to exist")
 	}
 	if !agentsRuleExists(dir) {
 		t.Error("expected AGENTS.md to exist")
@@ -296,15 +306,21 @@ func TestEnsureRulesForIDE_Cursor(t *testing.T) {
 
 func TestEnsureRulesForIDE_Unknown(t *testing.T) {
 	dir := t.TempDir()
+	tmpHome := t.TempDir()
+	prev := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return tmpHome, nil }
+	defer func() { UserHomeDirFunc = prev }()
 
 	created, err := EnsureRulesForIDE(dir, DetectedIDE{ID: IDEUnknown, DisplayName: "Terminal"})
 	if err != nil {
 		t.Fatalf("EnsureRulesForIDE: %v", err)
 	}
 
-	// Only AGENTS.md should be created for unknown IDE
-	if len(created) != 1 {
-		t.Errorf("expected 1 file (AGENTS.md), got %d: %v", len(created), created)
+	if len(created) != 2 {
+		t.Errorf("expected 2 files (skill + AGENTS.md), got %d: %v", len(created), created)
+	}
+	if _, err := os.Stat(filepath.Join(tmpHome, ".agents", "skills", "gitflow", "SKILL.md")); err != nil {
+		t.Error("expected fallback user skill to exist")
 	}
 }
 
@@ -343,8 +359,8 @@ func TestGenerate_Cursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate(cursor): %v", err)
 	}
-	if len(files) < 2 {
-		t.Errorf("expected at least 2 files, got %d", len(files))
+	if len(files) < 3 {
+		t.Errorf("expected at least 3 files, got %d", len(files))
 	}
 }
 
@@ -354,9 +370,8 @@ func TestGenerate_Both(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate(both): %v", err)
 	}
-	// cursor + copilot + AGENTS.md
-	if len(files) < 3 {
-		t.Errorf("expected at least 3 files, got %d: %v", len(files), files)
+	if len(files) < 4 {
+		t.Errorf("expected at least 4 files, got %d: %v", len(files), files)
 	}
 }
 
@@ -379,6 +394,9 @@ func TestCopilotAppendToExisting(t *testing.T) {
 	}
 	if !strings.Contains(content, "Gitflow Enforcement") {
 		t.Error("expected gitflow section appended")
+	}
+	if !strings.Contains(content, "When to use the gitflow skill") {
+		t.Error("expected skill usage guidance appended")
 	}
 }
 

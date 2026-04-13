@@ -10,7 +10,7 @@ A single static binary that enforces the [git-flow branching model](https://nvie
 - **IDE detection** — automatically generates `.cursor/rules/`, `.github/copilot-instructions.md`, or `AGENTS.md`
 - **Zero runtime dependencies** — static binary, only needs `git` (no git-flow extensions required)
 - **Cross-platform** — Linux x86_64, Windows x86_64, macOS universal (x86 + ARM)
-- **Publishable as an [Agent Skill](https://skills.sh/)** via `npx skills add`
+- **Embedded gitflow skill** — `gitflow setup` installs or updates `SKILL.md` in `.agents/skills/gitflow/` or `~/.agents/skills/gitflow/`
 
 ## Install
 
@@ -118,35 +118,34 @@ Run `gitflow setup` once per project. It auto-detects your IDE and creates:
 
 | IDE               | Generated files                               |
 |-------------------|-----------------------------------------------|
-| Cursor            | `.cursor/rules/gitflow-preflight.mdc`, `.cursor/mcp.json` |
-| VS Code + Copilot | `.github/copilot-instructions.md`, `.vscode/mcp.json` |
-| Both / Unknown    | Cursor + Copilot files + `AGENTS.md`          |
+| Cursor            | `.cursor/rules/gitflow-preflight.mdc`, `.cursor/mcp.json`, `.agents/skills/gitflow/SKILL.md` |
+| VS Code + Copilot | `.github/copilot-instructions.md`, `.vscode/mcp.json`, `.agents/skills/gitflow/SKILL.md` |
+| Claude Code / Windsurf / Cline | IDE-specific rule file, IDE MCP config, `.agents/skills/gitflow/SKILL.md` |
+| Zed / Neovim / JetBrains / Unknown | IDE-specific files if applicable, `AGENTS.md`, `~/.agents/skills/gitflow/SKILL.md` |
 
-These files instruct the AI agent to run `gitflow --json status` before modifying any code, enforcing the pre-flight check automatically.
+These files instruct the AI agent to run `gitflow --json status` before modifying any code, and the embedded skill is auto-updated if its content changes in newer gitflow binaries.
 
 ### Copilot-Specific Notes
 
-To ensure the gitflow skill works in Copilot end-to-end:
+To ensure the embedded gitflow skill works in Copilot end-to-end:
 
 1. Install `gitflow` binary and make sure it is in PATH.
 2. Run `gitflow setup --ide copilot` in your repository root.
 3. Verify these files exist:
   - `.github/copilot-instructions.md`
   - `.vscode/mcp.json` (contains `"gitflow"` server using `gitflow serve`)
+  - `.agents/skills/gitflow/SKILL.md`
 
 If `gitflow` is not in PATH when setup runs, MCP config still gets generated, but command execution will fail until PATH is fixed.
 
-## Agent Skill (skills.sh)
+## Embedded Skill
 
-This project is publishable as an [Agent Skill](https://skills.sh/). The skill file lives at `skills/gitflow/SKILL.md`.
+`gitflow setup` now installs the gitflow skill from the binary itself.
 
-### Install the Skill
+- Project-local install for supported IDEs: `.agents/skills/gitflow/SKILL.md`
+- User-level fallback for unsupported IDEs: `~/.agents/skills/gitflow/SKILL.md`
 
-```bash
-npx skills add <owner>/gitflow-helper
-```
-
-This installs the gitflow pre-flight enforcement skill into your project so any compatible AI agent (Cursor, Copilot, Claude Code, Cline, etc.) will automatically follow gitflow discipline.
+If the embedded skill content changes in a newer binary, `gitflow setup` updates the installed `SKILL.md` automatically.
 
 ## Configuration
 

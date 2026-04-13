@@ -10,8 +10,8 @@ func newSetupCmd() *cobra.Command {
 	var forceIDE string
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Detect IDE and generate gitflow preflight rules/instructions",
-		Long:  "Detects which IDE is running and generates the appropriate rule/instruction files for gitflow preflight enforcement.",
+		Short: "Detect IDE and install gitflow rules, MCP config, and embedded skill",
+		Long:  "Detects which IDE is running, generates the appropriate rule/instruction files for gitflow preflight enforcement, and installs or updates the embedded gitflow skill in the project or ~/.agents fallback.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			detected := forceIDE
 			if detected == "" {

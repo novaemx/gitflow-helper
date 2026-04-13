@@ -142,6 +142,10 @@ func TestInit_AlreadyInitialized(t *testing.T) {
 func TestEnsureRules(t *testing.T) {
 	dir := setupTestRepo(t)
 	gf := New(dir)
+	tmpHome := t.TempDir()
+	prev := ide.UserHomeDirFunc
+	ide.UserHomeDirFunc = func() (string, error) { return tmpHome, nil }
+	defer func() { ide.UserHomeDirFunc = prev }()
 
 	created, err := gf.EnsureRules()
 	if err != nil {
