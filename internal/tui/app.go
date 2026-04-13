@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/luis-lozano/gitflow-helper/internal/branch"
@@ -49,17 +50,20 @@ type model struct {
 	paletteQuery string
 
 	// Input overlay
-	inputPrompt  string
-	inputValue   string
-	inputDefault string
+	inputPrompt   string
+	inputField    textinput.Model
 	pendingAction *action
 
 	// IDE activity from MCP server
 	mcpActivity []mcpserver.ActivityEntry
+
+	// Git state watch
+	lastGitFingerprint string
 }
 
 type refreshMsg struct{}
 type activityTickMsg struct{}
+type watchTickMsg struct{}
 
 // #region agent log
 func debugLog(projectRoot, location, message string, data map[string]any) {
@@ -106,10 +110,20 @@ func (m *model) refresh() {
 	}
 }
 
+func gitFingerprint(root string) string {
+	indexPath := filepath.Join(root, ".git", "index")
+	info, err := os.Stat(indexPath)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d-%d", info.Size(), info.ModTime().UnixNano())
+}
+
 func (m model) Init() tea.Cmd {
-	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-		return activityTickMsg{}
-	})
+	return tea.Batch(
+		tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return activityTickMsg{} }),
+		tea.Tick(1*time.Second, func(t time.Time) tea.Msg { return watchTickMsg{} }),
+	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -141,6 +155,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return activityTickMsg{}
 		})
 
+	case watchTickMsg:
+		fp := gitFingerprint(m.gf.Config.ProjectRoot)
+		if fp != m.lastGitFingerprint && m.lastGitFingerprint != "" && m.mode == viewDashboard {
+			m.refresh()
+		}
+		m.lastGitFingerprint = fp
+		return m, tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+			return watchTickMsg{}
+		})
+
 	case tea.KeyMsg:
 		switch m.mode {
 		case viewOutput:
@@ -154,6 +178,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleInputKey(msg)
 		default:
 			return m.handleKey(msg)
+		}
+
+	default:
+		if m.mode == viewInput {
+			var cmd tea.Cmd
+			m.inputField, cmd = m.inputField.Update(msg)
+			return m, cmd
 		}
 	}
 	return m, nil
@@ -195,8 +226,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				pending := a
 				m.pendingAction = &pending
 				m.inputPrompt = a.InputPrompt
-				m.inputDefault = a.InputDefault
-				m.inputValue = a.InputDefault
+				ti := textinput.New()
+				ti.Placeholder = a.InputDefault
+				ti.SetValue(a.InputDefault)
+				ti.Focus()
+				ti.CharLimit = 64
+				ti.Width = 40
+				m.inputField = ti
 				m.mode = viewInput
 				// #region agent log
 				debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:input", "opening input overlay", map[string]any{
@@ -204,7 +240,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					"prompt": a.InputPrompt, "cmdTemplate": a.Command,
 				})
 				// #endregion
-				return m, nil
+				return m, ti.Cursor.BlinkCmd()
 			}
 			if a.Command != "" {
 				return m, m.runCommandAsync(a)
@@ -297,11 +333,9 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
 		m.mode = viewDashboard
 		m.pendingAction = nil
+		return m, nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-		val := m.inputValue
-		if val == "" {
-			val = m.inputDefault
-		}
+		val := m.inputField.Value()
 		// #region agent log
 		debugLog(m.gf.Config.ProjectRoot, "app.go:handleInputKey:enter", "input submitted", map[string]any{
 			"hypothesisId": "H2", "runId": "run1",
@@ -326,17 +360,11 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.runCommandAsync(a)
 		}
 		m.pendingAction = nil
-	case key.Matches(msg, key.NewBinding(key.WithKeys("backspace"))):
-		if len(m.inputValue) > 0 {
-			m.inputValue = m.inputValue[:len(m.inputValue)-1]
-		}
-	default:
-		ch := msg.String()
-		if len(ch) == 1 {
-			m.inputValue += ch
-		}
+		return m, nil
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.inputField, cmd = m.inputField.Update(msg)
+	return m, cmd
 }
 
 func (m model) filteredActions() []action {
@@ -611,7 +639,33 @@ func (m model) renderStatusBar() string {
 	return statusBarStyle.Width(m.width).Render(hint + strings.Repeat(" ", padding))
 }
 
-// renderOutputOverlay draws the command output inside a box overlay.
+func classifyOutputLine(line string) (string, string) {
+	lower := strings.ToLower(line)
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case trimmed == "":
+		return "", "blank"
+	case strings.Contains(lower, "error") || strings.Contains(lower, "failed") || strings.Contains(lower, "fatal"):
+		return "✗", "error"
+	case strings.Contains(lower, "conflict"):
+		return "⚠", "warn"
+	case strings.Contains(lower, "warning") || strings.Contains(lower, "warn"):
+		return "⚠", "warn"
+	case strings.Contains(lower, "created") || strings.Contains(lower, "merged") ||
+		strings.Contains(lower, "success") || strings.Contains(lower, "deleted branch") ||
+		strings.Contains(lower, "tagged") || strings.HasPrefix(trimmed, "✓"):
+		return "✓", "ok"
+	case strings.HasPrefix(trimmed, "Switched to"):
+		return "↪", "dim"
+	case strings.HasPrefix(trimmed, "→") || strings.HasPrefix(trimmed, "->"):
+		return "›", "dim"
+	case strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "}") || strings.HasPrefix(trimmed, "\""):
+		return "", "json"
+	default:
+		return " ", "normal"
+	}
+}
+
 func (m model) renderOutputOverlay(base string) string {
 	boxW := m.width - 4
 	if boxW < 40 {
@@ -622,40 +676,102 @@ func (m model) renderOutputOverlay(base string) string {
 		boxH = m.height - 2
 	}
 
-	visibleLines := boxH - 4
+	visibleLines := boxH - 5
 	if visibleLines < 1 {
 		visibleLines = 1
 	}
 
+	hasError := false
+	for _, l := range m.outputLines {
+		lower := strings.ToLower(l)
+		if strings.Contains(lower, "error") || strings.Contains(lower, "failed") || strings.Contains(lower, "fatal") {
+			hasError = true
+			break
+		}
+	}
+
+	var processed []string
+	inJSON := false
+	for _, l := range m.outputLines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "{" {
+			inJSON = true
+			continue
+		}
+		if trimmed == "}" {
+			inJSON = false
+			continue
+		}
+		if inJSON {
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		icon, cat := classifyOutputLine(l)
+		maxW := boxW - 10
+		if maxW < 20 {
+			maxW = 20
+		}
+		text := strings.TrimSpace(l)
+		if len(text) > maxW {
+			text = text[:maxW]
+		}
+
+		var styled string
+		switch cat {
+		case "error":
+			styled = errorStyle.Render(icon+" "+text)
+		case "warn":
+			styled = warnStyle.Render(icon+" "+text)
+		case "ok":
+			styled = okStyle.Render(icon+" "+text)
+		case "dim":
+			styled = dimStyle.Render(icon+" "+text)
+		default:
+			styled = icon + " " + text
+		}
+		processed = append(processed, "  "+styled)
+	}
+
+	if len(processed) == 0 {
+		processed = append(processed, "  "+dimStyle.Render("No output."))
+	}
+
 	end := m.outputScroll + visibleLines
-	if end > len(m.outputLines) {
-		end = len(m.outputLines)
+	if end > len(processed) {
+		end = len(processed)
 	}
 	start := m.outputScroll
-	if start > len(m.outputLines) {
-		start = len(m.outputLines)
+	if start > len(processed) {
+		start = len(processed)
 	}
 
 	var contentLines []string
-	contentLines = append(contentLines, boldStyle.Render(" "+m.outputTitle))
-	contentLines = append(contentLines, dimStyle.Render(" "+strings.Repeat("─", boxW-6)))
 
-	for _, l := range m.outputLines[start:end] {
-		if len(l) > boxW-6 {
-			l = l[:boxW-6]
-		}
-		contentLines = append(contentLines, " "+l)
+	titleIcon := okStyle.Render("✓")
+	if hasError {
+		titleIcon = errorStyle.Render("✗")
 	}
+	contentLines = append(contentLines, fmt.Sprintf(" %s %s", titleIcon, boldStyle.Render(m.outputTitle)))
+	contentLines = append(contentLines, dimStyle.Render(" "+strings.Repeat("─", boxW-6)))
+	contentLines = append(contentLines, "")
 
-	// Scroll indicator
-	if len(m.outputLines) > visibleLines {
-		pos := fmt.Sprintf(" [%d-%d / %d lines]", start+1, end, len(m.outputLines))
+	contentLines = append(contentLines, processed[start:end]...)
+
+	if len(processed) > visibleLines {
+		pos := fmt.Sprintf(" ↕ %d-%d / %d", start+1, end, len(processed))
+		contentLines = append(contentLines, "")
 		contentLines = append(contentLines, dimStyle.Render(pos))
 	}
 
+	borderColor := "2"
+	if hasError {
+		borderColor = "1"
+	}
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("6")).
+		BorderForeground(lipgloss.Color(borderColor)).
 		Padding(0, 1).
 		Width(boxW)
 
@@ -741,15 +857,11 @@ func (m model) renderPaletteOverlay(base string) string {
 }
 
 func (m model) renderInputOverlay(base string) string {
-	displayVal := m.inputValue
-	if displayVal == "" {
-		displayVal = dimStyle.Render(m.inputDefault)
-	}
 	lines := []string{
 		"",
-		" " + m.inputPrompt,
+		" " + boldStyle.Render(m.inputPrompt),
 		"",
-		" > " + displayVal,
+		" " + m.inputField.View(),
 		"",
 		dimStyle.Render(" Enter: confirm  Esc: cancel"),
 		"",
