@@ -23,6 +23,7 @@ func NewRootCmd(version string) *cobra.Command {
 			output.SetJSONMode(jsonFlag)
 
 			GF = gitflow.New("")
+			GF.AppVersion = version
 
 			// Skip git checks for help/version/completion subcommands.
 			name := cmd.Name()

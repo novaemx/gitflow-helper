@@ -6,9 +6,11 @@ var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("0")).
-			Background(lipgloss.Color("6")).
-			PaddingLeft(1).
-			PaddingRight(1)
+			Background(lipgloss.Color("6"))
+
+	subtitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("7")).
+			Background(lipgloss.Color("8"))
 
 	branchFeatureStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	branchBugfixStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)

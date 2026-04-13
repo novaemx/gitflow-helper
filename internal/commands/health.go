@@ -118,26 +118,43 @@ func newHealthCmd() *cobra.Command {
 				return nil
 			}
 
-			output.Infof("\n  %s╔═══════════════════════════════════════════════════╗", output.Bold)
-			output.Infof("  ║              Repository Health Check              ║")
-			output.Infof("  ╚═══════════════════════════════════════════════════╝%s\n", output.Reset)
+			output.Infof("")
+			output.Infof("  %sHealth Check%s", output.Bold, output.Reset)
+			output.Infof("  %s", strings.Repeat("─", 40))
+			output.Infof("")
 
-			for _, item := range okItems {
-				output.Infof("    %s✓%s %s", output.Green, output.Reset, item)
-			}
-			for _, w := range warnings {
-				output.Infof("    %s⚠%s %s", output.Yellow, output.Reset, w)
-			}
-			for _, iss := range issues {
-				output.Infof("    %s✗%s %s", output.Red, output.Reset, iss)
+			if len(okItems) > 0 {
+				output.Infof("  %sPassing:%s", output.Bold, output.Reset)
+				for _, item := range okItems {
+					output.Infof("    %s✓%s %s", output.Green, output.Reset, item)
+				}
+				output.Infof("")
 			}
 
+			if len(warnings) > 0 {
+				output.Infof("  %sWarnings:%s", output.Bold, output.Reset)
+				for _, w := range warnings {
+					output.Infof("    %s⚠%s %s", output.Yellow, output.Reset, w)
+				}
+				output.Infof("")
+			}
+
+			if len(issues) > 0 {
+				output.Infof("  %sIssues:%s", output.Bold, output.Reset)
+				for _, iss := range issues {
+					output.Infof("    %s✗%s %s", output.Red, output.Reset, iss)
+				}
+				output.Infof("")
+			}
+
+			total := len(okItems) + len(warnings) + len(issues)
+			output.Infof("  %s─%s", output.Dim, strings.Repeat("─", 39))
 			if len(issues) == 0 && len(warnings) == 0 {
-				output.Infof("\n  %s%sAll checks passed — repo is healthy!%s", output.Green, output.Bold, output.Reset)
+				output.Infof("  %s✓ %d/%d checks passed%s", output.Green, total, total, output.Reset)
 			} else if len(issues) == 0 {
-				output.Infof("\n  %sNo critical issues, %d warning(s).%s", output.Yellow, len(warnings), output.Reset)
+				output.Infof("  %s⚠ %d/%d passed, %d warning(s)%s", output.Yellow, len(okItems), total, len(warnings), output.Reset)
 			} else {
-				output.Infof("\n  %s%d issue(s) need attention.%s", output.Red, len(issues), output.Reset)
+				output.Infof("  %s✗ %d issue(s) need attention%s", output.Red, len(issues), output.Reset)
 				os.Exit(1)
 			}
 			return nil

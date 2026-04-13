@@ -124,13 +124,20 @@ gitflow --json start bugfix <name>
 gitflow --json start hotfix <version>
 ```
 
-### 1f. Are there uncommitted changes?
+### 1f. Version bumping
+
+When `start release <version>` or `start hotfix <version>` runs, gitflow
+automatically updates the `VERSION` file (or configured version file) and
+commits the bump. This means the release branch already contains the correct
+version. **Do not manually edit the VERSION file for releases/hotfixes.**
+
+### 1g. Are there uncommitted changes?
 
 If `dirty` is `true` and we need to switch branches, the tool handles
 auto-stashing. But warn the user if they have uncommitted work that might
 belong to a different task.
 
-### 1g. Only NOW proceed with code changes
+### 1h. Only NOW proceed with code changes
 
 Once all checks pass and you are on the correct branch, you may begin
 modifying code.
