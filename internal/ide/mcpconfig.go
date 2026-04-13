@@ -21,11 +21,15 @@ type mcpServerEntry struct {
 
 // MCPSupportedIDEs lists IDE IDs that support MCP server configuration.
 var MCPSupportedIDEs = map[string]bool{
-	IDECursor:    true,
-	IDECopilot:   true,
-	IDEVSCode:    true,
+	IDECursor:     true,
+	IDECopilot:    true,
+	IDEVSCode:     true,
 	IDEClaudeCode: true,
-	IDEWindsurf:  true,
+	IDEWindsurf:   true,
+	IDECline:      true,
+	IDEZed:        true,
+	IDENeovim:     true,
+	IDEJetBrains:  true,
 }
 
 func gitflowBinaryPath() string {
@@ -47,6 +51,14 @@ func mcpConfigPath(projectRoot, ideID string) string {
 		return filepath.Join(projectRoot, ".claude", "mcp.json")
 	case IDEWindsurf:
 		return filepath.Join(projectRoot, ".windsurf", "mcp.json")
+	case IDECline:
+		return filepath.Join(projectRoot, ".cline", "mcp.json")
+	case IDEZed:
+		return filepath.Join(projectRoot, ".zed", "mcp.json")
+	case IDENeovim:
+		return filepath.Join(projectRoot, ".nvim", "mcp.json")
+	case IDEJetBrains:
+		return filepath.Join(projectRoot, ".idea", "mcp.json")
 	default:
 		return ""
 	}
