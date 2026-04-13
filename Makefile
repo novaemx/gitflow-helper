@@ -1,5 +1,5 @@
 BINARY   := gitflow
-MODULE   := github.com/luis-lozano/gitflow-helper
+MODULE   := github.com/novaemx/gitflow-helper
 VERSION  ?= $(shell cat VERSION 2>/dev/null || git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  := -s -w -X main.version=$(VERSION)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'

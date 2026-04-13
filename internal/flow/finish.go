@@ -11,6 +11,25 @@ import (
 	"github.com/novaemx/gitflow-helper/internal/version"
 )
 
+var execResultFinish = git.ExecResult
+
+func mergedBranchDeleteWarning(branchName string, err error) string {
+	return fmt.Sprintf("Warning: merged branch %s not deleted automatically (%v). You can remove manually with git branch -d %s.", branchName, err, branchName)
+}
+
+func addMergeAbortDiagnostics(result map[string]any) {
+	if !output.IsJSONMode() {
+		return
+	}
+	abortCode, _, abortErr := execResultFinish("merge", "--abort")
+	if abortCode != 0 {
+		result["abort_failed"] = true
+		if strings.TrimSpace(abortErr) != "" {
+			result["abort_error"] = strings.TrimSpace(abortErr)
+		}
+	}
+}
+
 func bumpPatchVersion(ver string) (string, error) {
 	parts := strings.Split(ver, ".")
 	if len(parts) != 3 {
@@ -100,7 +119,9 @@ func finishFeatureOrBugfix(cfg config.FlowConfig, btype, name string) error {
 		return fmt.Errorf("merge of %s failed (conflicts?): %w", branchName, err)
 	}
 
-	_ = git.Exec("branch", "-d", branchName)
+	if err := git.Exec("branch", "-d", branchName); err != nil {
+		output.Infof("  %s%s%s", output.Yellow, mergedBranchDeleteWarning(branchName, err), output.Reset)
+	}
 	output.Infof("  %s✓ %s/%s → %s%s", output.Green, btype, name, cfg.DevelopBranch, output.Reset)
 	return nil
 }
@@ -312,6 +333,7 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		if len(conflicts) > 0 {
 			result["conflicts"] = conflicts
 			result["needs_human"] = true
+			addMergeAbortDiagnostics(result)
 			return 2, result
 		}
 		return 1, result

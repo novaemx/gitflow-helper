@@ -70,12 +70,11 @@ func (s *Server) record(tool, args, result, errMsg string) {
 	}
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.activity = append(s.activity, entry)
 	if len(s.activity) > 100 {
 		s.activity = s.activity[len(s.activity)-100:]
 	}
-	s.mu.Unlock()
-
 	s.writeActivityLog(entry)
 }
 
