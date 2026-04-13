@@ -299,19 +299,32 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	// Utilities
 	low = append(low,
-		action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"},
+		action{Label: "List tags / releases", Tag: "tags", Command: "git tag --sort=-version:refname -n1"},
 		action{Label: "View commit log", Tag: "log", Command: "gitflow log"},
 		action{Label: "Repo health check", Tag: "health", Command: "gitflow health"},
+		action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"},
 		action{Label: "Undo last operation", Tag: "undo", Command: "gitflow undo"},
 		action{Label: "Exit", Tag: "exit"},
 	)
 
-	// Concatenate tiers
+	// Concatenate tiers, recommended first within the combined list
+	all := make([]action, 0, len(critical)+len(high)+len(normal)+len(low))
+	all = append(all, critical...)
+	all = append(all, high...)
+	all = append(all, normal...)
+	all = append(all, low...)
+
+	var rec, rest []action
+	for _, a := range all {
+		if a.Recommended {
+			rec = append(rec, a)
+		} else {
+			rest = append(rest, a)
+		}
+	}
 	var actions []action
-	actions = append(actions, critical...)
-	actions = append(actions, high...)
-	actions = append(actions, normal...)
-	actions = append(actions, low...)
+	actions = append(actions, rec...)
+	actions = append(actions, rest...)
 	return actions
 }
 

@@ -20,7 +20,6 @@ func startFlowBranch(cfg config.FlowConfig, branchType, name string) error {
 	cur := git.CurrentBranch()
 
 	if cur != parent {
-		output.Infof("  Switching to %s before creating %s...", parent, branchName)
 		if err := git.Exec("checkout", parent); err != nil {
 			return fmt.Errorf("failed to checkout %s: %w", parent, err)
 		}
@@ -50,16 +49,6 @@ func StartRelease(cfg config.FlowConfig, ver string) error {
 	if ver == "" {
 		return fmt.Errorf("release version required")
 	}
-
-	if cfg.BumpCommand != "" {
-		version.RunBumpCommand(cfg, "minor")
-		version.RunBuildBumpCommand(cfg)
-		if cfg.VersionFile != "" {
-			_ = git.Exec("add", cfg.VersionFile)
-		}
-		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: bump version to %s", ver))
-	}
-
 	return startFlowBranch(cfg, "release", git.FlowVersion(ver))
 }
 
@@ -67,17 +56,23 @@ func StartHotfix(cfg config.FlowConfig, ver string) error {
 	if ver == "" {
 		return fmt.Errorf("hotfix version required")
 	}
-
-	if cfg.BumpCommand != "" {
-		version.RunBumpCommand(cfg, "patch")
-		version.RunBuildBumpCommand(cfg)
-		if cfg.VersionFile != "" {
-			_ = git.Exec("add", cfg.VersionFile)
-		}
-		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: bump version to %s (hotfix)", ver))
-	}
-
 	return startFlowBranch(cfg, "hotfix", git.FlowVersion(ver))
+}
+
+func bumpVersionOnBranch(cfg config.FlowConfig, branchType, ver string) {
+	if branchType != "release" && branchType != "hotfix" {
+		return
+	}
+	part := "minor"
+	if branchType == "hotfix" {
+		part = "patch"
+	}
+	if cfg.BumpCommand != "" {
+		version.RunBumpCommand(cfg, part)
+		version.RunBuildBumpCommand(cfg)
+	} else if cfg.VersionFile != "" {
+		version.WriteVersionFile(cfg, ver)
+	}
 }
 
 func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[string]any) {
@@ -93,12 +88,6 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 		return 1, map[string]any{"action": "start", "error": fmt.Sprintf("invalid type: %s", branchType)}
 	}
 
-	branch := git.CurrentBranch()
-	expectedParent := cfg.DevelopBranch
-	if branchType == "hotfix" {
-		expectedParent = cfg.MainBranch
-	}
-
 	result := map[string]any{
 		"action": "start",
 		"type":   branchType,
@@ -106,42 +95,14 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	}
 
 	wt := git.WorkingTreeStatus()
-	if wt.Total > 0 {
-		var parts []string
-		if wt.Staged > 0 {
-			parts = append(parts, fmt.Sprintf("%d staged", wt.Staged))
-		}
-		if wt.Unstaged > 0 {
-			parts = append(parts, fmt.Sprintf("%d modified", wt.Unstaged))
-		}
-		if wt.Untracked > 0 {
-			parts = append(parts, fmt.Sprintf("%d untracked", wt.Untracked))
-		}
-		detail := strings.Join(parts, ", ")
-		output.Infof("  %sWarning:%s Working tree is dirty (%s).", output.Yellow, output.Reset, detail)
-		output.Infof("  %sAuto-stashing changes before branch switch...%s", output.Dim, output.Reset)
+	stashed := false
+	if wt.Staged > 0 || wt.Unstaged > 0 {
 		if err := git.StashSave("gitflow: auto-stash before " + branchType + "/" + name); err != nil {
 			result["result"] = "error"
-			result["error"] = "failed to stash uncommitted changes: " + err.Error()
+			result["error"] = "failed to stash changes: " + err.Error()
 			return 1, result
 		}
-		result["stashed"] = true
-		result["stash_detail"] = detail
-	}
-
-	if branch != expectedParent {
-		output.Infof("  %sWarning:%s '%s' branches should start from '%s' (currently on '%s').",
-			output.Yellow, output.Reset, branchType, expectedParent, branch)
-		result["hint"] = "switch to " + expectedParent + " first"
-	}
-
-	if branchType == "feature" || branchType == "bugfix" {
-		releases := git.ActiveReleaseBranches()
-		if len(releases) > 0 {
-			output.Infof("  %sWarning:%s Release branch '%s' is in progress.",
-				output.Yellow, output.Reset, releases[0])
-			result["warning"] = "release_in_progress"
-		}
+		stashed = true
 	}
 
 	var err error
@@ -157,8 +118,7 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	}
 
 	if err != nil {
-		if wt.Total > 0 {
-			output.Infof("  %sRestoring stashed changes...%s", output.Dim, output.Reset)
+		if stashed {
 			_ = git.StashPop()
 		}
 		result["result"] = "error"
@@ -166,19 +126,21 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 		return 1, result
 	}
 
-	if wt.Total > 0 {
-		output.Infof("  %sRestoring stashed changes on new branch...%s", output.Dim, output.Reset)
-		if popErr := git.StashPop(); popErr != nil {
-			output.Infof("  %sWarning:%s Could not restore stash (may need manual 'git stash pop'): %s",
-				output.Yellow, output.Reset, popErr.Error())
-			result["stash_restore"] = "failed"
+	if stashed {
+		popCode, _, _ := git.ExecResult("stash", "pop")
+		if popCode != 0 {
+			_ = git.Exec("checkout", "--theirs", ".")
+			_ = git.Exec("add", ".")
+			result["stash_restore"] = "resolved"
 		} else {
 			result["stash_restore"] = "ok"
 		}
 	}
 
+	bumpVersionOnBranch(cfg, branchType, name)
+
 	branchName := branchType + "/" + name
-	output.Infof("\n  %sBranch '%s' created.%s", output.Green, branchName, output.Reset)
+	output.Infof("  %s✓ Branch '%s' created.%s", output.Green, branchName, output.Reset)
 	result["branch"] = branchName
 	result["result"] = "ok"
 	return 0, result
