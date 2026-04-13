@@ -45,11 +45,16 @@ func newHealthCmd() *cobra.Command {
 				issues = append(issues, fmt.Sprintf("'%s' branch missing", cfg.MainBranch))
 			}
 
-			fetchCode, _, _ := git.ExecResult("ls-remote", "--exit-code", cfg.Remote, "HEAD")
-			if fetchCode != 0 {
-				warnings = append(warnings, fmt.Sprintf("Remote '%s' unreachable", cfg.Remote))
+			remoteExists := git.RemoteExists(cfg.Remote)
+			if !remoteExists {
+				warnings = append(warnings, fmt.Sprintf("Remote '%s' not configured — fix: git remote add %s <url>", cfg.Remote, cfg.Remote))
 			} else {
-				okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", cfg.Remote))
+				fetchCode, _, _ := git.ExecResult("ls-remote", "--exit-code", cfg.Remote, "HEAD")
+				if fetchCode != 0 {
+					warnings = append(warnings, fmt.Sprintf("Remote '%s' unreachable — fix: verify network/credentials or run 'git remote -v'", cfg.Remote))
+				} else {
+					okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", cfg.Remote))
+				}
 			}
 
 			if localSet[cfg.DevelopBranch] && localSet[cfg.MainBranch] {
@@ -64,14 +69,16 @@ func newHealthCmd() *cobra.Command {
 				}
 			}
 
-			for _, branch := range []string{cfg.MainBranch, cfg.DevelopBranch} {
-				if localSet[branch] {
-					unpushed := git.ExecQuiet("rev-list", "--count", cfg.Remote+"/"+branch+".."+branch)
-					n, _ := strconv.Atoi(unpushed)
-					if n > 0 {
-						warnings = append(warnings, fmt.Sprintf("'%s' has %d unpushed commit(s)", branch, n))
-					} else {
-						okItems = append(okItems, fmt.Sprintf("'%s' up to date with remote", branch))
+			if remoteExists {
+				for _, branch := range []string{cfg.MainBranch, cfg.DevelopBranch} {
+					if localSet[branch] {
+						unpushed := git.ExecQuiet("rev-list", "--count", cfg.Remote+"/"+branch+".."+branch)
+						n, _ := strconv.Atoi(unpushed)
+						if n > 0 {
+							warnings = append(warnings, fmt.Sprintf("'%s' has %d unpushed commit(s) — fix: git push %s %s", branch, n, cfg.Remote, branch))
+						} else {
+							okItems = append(okItems, fmt.Sprintf("'%s' up to date with remote", branch))
+						}
 					}
 				}
 			}
