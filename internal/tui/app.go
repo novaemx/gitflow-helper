@@ -30,15 +30,15 @@ const (
 )
 
 type model struct {
-	gf           *gitflow.Logic
-	actions      []action
-	dashLines    []dashLine
-	selected     int
-	scroll       int
-	width        int
-	height       int
-	mode         viewMode
-	quitting     bool
+	gf        *gitflow.Logic
+	actions   []action
+	dashLines []dashLine
+	selected  int
+	scroll    int
+	width     int
+	height    int
+	mode      viewMode
+	quitting  bool
 
 	// Command output overlay
 	outputTitle  string
@@ -692,13 +692,13 @@ func (m model) renderOutputOverlay(base string) string {
 		var styled string
 		switch cat {
 		case "error":
-			styled = errorStyle.Render(icon+" "+text)
+			styled = errorStyle.Render(icon + " " + text)
 		case "warn":
-			styled = warnStyle.Render(icon+" "+text)
+			styled = warnStyle.Render(icon + " " + text)
 		case "ok":
-			styled = okStyle.Render(icon+" "+text)
+			styled = okStyle.Render(icon + " " + text)
 		case "dim":
-			styled = dimStyle.Render(icon+" "+text)
+			styled = dimStyle.Render(icon + " " + text)
 		default:
 			styled = icon + " " + text
 		}
