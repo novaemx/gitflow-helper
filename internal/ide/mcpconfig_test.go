@@ -7,6 +7,58 @@ import (
 	"testing"
 )
 
+func TestEnsureMCPConfig_AllDetectedIDEs(t *testing.T) {
+	cases := []struct {
+		id      string
+		relPath string
+	}{
+		{IDECursor, filepath.Join(".cursor", "mcp.json")},
+		{IDECopilot, filepath.Join(".vscode", "mcp.json")},
+		{IDEVSCode, filepath.Join(".vscode", "mcp.json")},
+		{IDEClaudeCode, filepath.Join(".claude", "mcp.json")},
+		{IDEWindsurf, filepath.Join(".windsurf", "mcp.json")},
+		{IDECline, filepath.Join(".cline", "mcp.json")},
+		{IDEZed, filepath.Join(".zed", "mcp.json")},
+		{IDENeovim, filepath.Join(".nvim", "mcp.json")},
+		{IDEJetBrains, filepath.Join(".idea", "mcp.json")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			dir := t.TempDir()
+			expected := filepath.Join(dir, tc.relPath)
+
+			got, err := EnsureMCPConfig(dir, tc.id)
+			if err != nil {
+				t.Fatalf("EnsureMCPConfig(%s): %v", tc.id, err)
+			}
+			if got != expected {
+				t.Fatalf("EnsureMCPConfig(%s): expected %s, got %s", tc.id, expected, got)
+			}
+
+			data, err := os.ReadFile(expected)
+			if err != nil {
+				t.Fatalf("read %s: %v", expected, err)
+			}
+			content := string(data)
+			if !strings.Contains(content, `"gitflow"`) || !strings.Contains(content, `"serve"`) {
+				t.Fatalf("invalid MCP content for %s: %s", tc.id, content)
+			}
+		})
+	}
+}
+
+func TestEnsureMCPConfig_UnsupportedIDE(t *testing.T) {
+	dir := t.TempDir()
+	path, err := EnsureMCPConfig(dir, IDEUnknown)
+	if err != nil {
+		t.Fatalf("EnsureMCPConfig(unknown): %v", err)
+	}
+	if path != "" {
+		t.Fatalf("expected empty path for unsupported IDE, got %q", path)
+	}
+}
+
 func TestEnsureMCPConfigForCopilotCreatesVSCodeConfig(t *testing.T) {
 	dir := t.TempDir()
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/luis-lozano/gitflow-helper/internal/config"
+	"github.com/luis-lozano/gitflow-helper/internal/debug"
 	"github.com/luis-lozano/gitflow-helper/internal/flow"
 	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/ide"
@@ -23,20 +24,40 @@ type Logic struct {
 	State      state.RepoState
 	IDE        ide.DetectedIDE
 	AppVersion string
+	
+	// Caches for git checks (immutable during command execution)
+	gitAvailCache    *bool
+	isgitRepoCache   *bool
+	gfInitCache      *bool
 }
 
 // New creates a Gitflow facade from a project root path.
 // If projectRoot is empty, it auto-detects from the current directory.
 func New(projectRoot string) *Logic {
+	deferTotal := debug.Start("gitflow.New.total")
+	defer deferTotal()
+	
+	deferFind := debug.Start("gitflow.New.FindProjectRoot")
 	if projectRoot == "" {
 		projectRoot = config.FindProjectRoot()
 	}
+	deferFind()
+	
+	deferLoad := debug.Start("gitflow.New.LoadConfig")
 	cfg := config.LoadConfig(projectRoot)
+	deferLoad()
+	
 	git.ProjectRoot = cfg.ProjectRoot
+
+	deferDetect := debug.Start("gitflow.New.DetectPrimary")
+	detectedIDE := ide.DetectPrimary(cfg.ProjectRoot)
+	deferDetect()
+	
+	debug.Printf("Gitflow initialized with IDE: %s", detectedIDE.ID)
 
 	gf := &Logic{
 		Config: cfg,
-		IDE:    ide.DetectPrimary(cfg.ProjectRoot),
+		IDE:    detectedIDE,
 	}
 	return gf
 }
@@ -51,18 +72,36 @@ func NewFromConfig(cfg config.FlowConfig) *Logic {
 }
 
 // IsGitAvailable returns true if git is installed and in PATH.
+// Result is cached after first call.
 func (gf *Logic) IsGitAvailable() bool {
-	return git.ExecQuiet("--version") != ""
+	if gf.gitAvailCache != nil {
+		return *gf.gitAvailCache
+	}
+	result := git.ExecQuiet("--version") != ""
+	gf.gitAvailCache = &result
+	return result
 }
 
 // IsGitRepo returns true if the project root is inside a git repository.
+// Result is cached after first call.
 func (gf *Logic) IsGitRepo() bool {
-	return git.IsGitRepo()
+	if gf.isgitRepoCache != nil {
+		return *gf.isgitRepoCache
+	}
+	result := git.IsGitRepo()
+	gf.isgitRepoCache = &result
+	return result
 }
 
 // IsGitFlowInitialized returns true if main+develop branches exist.
+// Result is cached after first call.
 func (gf *Logic) IsGitFlowInitialized() bool {
-	return git.IsGitFlowInitialized()
+	if gf.gfInitCache != nil {
+		return *gf.gfInitCache
+	}
+	result := git.IsGitFlowInitialized()
+	gf.gfInitCache = &result
+	return result
 }
 
 // Refresh re-detects the full repo state (branches, merge state, divergence).
