@@ -33,6 +33,8 @@ type RepoState struct {
 	LastTag            string       `json:"last_tag"`
 	Dirty              bool         `json:"dirty"`
 	UncommittedCount   int          `json:"uncommitted_count"`
+	Remotes            []string     `json:"remotes"`
+	HasDefaultRemote   bool         `json:"has_default_remote"`
 	Features           []BranchInfo `json:"features"`
 	Bugfixes           []BranchInfo `json:"bugfixes"`
 	Releases           []BranchInfo `json:"releases"`
@@ -44,7 +46,7 @@ type RepoState struct {
 	DevelopOnlyFiles   []string     `json:"develop_only_files"`
 	MainOnlyFiles      []string     `json:"main_only_files"`
 	Merge              MergeState   `json:"merge"`
-	GitFlowInitialized bool        `json:"git_flow_initialized"`
+	GitFlowInitialized bool         `json:"git_flow_initialized"`
 	ProjectRoot        string       `json:"project_root"`
 }
 
@@ -97,6 +99,13 @@ func DetectState(cfg config.FlowConfig) RepoState {
 	statusLines := git.ExecLines("status", "--porcelain")
 	s.UncommittedCount = len(statusLines)
 	s.Dirty = s.UncommittedCount > 0
+	s.Remotes = git.Remotes()
+	for _, r := range s.Remotes {
+		if r == cfg.Remote {
+			s.HasDefaultRemote = true
+			break
+		}
+	}
 
 	allLocal := git.ExecLines("branch", "--format=%(refname:short)")
 	allRemote := git.ExecLines("branch", "-r", "--format=%(refname:short)")
@@ -180,6 +189,9 @@ func DetectState(cfg config.FlowConfig) RepoState {
 	}
 	if s.MainOnlyFiles == nil {
 		s.MainOnlyFiles = []string{}
+	}
+	if s.Remotes == nil {
+		s.Remotes = []string{}
 	}
 	if s.Merge.ConflictedFiles == nil {
 		s.Merge.ConflictedFiles = []string{}

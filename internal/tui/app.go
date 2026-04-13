@@ -455,9 +455,12 @@ func (m model) renderTitleBar() string {
 	}
 	line1 := titleStyle.Width(m.width).Render(left1 + strings.Repeat(" ", pad1) + right1)
 
-	branchLabel := branchStyle(btype).Render(" " + s.Current + " ")
+	branchLabel := branchStyle(btype).Render(" ⎇ " + s.Current + " ")
 	tagDisplay := s.LastTag
 	if tagDisplay == "none" {
+		tagDisplay = ""
+	}
+	if s.Version != "0.0.0" && tagDisplay == "v"+s.Version {
 		tagDisplay = ""
 	}
 

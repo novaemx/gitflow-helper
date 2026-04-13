@@ -280,3 +280,16 @@ func BranchExists(name string) bool {
 func AllLocalBranches() []string {
 	return ExecLines("branch", "--format=%(refname:short)")
 }
+
+func Remotes() []string {
+	return ExecLines("remote")
+}
+
+func RemoteExists(name string) bool {
+	for _, r := range Remotes() {
+		if r == name {
+			return true
+		}
+	}
+	return false
+}
