@@ -100,16 +100,20 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 	}
 
 	output.Infof("\n  %sSyncing '%s' with '%s'...%s", output.Bold, branch, parent, output.Reset)
-	// Fetch from remote if available, but don't fail if remote doesn't exist
-	_ = git.Exec("fetch", cfg.Remote, parent)
-
-	// Merge from local parent if remote ref doesn't exist
-	mergeRef := fmt.Sprintf("%s/%s", cfg.Remote, parent)
-	code, _, _ := git.ExecResult("rev-parse", "--verify", mergeRef)
-	if code != 0 {
-		mergeRef = parent
+	// Fetch only when configured remote exists
+	mergeRef := parent
+	if cfg.Remote != "" && git.RemoteExists(cfg.Remote) {
+		_ = git.Exec("fetch", cfg.Remote, parent)
+		remoteRef := fmt.Sprintf("%s/%s", cfg.Remote, parent)
+		code, _, _ := git.ExecResult("rev-parse", "--verify", remoteRef)
+		if code == 0 {
+			mergeRef = remoteRef
+		}
+	} else {
+		output.Infof("  %sNo remote '%s' configured. Sync uses local '%s' branch.%s", output.Dim, cfg.Remote, parent, output.Reset)
 	}
-	code, _, _ = git.ExecResult("merge", "--no-ff", mergeRef)
+
+	code, _, _ := git.ExecResult("merge", "--no-ff", mergeRef)
 	if code == 0 {
 		output.Infof("  %sSync successful.%s", output.Green, output.Reset)
 		return 0, map[string]any{"action": "sync", "branch": branch, "parent": parent, "result": "ok"}
@@ -156,8 +160,12 @@ func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
 		}
 	}
 
-	// Fetch from remote if available
-	_ = git.Exec("fetch", cfg.Remote, cfg.MainBranch)
+	// Fetch only when configured remote exists
+	if cfg.Remote != "" && git.RemoteExists(cfg.Remote) {
+		_ = git.Exec("fetch", cfg.Remote, cfg.MainBranch)
+	} else {
+		output.Infof("  %sNo remote '%s' configured. Back-merge uses local '%s' branch.%s", output.Dim, cfg.Remote, cfg.MainBranch, output.Reset)
+	}
 	mergeMsg := fmt.Sprintf("Merge %s into %s (backmerge)", cfg.MainBranch, cfg.DevelopBranch)
 	code, _, _ := git.ExecResult("merge", "--no-ff", cfg.MainBranch, "-m", mergeMsg)
 
