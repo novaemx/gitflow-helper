@@ -2,7 +2,6 @@ package tui
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -64,22 +63,6 @@ type model struct {
 type refreshMsg struct{}
 type activityTickMsg struct{}
 type watchTickMsg struct{}
-
-// #region agent log
-func debugLog(projectRoot, location, message string, data map[string]any) {
-	logPath := filepath.Join(projectRoot, ".cursor", "debug-5fe3b1.log")
-	entry := map[string]any{"sessionId": "5fe3b1", "location": location, "message": message, "data": data, "timestamp": time.Now().UnixMilli()}
-	line, _ := json.Marshal(entry)
-	line = append(line, '\n')
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	f.Write(line)
-}
-
-// #endregion
 
 type cmdDoneMsg struct {
 	title  string
@@ -211,13 +194,6 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		if m.selected < len(m.actions) {
 			a := m.actions[m.selected]
-			// #region agent log
-			debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:enter", "action selected", map[string]any{
-				"hypothesisId": "H1", "runId": "run1",
-				"tag": a.Tag, "label": a.Label, "command": a.Command,
-				"needsInput": a.NeedsInput, "inputPrompt": a.InputPrompt,
-			})
-			// #endregion
 			if a.Tag == "exit" {
 				m.quitting = true
 				return m, tea.Quit
@@ -234,23 +210,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				ti.Width = 40
 				m.inputField = ti
 				m.mode = viewInput
-				// #region agent log
-				debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:input", "opening input overlay", map[string]any{
-					"hypothesisId": "H2", "runId": "run1",
-					"prompt": a.InputPrompt, "cmdTemplate": a.Command,
-				})
-				// #endregion
 				return m, ti.Cursor.BlinkCmd()
 			}
 			if a.Command != "" {
 				return m, m.runCommandAsync(a)
 			}
-			// #region agent log
-			debugLog(m.gf.Config.ProjectRoot, "app.go:handleKey:noop", "action has no command and no input", map[string]any{
-				"hypothesisId": "H1", "runId": "run1",
-				"tag": a.Tag, "label": a.Label,
-			})
-			// #endregion
 		}
 	case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
 		m.mode = viewPalette
@@ -336,12 +300,6 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		val := m.inputField.Value()
-		// #region agent log
-		debugLog(m.gf.Config.ProjectRoot, "app.go:handleInputKey:enter", "input submitted", map[string]any{
-			"hypothesisId": "H2", "runId": "run1",
-			"value": val, "hasPending": m.pendingAction != nil,
-		})
-		// #endregion
 		m.mode = viewDashboard
 		if val != "" && m.pendingAction != nil {
 			finalCmd := fmt.Sprintf(m.pendingAction.Command, val)
@@ -351,12 +309,6 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Command: finalCmd,
 			}
 			m.pendingAction = nil
-			// #region agent log
-			debugLog(m.gf.Config.ProjectRoot, "app.go:handleInputKey:run", "running constructed command", map[string]any{
-				"hypothesisId": "H2", "runId": "run1",
-				"finalCommand": finalCmd,
-			})
-			// #endregion
 			return m, m.runCommandAsync(a)
 		}
 		m.pendingAction = nil
@@ -435,7 +387,7 @@ func (m model) renderBase() string {
 	activityContent := m.renderIDEActivity()
 	actionContent := m.renderActions()
 
-	contentHeight := m.height - 3
+	contentHeight := m.height - 4
 	content := dashContent
 	if activityContent != "" {
 		content += "\n" + activityContent
@@ -485,19 +437,33 @@ func (m model) renderTitleBar() string {
 		pname = parts[len(parts)-1]
 	}
 
-	branchLabel := branchStyle(btype).Render(" " + s.Current + " ")
+	appVer := m.gf.AppVersion
+	if appVer == "" {
+		appVer = "dev"
+	}
+	left1 := " gitflow v" + appVer
 
+	ideName := m.gf.IDEDisplay()
+	if ideName == "" || m.gf.IDE.ID == ide.IDEUnknown {
+		ideName = "Terminal"
+	}
+	right1 := "IDE: " + ideName + " "
+
+	pad1 := m.width - lipgloss.Width(left1) - lipgloss.Width(right1)
+	if pad1 < 0 {
+		pad1 = 0
+	}
+	line1 := titleStyle.Width(m.width).Render(left1 + strings.Repeat(" ", pad1) + right1)
+
+	branchLabel := branchStyle(btype).Render(" " + s.Current + " ")
 	tagDisplay := s.LastTag
 	if tagDisplay == "none" {
 		tagDisplay = ""
 	}
 
-	segments := []string{
-		" " + pname + " ",
-		"│",
-		branchLabel,
-		"│",
-		"v" + s.Version,
+	segments := []string{" " + pname, "│", branchLabel}
+	if s.Version != "0.0.0" {
+		segments = append(segments, "│", "v"+s.Version)
 	}
 	if tagDisplay != "" {
 		segments = append(segments, "│", tagDisplay)
@@ -505,28 +471,15 @@ func (m model) renderTitleBar() string {
 	if s.Dirty {
 		segments = append(segments, "│", dirtyBadge.Render("● dirty"))
 	}
+	left2 := strings.Join(segments, " ")
 
-	left := strings.Join(segments, " ")
-
-	// Always show IDE — either detected name or "Terminal"
-	var rightParts []string
-	ideName := m.gf.IDEDisplay()
-	if ideName == "" || m.gf.IDE.ID == ide.IDEUnknown {
-		ideName = "Terminal"
+	pad2 := m.width - lipgloss.Width(left2)
+	if pad2 < 0 {
+		pad2 = 0
 	}
-	rightParts = append(rightParts, ideName)
-	if s.GitFlowInitialized {
-		rightParts = append(rightParts, "gitflow")
-	}
-	right := " " + strings.Join(rightParts, " │ ") + " "
+	line2 := subtitleStyle.Width(m.width).Render(left2 + strings.Repeat(" ", pad2))
 
-	padding := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if padding < 0 {
-		padding = 0
-	}
-
-	bar := left + strings.Repeat(" ", padding) + right
-	return titleStyle.Width(m.width).Render(bar)
+	return line1 + "\n" + line2
 }
 
 func (m model) renderDashboard() string {
@@ -601,19 +554,37 @@ func (m model) renderIDEActivity() string {
 func (m model) renderActions() string {
 	var lines []string
 	lines = append(lines, "")
-	lines = append(lines, " "+sectionStyle.Render("Actions:"))
 
+	lastRec := -1
 	for i, a := range m.actions {
+		if a.Recommended {
+			lastRec = i
+		}
+	}
+
+	if lastRec >= 0 {
+		lines = append(lines, " "+sectionStyle.Render("Recommended:"))
+	} else {
+		lines = append(lines, " "+sectionStyle.Render("Actions:"))
+	}
+
+	headerInserted := false
+	for i, a := range m.actions {
+		if !headerInserted && lastRec >= 0 && !a.Recommended && i > lastRec {
+			lines = append(lines, "")
+			lines = append(lines, " "+sectionStyle.Render("Actions:"))
+			headerInserted = true
+		}
+
 		label := a.Label
 		if len(label) > m.width-8 {
 			label = label[:m.width-8]
 		}
-
 		if i == m.selected {
 			line := selectedStyle.Width(m.width - 2).Render(" ▸ " + label)
 			lines = append(lines, " "+line)
 		} else if a.Recommended {
-			lines = append(lines, "   "+recommendedStyle.Render(label)+" "+dimStyle.Render("← recommended"))
+			lines = append(lines, "   "+recommendedStyle.Render("▹ "+label))
 		} else {
 			lines = append(lines, "   "+label)
 		}
