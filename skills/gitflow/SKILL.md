@@ -138,6 +138,9 @@ Automation rules:
 - Starting a release/hotfix now fails fast if the target tag already exists.
 - Finishing a release/hotfix validates that branch version matches the version
   file and aborts on mismatch instead of producing partial success output.
+- During finish, if the intended tag already exists, gitflow automatically
+  bumps to the next available patch version (x.y.z), updates `VERSION`, renames
+  the flow branch (`release/*` or `hotfix/*`), and continues with the new tag.
 - Tag creation and release-branch deletion are treated as required steps;
   failures abort finish with an error (no false "success" message).
 
