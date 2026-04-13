@@ -21,13 +21,20 @@ func Pull(cfg config.FlowConfig) (int, map[string]any) {
 		stashed = true
 	}
 
-	output.Infof("\n  %sFetching from all remotes...%s", output.Bold, output.Reset)
-	_ = git.Exec("fetch", "--all", "--prune")
-
 	remoteBranch := git.ExecQuiet("config", "--get", "branch."+branch+".remote")
 	if remoteBranch == "" {
 		remoteBranch = cfg.Remote
 	}
+	if remoteBranch == "" || !git.RemoteExists(remoteBranch) {
+		output.Infof("  %sNo remote '%s' configured. Pull skipped (local-only mode).%s", output.Dim, remoteBranch, output.Reset)
+		if stashed {
+			_ = git.Exec("stash", "pop")
+		}
+		return 0, map[string]any{"action": "pull", "branch": branch, "result": "no_remote", "remote": remoteBranch}
+	}
+
+	output.Infof("\n  %sFetching from %s...%s", output.Bold, remoteBranch, output.Reset)
+	_ = git.Exec("fetch", remoteBranch, "--prune")
 
 	mergeBranch := git.ExecQuiet("config", "--get", "branch."+branch+".merge")
 	if mergeBranch == "" {
