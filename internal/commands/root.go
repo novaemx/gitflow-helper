@@ -6,6 +6,7 @@ import (
 
 	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
+	"github.com/novaemx/gitflow-helper/internal/ide"
 	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -90,7 +91,7 @@ func NewRootCmd(version string) *cobra.Command {
 			// Auto-provision IDE rules when missing (silent, idempotent)
 			if name != "doctor" && name != "health" {
 				deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
-				_, _ = GF.EnsureRules()
+				_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
 				deferEnsure()
 			}
 		},

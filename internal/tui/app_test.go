@@ -35,6 +35,45 @@ func TestResolveGitDir_GitdirFile(t *testing.T) {
 	}
 }
 
+func TestResolveGitDir_RejectsPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	traversal := filepath.Join("..", filepath.Base(outside))
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: "+traversal+"\n"), 0644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	got := resolveGitDir(root)
+	if got != "" {
+		t.Fatalf("expected traversal path rejected, got %q", got)
+	}
+}
+
+func TestResolveGitDir_AbsoluteGitdirPath(t *testing.T) {
+	root := t.TempDir()
+	absGitDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: "+absGitDir+"\n"), 0644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	got := resolveGitDir(root)
+	if got != absGitDir {
+		t.Fatalf("expected absolute gitdir %q, got %q", absGitDir, got)
+	}
+}
+
+func TestResolveGitDir_InvalidGitFile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("not-a-gitdir-line\n"), 0644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	got := resolveGitDir(root)
+	if got != "" {
+		t.Fatalf("expected empty result for invalid git file, got %q", got)
+	}
+}
+
 func TestRepoFingerprint_ChangesWhenHeadChanges(t *testing.T) {
 	root := t.TempDir()
 	gitDir := filepath.Join(root, ".git")
