@@ -6,22 +6,27 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/luis-lozano/gitflow-helper/internal/debug"
 )
 
 // IDE type constants
 const (
-	IDECursor    = "cursor"
-	IDEVSCode    = "vscode"
-	IDECopilot   = "copilot" // vscode + copilot
+	IDECursor     = "cursor"
+	IDEVSCode     = "vscode"
+	IDECopilot    = "copilot" // vscode + copilot
 	IDEClaudeCode = "claude-code"
-	IDEWindsurf  = "windsurf"
-	IDECline     = "cline"
-	IDEZed       = "zed"
-	IDENeovim    = "neovim"
-	IDEJetBrains = "jetbrains"
-	IDEUnknown   = "unknown"
-	IDEBoth      = "both" // legacy: cursor + copilot
+	IDEWindsurf   = "windsurf"
+	IDECline      = "cline"
+	IDEZed        = "zed"
+	IDENeovim     = "neovim"
+	IDEJetBrains  = "jetbrains"
+	IDEUnknown    = "unknown"
+	IDEBoth       = "both" // legacy: cursor + copilot
 )
 
 // DetectedIDE holds the result of IDE detection with display-friendly name.
@@ -35,12 +40,14 @@ var ideRegistry = []struct {
 	display string
 	detect  func(string) bool
 }{
+	// Check environment and TERM_PROGRAM signals first (fast)
+	{IDECopilot, "VS Code + Copilot", detectCopilot},
+	{IDEVSCode, "VS Code", detectVSCode},
+	// Then terminal-specific signals (medium)
 	{IDECursor, "Cursor", detectCursor},
 	{IDEClaudeCode, "Claude Code", detectClaudeCode},
 	{IDEWindsurf, "Windsurf", detectWindsurf},
 	{IDECline, "Cline", detectCline},
-	{IDECopilot, "VS Code + Copilot", detectCopilot},
-	{IDEVSCode, "VS Code", detectVSCode},
 	{IDEZed, "Zed", detectZed},
 	{IDENeovim, "Neovim", detectNeovim},
 	{IDEJetBrains, "JetBrains", detectJetBrains},
@@ -59,10 +66,19 @@ func DetectAll(projectRoot string) []DetectedIDE {
 
 // DetectPrimary returns the most specific IDE detected, or "unknown".
 func DetectPrimary(projectRoot string) DetectedIDE {
-	all := DetectAll(projectRoot)
-	if len(all) > 0 {
-		return all[0]
+	deferEnd := debug.Start("DetectPrimary.total")
+	defer deferEnd()
+	
+	for _, entry := range ideRegistry {
+		deferEntry := debug.Start(fmt.Sprintf("DetectPrimary.%s", entry.id))
+		if entry.detect(projectRoot) {
+			deferEntry()
+			debug.Printf("IDE detected: %s", entry.id)
+			return DetectedIDE{ID: entry.id, DisplayName: entry.display}
+		}
+		deferEntry()
 	}
+	debug.Printf("No IDE detected, returning 'Terminal'")
 	return DetectedIDE{ID: IDEUnknown, DisplayName: "Terminal"}
 }
 
@@ -131,12 +147,13 @@ func detectCursor(projectRoot string) bool {
 			return true
 		}
 	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".cursor")); err == nil {
-		if matchParentProcess("cursor") {
-			return true
-		}
-		return true
+
+	// Cursor is a VSCode extension, only check process ancestry if we're in VSCode terminal
+	// This avoids expensive process lookups on non-VSCode terminals
+	if !isVSCodeTerminal() {
+		return false
 	}
+	
 	return matchParentProcess("cursor")
 }
 
@@ -147,7 +164,24 @@ func detectVSCode(projectRoot string) bool {
 			return true
 		}
 	}
+	if isVSCodeTerminal() {
+		return true
+	}
 	return matchParentProcess("code")
+}
+
+func isVSCodeTerminal() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("TERM_PROGRAM")))
+	if v == "vscode" {
+		return true
+	}
+
+	for _, key := range []string{"VSCODE_IPC_HOOK", "VSCODE_CWD", "VSCODE_GIT_ASKPASS_NODE", "VSCODE_GIT_ASKPASS_MAIN"} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func detectCopilot(projectRoot string) bool {
@@ -159,9 +193,6 @@ func detectCopilot(projectRoot string) bool {
 			return true
 		}
 	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".github", "copilot-instructions.md")); err == nil {
-		return true
-	}
 	return false
 }
 
@@ -170,12 +201,6 @@ func detectClaudeCode(projectRoot string) bool {
 		if strings.HasPrefix(e, "CLAUDE_") || strings.HasPrefix(e, "ANTHROPIC_") {
 			return true
 		}
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, "CLAUDE.md")); err == nil {
-		return true
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".claude")); err == nil {
-		return true
 	}
 	return matchParentProcess("claude")
 }
@@ -186,35 +211,20 @@ func detectWindsurf(projectRoot string) bool {
 			return true
 		}
 	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".windsurf")); err == nil {
-		return true
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".windsurfrules")); err == nil {
-		return true
-	}
 	return matchParentProcess("windsurf")
 }
 
 func detectCline(projectRoot string) bool {
-	if _, err := os.Stat(filepath.Join(projectRoot, ".clinerules")); err == nil {
-		return true
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".cline")); err == nil {
-		return true
-	}
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "CLINE_") {
 			return true
 		}
 	}
-	return false
+	return matchParentProcess("cline")
 }
 
 func detectZed(projectRoot string) bool {
 	if os.Getenv("ZED_TERM") != "" {
-		return true
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".zed")); err == nil {
 		return true
 	}
 	return matchParentProcess("zed")
@@ -228,7 +238,7 @@ func detectNeovim(projectRoot string) bool {
 }
 
 func detectJetBrains(projectRoot string) bool {
-	if _, err := os.Stat(filepath.Join(projectRoot, ".idea")); err == nil {
+	if isJetBrainsTerminal() {
 		return true
 	}
 	jetbrainsProcesses := []string{"idea", "pycharm", "webstorm", "goland", "clion", "rider", "phpstorm", "rubymine", "datagrip"}
@@ -240,26 +250,256 @@ func detectJetBrains(projectRoot string) bool {
 	return false
 }
 
+func isJetBrainsTerminal() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("TERM_PROGRAM")))
+	if strings.Contains(v, "jetbrains") || strings.Contains(v, "jediterm") {
+		return true
+	}
+
+	for _, key := range []string{"IDEA_INITIAL_DIRECTORY", "PYCHARM_HOSTED", "WEBIDE_INITIAL_DIRECTORY"} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // matchParentProcess checks if a process name appears in the parent chain.
+// Uses reduced depth (5 instead of 8) for Windows performance.
 func matchParentProcess(name string) bool {
 	ppid := os.Getppid()
 	if ppid <= 1 {
 		return false
 	}
+	// Use maxDepth=5 instead of 8 for better Windows performance
+	return matchParentProcessForOS(name, runtime.GOOS, ppid, 5)
+}
 
-	switch runtime.GOOS {
-	case "linux":
-		cmdline, err := os.ReadFile(filepath.Join("/proc", fmt.Sprintf("%d", ppid), "cmdline"))
-		if err == nil {
-			return strings.Contains(strings.ToLower(string(cmdline)), name)
-		}
-	case "darwin":
-		out, err := exec.Command("ps", "-p", fmt.Sprintf("%d", ppid), "-o", "comm=").Output()
-		if err == nil {
-			return strings.Contains(strings.ToLower(string(out)), name)
+func matchParentProcessForOS(name, goos string, startPID, maxDepth int) bool {
+	ancestry, err := getProcessAncestry(goos, startPID, maxDepth)
+	if err != nil {
+		return false
+	}
+	target := strings.ToLower(strings.TrimSpace(name))
+	for _, procName := range ancestry {
+		if strings.Contains(strings.ToLower(procName), target) {
+			return true
 		}
 	}
 	return false
+}
+
+var processAncestryCache = struct {
+	mu    sync.Mutex
+	items map[string]cachedAncestry
+}{items: map[string]cachedAncestry{}}
+
+type cachedAncestry struct {
+	names     []string
+	createdAt time.Time
+}
+
+var processAncestryCacheTTL = 5 * time.Second
+var processAncestryCacheMaxEntries = 64
+var ancestryNowFunc = time.Now
+
+var windowsProcessAncestryFunc = windowsProcessAncestry
+var parentProcessInfoFunc = parentProcessInfo
+
+func getProcessAncestry(goos string, startPID, maxDepth int) ([]string, error) {
+	if startPID <= 1 || maxDepth <= 0 {
+		return nil, fmt.Errorf("invalid ancestry input")
+	}
+	key := fmt.Sprintf("%s:%d:%d", goos, startPID, maxDepth)
+	now := ancestryNowFunc()
+
+	processAncestryCache.mu.Lock()
+	if cached, ok := processAncestryCache.items[key]; ok {
+		if now.Sub(cached.createdAt) <= processAncestryCacheTTL {
+			processAncestryCache.mu.Unlock()
+			return cached.names, nil
+		}
+		delete(processAncestryCache.items, key)
+	}
+	processAncestryCache.mu.Unlock()
+
+	var names []string
+	var err error
+	if goos == "windows" {
+		names, err = windowsProcessAncestryFunc(startPID, maxDepth)
+	} else {
+		names, err = genericProcessAncestry(goos, startPID, maxDepth)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	processAncestryCache.mu.Lock()
+	if len(processAncestryCache.items) >= processAncestryCacheMaxEntries {
+		evictOldestAncestryEntry(processAncestryCache.items)
+	}
+	processAncestryCache.items[key] = cachedAncestry{names: names, createdAt: now}
+	processAncestryCache.mu.Unlock()
+	return names, nil
+}
+
+func evictOldestAncestryEntry(items map[string]cachedAncestry) {
+	var oldestKey string
+	var oldestTime time.Time
+	first := true
+	for k, v := range items {
+		if first || v.createdAt.Before(oldestTime) {
+			oldestKey = k
+			oldestTime = v.createdAt
+			first = false
+		}
+	}
+	if !first {
+		delete(items, oldestKey)
+	}
+}
+
+func genericProcessAncestry(goos string, startPID, maxDepth int) ([]string, error) {
+	var names []string
+	pid := startPID
+	for depth := 0; depth < maxDepth && pid > 1; depth++ {
+		procName, ppid, err := parentProcessInfoFunc(pid, goos)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, procName)
+		if ppid <= 1 || ppid == pid {
+			break
+		}
+		pid = ppid
+	}
+	return names, nil
+}
+
+func matchProcessInAncestry(name string, startPID, maxDepth int, fetch func(int) (string, int, error)) bool {
+	target := strings.ToLower(strings.TrimSpace(name))
+	if target == "" || startPID <= 1 || maxDepth <= 0 {
+		return false
+	}
+
+	pid := startPID
+	for depth := 0; depth < maxDepth && pid > 1; depth++ {
+		procName, ppid, err := fetch(pid)
+		if err != nil {
+			return false
+		}
+		if strings.Contains(strings.ToLower(procName), target) {
+			return true
+		}
+		if ppid <= 1 || ppid == pid {
+			break
+		}
+		pid = ppid
+	}
+	return false
+}
+
+func parentProcessInfo(pid int, goos string) (string, int, error) {
+	switch goos {
+	case "linux":
+		return linuxProcessInfo(pid)
+	case "darwin":
+		return darwinProcessInfo(pid)
+	case "windows":
+		return windowsProcessInfo(pid)
+	default:
+		return "", 0, fmt.Errorf("unsupported os: %s", goos)
+	}
+}
+
+func linuxProcessInfo(pid int) (string, int, error) {
+	commBytes, err := os.ReadFile(filepath.Join("/proc", fmt.Sprintf("%d", pid), "comm"))
+	if err != nil {
+		return "", 0, err
+	}
+	statusBytes, err := os.ReadFile(filepath.Join("/proc", fmt.Sprintf("%d", pid), "status"))
+	if err != nil {
+		return "", 0, err
+	}
+	ppid, err := parseLinuxStatusPPid(string(statusBytes))
+	if err != nil {
+		return "", 0, err
+	}
+	return strings.TrimSpace(string(commBytes)), ppid, nil
+}
+
+func darwinProcessInfo(pid int) (string, int, error) {
+	nameOut, err := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "comm=").Output()
+	if err != nil {
+		return "", 0, err
+	}
+	ppidOut, err := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "ppid=").Output()
+	if err != nil {
+		return "", 0, err
+	}
+	ppid, err := strconv.Atoi(strings.TrimSpace(string(ppidOut)))
+	if err != nil {
+		return "", 0, err
+	}
+	return strings.TrimSpace(string(nameOut)), ppid, nil
+}
+
+func windowsProcessInfo(pid int) (string, int, error) {
+	query := fmt.Sprintf(`$p=Get-CimInstance Win32_Process -Filter "ProcessId = %d"; if ($p) { Write-Output ($p.Name + "|" + $p.ParentProcessId) }`, pid)
+	out, err := exec.Command("powershell", "-NoProfile", "-Command", query).Output()
+	if err != nil {
+		return "", 0, err
+	}
+	return parseWindowsProcessLine(string(out))
+}
+
+func windowsProcessAncestry(startPID, maxDepth int) ([]string, error) {
+	query := fmt.Sprintf(`$pidValue=%d; $depth=%d; $current=Get-CimInstance Win32_Process -Filter ("ProcessId = " + $pidValue); for($i=0; $i -lt $depth -and $current; $i++){ Write-Output $current.Name; if ($current.ParentProcessId -le 1 -or $current.ParentProcessId -eq $current.ProcessId) { break }; $current=Get-CimInstance Win32_Process -Filter ("ProcessId = " + $current.ParentProcessId) }`, startPID, maxDepth)
+	out, err := exec.Command("powershell", "-NoProfile", "-Command", query).Output()
+	if err != nil {
+		return nil, err
+	}
+	return parseWindowsAncestryOutput(string(out)), nil
+}
+
+func parseLinuxStatusPPid(status string) (int, error) {
+	for _, line := range strings.Split(status, "\n") {
+		if strings.HasPrefix(line, "PPid:") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				return 0, fmt.Errorf("invalid PPid line")
+			}
+			return strconv.Atoi(fields[1])
+		}
+	}
+	return 0, fmt.Errorf("PPid not found")
+}
+
+func parseWindowsProcessLine(raw string) (string, int, error) {
+	line := strings.TrimSpace(raw)
+	if line == "" {
+		return "", 0, fmt.Errorf("empty process line")
+	}
+	parts := strings.Split(line, "|")
+	if len(parts) != 2 {
+		return "", 0, fmt.Errorf("invalid process line")
+	}
+	ppid, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return "", 0, err
+	}
+	return strings.TrimSpace(parts[0]), ppid, nil
+}
+
+func parseWindowsAncestryOutput(raw string) []string {
+	var out []string
+	for _, line := range strings.Split(raw, "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // Generate dispatches to the appropriate rule/instruction file generators.

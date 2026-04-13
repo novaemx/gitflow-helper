@@ -71,37 +71,133 @@ type cmdDoneMsg struct {
 
 func Run(gf *gitflow.Logic) error {
 	m := model{gf: gf, mode: viewDashboard}
-	m.refresh()
+	m.refresh(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }
 
-func (m *model) refresh() {
+func actionIdentity(a action) string {
+	return a.Tag + "\x00" + a.Label
+}
+
+func defaultSelection(actions []action) int {
+	if len(actions) == 0 {
+		return 0
+	}
+	for i, a := range actions {
+		if a.Recommended {
+			return i
+		}
+	}
+	return 0
+}
+
+func selectionIndexForRefresh(actions []action, prev *action) int {
+	if len(actions) == 0 {
+		return 0
+	}
+	if prev == nil {
+		return defaultSelection(actions)
+	}
+
+	prevID := actionIdentity(*prev)
+	for i, a := range actions {
+		if actionIdentity(a) == prevID {
+			return i
+		}
+	}
+	for i, a := range actions {
+		if a.Tag == prev.Tag {
+			return i
+		}
+	}
+	return defaultSelection(actions)
+}
+
+func (m *model) refresh(preserveSelection bool) {
+	var prev *action
+	if preserveSelection && m.selected >= 0 && m.selected < len(m.actions) {
+		p := m.actions[m.selected]
+		prev = &p
+	}
+
 	m.gf.Refresh()
 	m.actions = buildActions(m.gf.State, m.gf.Config)
 	m.dashLines = buildDashboardLines(m.gf.State, m.gf.Config)
-	m.selected = 0
+	m.selected = selectionIndexForRefresh(m.actions, prev)
 	m.scroll = 0
-	for i, a := range m.actions {
-		if a.Recommended {
-			m.selected = i
-			break
-		}
-	}
 }
 
-func gitFingerprint(root string) string {
-	indexPath := filepath.Join(root, ".git", "index")
-	info, err := os.Stat(indexPath)
+func resolveGitDir(root string) string {
+	gitPath := filepath.Join(root, ".git")
+	info, err := os.Stat(gitPath)
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%d-%d", info.Size(), info.ModTime().UnixNano())
+	if info.IsDir() {
+		return gitPath
+	}
+
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return ""
+	}
+	line := strings.TrimSpace(string(data))
+	if !strings.HasPrefix(strings.ToLower(line), "gitdir:") {
+		return ""
+	}
+	rel := strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
+	if rel == "" {
+		return ""
+	}
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	return filepath.Clean(filepath.Join(root, rel))
+}
+
+func statPart(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
+func repoFingerprint(root string) string {
+	gitDir := resolveGitDir(root)
+	if gitDir == "" {
+		return ""
+	}
+
+	parts := []string{fmt.Sprintf("gitdir:%s", gitDir)}
+
+	headPath := filepath.Join(gitDir, "HEAD")
+	headData, _ := os.ReadFile(headPath)
+	head := strings.TrimSpace(string(headData))
+	parts = append(parts, "HEAD="+head)
+	parts = append(parts, "head.stat="+statPart(headPath))
+
+	if strings.HasPrefix(head, "ref:") {
+		ref := strings.TrimSpace(strings.TrimPrefix(head, "ref:"))
+		if ref != "" {
+			parts = append(parts, "ref="+ref)
+			parts = append(parts, "ref.stat="+statPart(filepath.Join(gitDir, filepath.FromSlash(ref))))
+		}
+	}
+
+	metaFiles := []string{"index", "ORIG_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD", "REBASE_HEAD", "packed-refs", filepath.Join("logs", "HEAD")}
+	for _, rel := range metaFiles {
+		parts = append(parts, rel+"="+statPart(filepath.Join(gitDir, filepath.FromSlash(rel))))
+	}
+
+	return strings.Join(parts, "|")
 }
 
 func (m model) Init() tea.Cmd {
+	m.lastGitFingerprint = repoFingerprint(m.gf.Config.ProjectRoot)
 	return tea.Batch(
 		tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return activityTickMsg{} }),
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg { return watchTickMsg{} }),
@@ -124,11 +220,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.outputLines = lines
 		m.outputScroll = 0
 		m.mode = viewOutput
-		m.refresh()
+		m.refresh(false)
 		return m, nil
 
 	case refreshMsg:
-		m.refresh()
+		m.refresh(false)
 		return m, nil
 
 	case activityTickMsg:
@@ -138,9 +234,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 
 	case watchTickMsg:
-		fp := gitFingerprint(m.gf.Config.ProjectRoot)
-		if fp != m.lastGitFingerprint && m.lastGitFingerprint != "" && m.mode == viewDashboard {
-			m.refresh()
+		fp := repoFingerprint(m.gf.Config.ProjectRoot)
+		if fp != m.lastGitFingerprint && m.mode == viewDashboard {
+			m.refresh(true)
 		}
 		m.lastGitFingerprint = fp
 		return m, tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
@@ -221,7 +317,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("?"))):
 		m.mode = viewHelp
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
-		m.refresh()
+		m.refresh(false)
 	}
 	return m, nil
 }
