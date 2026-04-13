@@ -13,7 +13,7 @@ CHECKSUMS_FILE  := $(DIST)/checksums.txt
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
-.PHONY: package-homebrew package-choco package-winget package-skill package-all
+.PHONY: package-homebrew package-choco package-winget package-all
 .PHONY: publish-github publish-homebrew publish-winget publish-choco publish-all
 
 # ── OS/arch detection ────────────────────────────────────────
@@ -243,14 +243,6 @@ package-winget:
 	@echo "Done. Validate: winget validate packaging/winget/novaemx.gitflow-helper.yaml"
 	@echo "Submit PR to microsoft/winget-pkgs with the updated manifest."
 
-## package-skill: publish gitflow skill to skills.sh
-package-skill:
-	@echo "→ Publishing gitflow skill to skills.sh..."
-	npx @anthropic/skills-cli publish .cursor/skills/gitflow/SKILL.md 2>/dev/null \
-		|| npx skillsadd publish .cursor/skills/gitflow/SKILL.md 2>/dev/null \
-		|| echo "  (skills CLI not available — install with: npm i -g @anthropic/skills-cli)"
-	@echo "Done."
-
 ## package-all: build all package formats
-package-all: package-homebrew package-choco package-winget package-skill
+package-all: package-homebrew package-choco package-winget
 	@echo "All packages built/updated for v$(VERSION)."
