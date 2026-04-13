@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/luis-lozano/gitflow-helper/internal/commands"
-	"github.com/luis-lozano/gitflow-helper/internal/debug"
+	"github.com/novaemx/gitflow-helper/internal/commands"
+	"github.com/novaemx/gitflow-helper/internal/debug"
 )
 
 // version is injected at build time via -ldflags "-X main.version=..."
@@ -24,7 +24,7 @@ func main() {
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
-	
+
 	// Print timing report if debug is enabled
 	debug.PrintTimings()
 }

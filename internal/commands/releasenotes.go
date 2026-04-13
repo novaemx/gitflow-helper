@@ -1,8 +1,8 @@
 package commands
 
 import (
-	"github.com/luis-lozano/gitflow-helper/internal/flow"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/flow"
+	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
 

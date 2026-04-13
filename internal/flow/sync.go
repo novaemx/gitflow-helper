@@ -3,9 +3,9 @@ package flow
 import (
 	"fmt"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/output"
 )
 
 func Pull(cfg config.FlowConfig) (int, map[string]any) {

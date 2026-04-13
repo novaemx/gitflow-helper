@@ -3,9 +3,9 @@ package commands
 import (
 	"fmt"
 
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
-	"github.com/luis-lozano/gitflow-helper/internal/state"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/state"
 	"github.com/spf13/cobra"
 )
 

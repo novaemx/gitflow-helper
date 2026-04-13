@@ -1,4 +1,4 @@
-module github.com/luis-lozano/gitflow-helper
+module github.com/novaemx/gitflow-helper
 
 go 1.26.2
 

@@ -13,9 +13,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luis-lozano/gitflow-helper/internal/gitflow"
-	"github.com/luis-lozano/gitflow-helper/internal/ide"
-	mcpserver "github.com/luis-lozano/gitflow-helper/internal/mcp"
+	"github.com/novaemx/gitflow-helper/internal/gitflow"
+	"github.com/novaemx/gitflow-helper/internal/ide"
+	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
 )
 
 type viewMode int

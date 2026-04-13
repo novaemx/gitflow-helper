@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/ide"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/ide"
 )
 
 func setupTestRepo(t *testing.T) string {

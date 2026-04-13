@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	gflogic "github.com/luis-lozano/gitflow-helper/internal/gitflow"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	gflogic "github.com/novaemx/gitflow-helper/internal/gitflow"
 )
 
 // ActivityEntry records an MCP tool invocation for TUI display.
