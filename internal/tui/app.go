@@ -10,10 +10,9 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
+	"github.com/luis-lozano/gitflow-helper/internal/branch"
+	"github.com/luis-lozano/gitflow-helper/internal/gitflow"
 	"github.com/luis-lozano/gitflow-helper/internal/ide"
-	"github.com/luis-lozano/gitflow-helper/internal/state"
 )
 
 type viewMode int
@@ -27,11 +26,9 @@ const (
 )
 
 type model struct {
-	cfg          config.FlowConfig
-	state        state.RepoState
+	gf           *gitflow.Logic
 	actions      []action
 	dashLines    []dashLine
-	detectedIDE  ide.DetectedIDE
 	selected     int
 	scroll       int
 	width        int
@@ -62,10 +59,8 @@ type cmdDoneMsg struct {
 	err    error
 }
 
-func Run(cfg config.FlowConfig) error {
-	git.ProjectRoot = cfg.ProjectRoot
-	m := model{cfg: cfg, mode: viewDashboard}
-	m.detectedIDE = ide.DetectPrimary(cfg.ProjectRoot)
+func Run(gf *gitflow.Logic) error {
+	m := model{gf: gf, mode: viewDashboard}
 	m.refresh()
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -74,9 +69,9 @@ func Run(cfg config.FlowConfig) error {
 }
 
 func (m *model) refresh() {
-	m.state = state.DetectState(m.cfg)
-	m.actions = buildActions(m.state, m.cfg)
-	m.dashLines = buildDashboardLines(m.state, m.cfg)
+	m.gf.Refresh()
+	m.actions = buildActions(m.gf.State, m.gf.Config)
+	m.dashLines = buildDashboardLines(m.gf.State, m.gf.Config)
 	m.selected = 0
 	m.scroll = 0
 	for i, a := range m.actions {
@@ -291,9 +286,10 @@ func (m model) filteredActions() []action {
 func (m model) runCommandAsync(a action) tea.Cmd {
 	cmdStr := a.Command
 	label := a.Label
+	projectRoot := m.gf.Config.ProjectRoot
 	return func() tea.Msg {
 		cmd := exec.Command("sh", "-c", cmdStr)
-		cmd.Dir = m.cfg.ProjectRoot
+		cmd.Dir = projectRoot
 		var buf bytes.Buffer
 		cmd.Stdout = &buf
 		cmd.Stderr = &buf
@@ -375,17 +371,18 @@ func (m model) renderBase() string {
 }
 
 func (m model) renderTitleBar() string {
-	btype := git.BranchTypeOf(m.state.Current)
+	s := m.gf.State
+	btype := branch.TypeOf(s.Current)
 
 	pname := ""
-	parts := strings.Split(m.cfg.ProjectRoot, string(os.PathSeparator))
+	parts := strings.Split(m.gf.Config.ProjectRoot, string(os.PathSeparator))
 	if len(parts) > 0 {
 		pname = parts[len(parts)-1]
 	}
 
-	branchLabel := branchStyle(btype).Render(" " + m.state.Current + " ")
+	branchLabel := branchStyle(btype).Render(" " + s.Current + " ")
 
-	tagDisplay := m.state.LastTag
+	tagDisplay := s.LastTag
 	if tagDisplay == "none" {
 		tagDisplay = ""
 	}
@@ -395,28 +392,28 @@ func (m model) renderTitleBar() string {
 		"│",
 		branchLabel,
 		"│",
-		"v" + m.state.Version,
+		"v" + s.Version,
 	}
 	if tagDisplay != "" {
 		segments = append(segments, "│", tagDisplay)
 	}
-	if m.state.Dirty {
+	if s.Dirty {
 		segments = append(segments, "│", dirtyBadge.Render("● dirty"))
 	}
 
 	left := strings.Join(segments, " ")
 
+	// Always show IDE — either detected name or "Terminal"
 	var rightParts []string
-	if m.detectedIDE.ID != ide.IDEUnknown {
-		rightParts = append(rightParts, m.detectedIDE.DisplayName)
+	ideName := m.gf.IDEDisplay()
+	if ideName == "" || m.gf.IDE.ID == ide.IDEUnknown {
+		ideName = "Terminal"
 	}
-	if m.state.GitFlowInitialized {
+	rightParts = append(rightParts, ideName)
+	if s.GitFlowInitialized {
 		rightParts = append(rightParts, "gitflow")
 	}
-	right := ""
-	if len(rightParts) > 0 {
-		right = " " + strings.Join(rightParts, " │ ") + " "
-	}
+	right := " " + strings.Join(rightParts, " │ ") + " "
 
 	padding := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if padding < 0 {
@@ -711,7 +708,6 @@ func placeOverlay(base, overlay string, w, h int) string {
 		baseLines[row] = string(runes)
 	}
 
-	_ = fmt.Sprintf
 	return strings.Join(baseLines[:h], "\n")
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 )
 
 // ANSI color constants
@@ -20,10 +19,7 @@ const (
 	Reset   = "\033[0m"
 )
 
-var (
-	jsonMode bool
-	ansiRe   = regexp.MustCompile(`\033\[[0-9;]*m`)
-)
+var jsonMode bool
 
 func SetJSONMode(enabled bool) { jsonMode = enabled }
 func IsJSONMode() bool         { return jsonMode }
@@ -44,10 +40,6 @@ func JSONOutput(data any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(data)
-}
-
-func StripANSI(s string) string {
-	return ansiRe.ReplaceAllString(s, "")
 }
 
 func Writer() io.Writer {

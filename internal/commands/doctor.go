@@ -16,6 +16,7 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Validate prerequisites (git, branches, gitflow structure)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := GF.Config
 			type check struct {
 				Name  string `json:"name"`
 				Value string `json:"value"`
@@ -26,28 +27,28 @@ func newDoctorCmd() *cobra.Command {
 			goVer := runtime.Version()
 			checks = append(checks, check{"Go runtime", goVer, true})
 
-			gitVer := git.RunQuiet("git --version")
+			gitVer := git.ExecQuiet("--version")
 			checks = append(checks, check{"git", strings.Replace(gitVer, "git version ", "", 1), gitVer != ""})
 
-			_, err := os.Stat(fmt.Sprintf("%s/.git", Cfg.ProjectRoot))
+			_, err := os.Stat(fmt.Sprintf("%s/.git", cfg.ProjectRoot))
 			inRepo := err == nil
-			root := Cfg.ProjectRoot
+			root := cfg.ProjectRoot
 			if !inRepo {
 				root = "NOT A REPO"
 			}
 			checks = append(checks, check{"git repo", root, inRepo})
 
-			remotes := git.RunLines("git remote")
+			remotes := git.ExecLines("remote")
 			hasRemote := false
 			for _, r := range remotes {
-				if r == Cfg.Remote {
+				if r == cfg.Remote {
 					hasRemote = true
 					break
 				}
 			}
-			remoteVal := Cfg.Remote
+			remoteVal := cfg.Remote
 			if !hasRemote {
-				remoteVal = fmt.Sprintf("'%s' not found", Cfg.Remote)
+				remoteVal = fmt.Sprintf("'%s' not found", cfg.Remote)
 			}
 			checks = append(checks, check{"remote", remoteVal, hasRemote})
 
@@ -56,8 +57,8 @@ func newDoctorCmd() *cobra.Command {
 			for _, b := range allBranches {
 				branchSet[b] = true
 			}
-			hasMain := branchSet[Cfg.MainBranch]
-			hasDev := branchSet[Cfg.DevelopBranch]
+			hasMain := branchSet[cfg.MainBranch]
+			hasDev := branchSet[cfg.DevelopBranch]
 			mainVal := "exists"
 			if !hasMain {
 				mainVal = "MISSING"
@@ -66,8 +67,8 @@ func newDoctorCmd() *cobra.Command {
 			if !hasDev {
 				devVal = "MISSING"
 			}
-			checks = append(checks, check{Cfg.MainBranch, mainVal, hasMain})
-			checks = append(checks, check{Cfg.DevelopBranch, devVal, hasDev})
+			checks = append(checks, check{cfg.MainBranch, mainVal, hasMain})
+			checks = append(checks, check{cfg.DevelopBranch, devVal, hasDev})
 
 			gfInit := git.IsGitFlowInitialized()
 			gfInitVal := "yes"
@@ -75,6 +76,8 @@ func newDoctorCmd() *cobra.Command {
 				gfInitVal = "NOT INITIALIZED (run: gitflow init)"
 			}
 			checks = append(checks, check{"gitflow structure", gfInitVal, gfInit})
+
+			checks = append(checks, check{"IDE", GF.IDEDisplay(), true})
 
 			allOK := true
 			for _, c := range checks {
@@ -89,6 +92,7 @@ func newDoctorCmd() *cobra.Command {
 					"action": "doctor",
 					"checks": checks,
 					"all_ok": allOK,
+					"ide":    GF.IDE,
 				})
 				if !allOK {
 					os.Exit(1)

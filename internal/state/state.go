@@ -61,11 +61,11 @@ func DetectMergeState(cfg config.FlowConfig) MergeState {
 			head = head[:12]
 		}
 		ms.MergeHead = head
-		ms.ConflictedFiles = git.RunLines("git diff --name-only --diff-filter=U")
+		ms.ConflictedFiles = git.ExecLines("diff", "--name-only", "--diff-filter=U")
 	}
 
 	if ms.InMerge {
-		allLocal := git.RunLines("git branch --format='%(refname:short)'")
+		allLocal := git.ExecLines("branch", "--format=%(refname:short)")
 		for _, b := range allLocal {
 			if strings.HasPrefix(b, "release/") {
 				ms.OperationType = "release"
@@ -94,12 +94,12 @@ func DetectState(cfg config.FlowConfig) RepoState {
 	s.Merge = DetectMergeState(cfg)
 	s.GitFlowInitialized = git.IsGitFlowInitialized()
 
-	statusLines := git.RunLines("git status --porcelain")
+	statusLines := git.ExecLines("status", "--porcelain")
 	s.UncommittedCount = len(statusLines)
 	s.Dirty = s.UncommittedCount > 0
 
-	allLocal := git.RunLines("git branch --format='%(refname:short)'")
-	allRemote := git.RunLines("git branch -r --format='%(refname:short)'")
+	allLocal := git.ExecLines("branch", "--format=%(refname:short)")
+	allRemote := git.ExecLines("branch", "-r", "--format=%(refname:short)")
 	remoteSet := make(map[string]bool)
 	for _, r := range allRemote {
 		remoteSet[r] = true
@@ -115,16 +115,16 @@ func DetectState(cfg config.FlowConfig) RepoState {
 	}
 
 	if s.HasDevelop && s.HasMain && !s.Merge.InMerge {
-		ahead := git.RunQuiet("git rev-list --count " + cfg.MainBranch + ".." + cfg.DevelopBranch + " 2>/dev/null")
+		ahead := git.ExecQuiet("rev-list", "--count", cfg.MainBranch+".."+cfg.DevelopBranch)
 		s.DevelopAheadOfMain = atoi(ahead)
-		behind := git.RunQuiet("git rev-list --count " + cfg.DevelopBranch + ".." + cfg.MainBranch + " 2>/dev/null")
+		behind := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch)
 		s.MainAheadOfDevelop = atoi(behind)
 
 		if s.DevelopAheadOfMain > 0 {
-			s.DevelopOnlyFiles = git.RunLines("git diff --name-only " + cfg.MainBranch + "..." + cfg.DevelopBranch)
+			s.DevelopOnlyFiles = git.ExecLines("diff", "--name-only", cfg.MainBranch+"..."+cfg.DevelopBranch)
 		}
 		if s.MainAheadOfDevelop > 0 {
-			s.MainOnlyFiles = git.RunLines("git diff --name-only " + cfg.DevelopBranch + "..." + cfg.MainBranch)
+			s.MainOnlyFiles = git.ExecLines("diff", "--name-only", cfg.DevelopBranch+"..."+cfg.MainBranch)
 		}
 	}
 
@@ -146,12 +146,10 @@ func DetectState(cfg config.FlowConfig) RepoState {
 				short := strings.TrimPrefix(branch, m.prefix)
 				hasRemote := remoteSet[cfg.Remote+"/"+branch]
 				parent := cfg.DevelopBranch
-				if m.branchType == "hotfix" || m.branchType == "release" {
-					if m.branchType == "hotfix" {
-						parent = cfg.MainBranch
-					}
+				if m.branchType == "hotfix" {
+					parent = cfg.MainBranch
 				}
-				aheadStr := git.RunQuiet("git rev-list --count " + parent + ".." + branch + " 2>/dev/null")
+				aheadStr := git.ExecQuiet("rev-list", "--count", parent+".."+branch)
 				aheadN := atoi(aheadStr)
 				*m.target = append(*m.target, BranchInfo{
 					Name:         branch,

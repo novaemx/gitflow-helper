@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/state"
 )
 
@@ -38,7 +38,7 @@ func hasTagAndLabel(actions []action, tag, needle string) bool {
 }
 
 func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
-	btype := git.BranchTypeOf(s.Current)
+	btype := branch.TypeOf(s.Current)
 	ms := s.Merge
 	var actions []action
 

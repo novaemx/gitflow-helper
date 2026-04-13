@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/state"
 )
 
@@ -117,7 +117,7 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 	lines = append(lines, dashLine{" Phase analysis:", "section"})
 	lines = append(lines, dashLine{"", "normal"})
 
-	btype := git.BranchTypeOf(s.Current)
+	btype := branch.TypeOf(s.Current)
 	switch {
 	case s.Merge.InMerge && len(s.Merge.ConflictedFiles) > 0:
 		if s.Merge.OperationType != "" {
