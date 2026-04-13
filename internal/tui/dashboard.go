@@ -72,6 +72,8 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 			if len(s.DevelopOnlyFiles) > 6 {
 				lines = append(lines, dashLine{fmt.Sprintf("      ... and %d more", len(s.DevelopOnlyFiles)-6), "dim"})
 			}
+		} else {
+			lines = append(lines, dashLine{"    No unreleased file changes (metadata-only commit).", "dim"})
 		}
 	}
 
@@ -168,8 +170,10 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		lines = append(lines, dashLine{"   Integration branch (develop).", "feature"})
 		if s.MainAheadOfDevelop > 0 {
 			lines = append(lines, dashLine{"   CRITICAL: backmerge required before any work.", "error"})
-		} else if s.DevelopAheadOfMain > 0 {
+		} else if s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0 {
 			lines = append(lines, dashLine{fmt.Sprintf("   %d unreleased commit(s). Consider a release.", s.DevelopAheadOfMain), "ok"})
+		} else if s.DevelopAheadOfMain > 0 {
+			lines = append(lines, dashLine{"   Ahead by metadata-only commit; no release needed.", "dim"})
 		} else {
 			lines = append(lines, dashLine{fmt.Sprintf("   Up to date with %s.", cfg.MainBranch), "dim"})
 		}
