@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/gitflow"
 	"github.com/luis-lozano/gitflow-helper/internal/ide"
 	mcpserver "github.com/luis-lozano/gitflow-helper/internal/mcp"
@@ -429,7 +428,6 @@ func (m model) renderBase() string {
 
 func (m model) renderTitleBar() string {
 	s := m.gf.State
-	btype := branch.TypeOf(s.Current)
 
 	pname := ""
 	parts := strings.Split(m.gf.Config.ProjectRoot, string(os.PathSeparator))
@@ -455,7 +453,14 @@ func (m model) renderTitleBar() string {
 	}
 	line1 := titleStyle.Width(m.width).Render(left1 + strings.Repeat(" ", pad1) + right1)
 
-	branchLabel := branchStyle(btype).Render(" ⎇ " + s.Current + " ")
+	branchBadge := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("0")).
+		Background(lipgloss.Color("2"))
+	if s.Dirty {
+		branchBadge = branchBadge.Background(lipgloss.Color("3"))
+	}
+	branchLabel := branchBadge.Render(" ⎇ " + s.Current + " ")
 	tagDisplay := s.LastTag
 	if tagDisplay == "none" {
 		tagDisplay = ""
