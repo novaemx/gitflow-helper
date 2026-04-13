@@ -131,6 +131,19 @@ automatically updates the `VERSION` file (or configured version file) and
 commits the bump. This means the release branch already contains the correct
 version. **Do not manually edit the VERSION file for releases/hotfixes.**
 
+Automation rules:
+
+- You can pass `auto` as version (`start release auto`, `start hotfix auto`)
+  and gitflow resolves the version from `VERSION` / configured version file.
+- Starting a release/hotfix now fails fast if the target tag already exists.
+- Finishing a release/hotfix validates that branch version matches the version
+  file and aborts on mismatch instead of producing partial success output.
+- During finish, if the intended tag already exists, gitflow automatically
+  bumps to the next available patch version (x.y.z), updates `VERSION`, renames
+  the flow branch (`release/*` or `hotfix/*`), and continues with the new tag.
+- Tag creation and release-branch deletion are treated as required steps;
+  failures abort finish with an error (no false "success" message).
+
 ### 1g. Are there uncommitted changes?
 
 If `dirty` is `true` and we need to switch branches, the tool handles

@@ -2,12 +2,88 @@ package flow
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/luis-lozano/gitflow-helper/internal/config"
 	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/luis-lozano/gitflow-helper/internal/version"
 )
+
+func bumpPatchVersion(ver string) (string, error) {
+	parts := strings.Split(ver, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid version %q (expected x.y.z)", ver)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return "", fmt.Errorf("invalid major version in %q", ver)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("invalid minor version in %q", ver)
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("invalid patch version in %q", ver)
+	}
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), nil
+}
+
+func nextAvailableTagVersion(cfg config.FlowConfig, start string) (string, error) {
+	candidate := start
+	for i := 0; i < 1000; i++ {
+		tagName := cfg.TagPrefix + candidate
+		if !git.TagExists(tagName) {
+			return candidate, nil
+		}
+		next, err := bumpPatchVersion(candidate)
+		if err != nil {
+			return "", err
+		}
+		candidate = next
+	}
+	return "", fmt.Errorf("unable to find available version after %s", start)
+}
+
+func autoBumpFlowVersionIfTagExists(cfg config.FlowConfig, btype, name string, result map[string]any) (string, error) {
+	tagName := cfg.TagPrefix + name
+	if !git.TagExists(tagName) {
+		return name, nil
+	}
+
+	next, err := nextAvailableTagVersion(cfg, name)
+	if err != nil {
+		return "", err
+	}
+	if next == name {
+		return name, nil
+	}
+
+	if cfg.VersionFile == "" {
+		return "", fmt.Errorf("cannot auto-bump %s: version_file is not configured", btype)
+	}
+
+	oldBranch := btype + "/" + name
+	newBranch := btype + "/" + next
+	if git.BranchExists(newBranch) {
+		return "", fmt.Errorf("cannot auto-bump: target branch %s already exists", newBranch)
+	}
+
+	output.Infof("  %s⚠ Tag %s already exists; auto-bumping %s to %s.%s", output.Yellow, tagName, btype, next, output.Reset)
+	version.WriteVersionFile(cfg, next)
+
+	if err := git.Exec("branch", "-m", oldBranch, newBranch); err != nil {
+		return "", fmt.Errorf("failed to rename %s to %s: %w", oldBranch, newBranch, err)
+	}
+
+	result["auto_bumped"] = true
+	result["auto_bumped_from"] = name
+	result["auto_bumped_to"] = next
+	result["auto_bump_reason"] = fmt.Sprintf("tag %s already exists", tagName)
+	return next, nil
+}
 
 func finishFeatureOrBugfix(cfg config.FlowConfig, btype, name string) error {
 	branchName := btype + "/" + name
@@ -35,6 +111,9 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("branch %s does not exist", branchName)
 	}
 	tagName := cfg.TagPrefix + ver
+	if git.TagExists(tagName) {
+		return fmt.Errorf("tag %s already exists", tagName)
+	}
 
 	if err := git.Exec("checkout", cfg.MainBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.MainBranch, err)
@@ -45,7 +124,9 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("merge of %s into %s failed: %w", branchName, cfg.MainBranch, err)
 	}
 
-	_ = git.Exec("tag", "-a", tagName, "-m", fmt.Sprintf("Release %s", ver))
+	if err := git.Exec("tag", "-a", tagName, "-m", fmt.Sprintf("Release %s", ver)); err != nil {
+		return fmt.Errorf("tag creation failed for %s: %w", tagName, err)
+	}
 
 	if err := git.Exec("checkout", cfg.DevelopBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.DevelopBranch, err)
@@ -56,7 +137,9 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("back-merge of %s into %s failed: %w", tagName, cfg.DevelopBranch, err)
 	}
 
-	_ = git.Exec("branch", "-d", branchName)
+	if err := git.Exec("branch", "-d", branchName); err != nil {
+		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
+	}
 	output.Infof("  %s✓ release/%s → %s (tagged %s) → %s%s",
 		output.Green, ver, cfg.MainBranch, tagName, cfg.DevelopBranch, output.Reset)
 	return nil
@@ -68,6 +151,9 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("branch %s does not exist", branchName)
 	}
 	tagName := cfg.TagPrefix + ver
+	if git.TagExists(tagName) {
+		return fmt.Errorf("tag %s already exists", tagName)
+	}
 
 	if err := git.Exec("checkout", cfg.MainBranch); err != nil {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.MainBranch, err)
@@ -78,7 +164,9 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("merge of %s into %s failed: %w", branchName, cfg.MainBranch, err)
 	}
 
-	_ = git.Exec("tag", "-a", tagName, "-m", fmt.Sprintf("Hotfix %s", ver))
+	if err := git.Exec("tag", "-a", tagName, "-m", fmt.Sprintf("Hotfix %s", ver)); err != nil {
+		return fmt.Errorf("tag creation failed for %s: %w", tagName, err)
+	}
 
 	releases := git.ActiveReleaseBranches()
 	backTarget := cfg.DevelopBranch
@@ -95,7 +183,9 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("back-merge of hotfix into %s failed: %w", backTarget, err)
 	}
 
-	_ = git.Exec("branch", "-d", branchName)
+	if err := git.Exec("branch", "-d", branchName); err != nil {
+		return fmt.Errorf("failed to delete branch %s: %w", branchName, err)
+	}
 	output.Infof("  %s✓ hotfix/%s → %s (tagged %s) → %s%s",
 		output.Green, ver, cfg.MainBranch, tagName, backTarget, output.Reset)
 	return nil
@@ -165,11 +255,43 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 	}
 
 	if btype == "release" || btype == "hotfix" {
+		fileVer := git.FlowVersion(version.ReadVersion(cfg))
+		if fileVer != "" && fileVer != "0.0.0" && fileVer != name {
+			result["result"] = "error"
+			result["version_file"] = cfg.VersionFile
+			result["version_from_file"] = fileVer
+			result["error"] = fmt.Sprintf("version mismatch: branch %s/%s but %s=%s", btype, name, cfg.VersionFile, fileVer)
+			return 1, result
+		}
+
+		updatedName, err := autoBumpFlowVersionIfTagExists(cfg, btype, name, result)
+		if err != nil {
+			result["result"] = "error"
+			result["error"] = err.Error()
+			return 1, result
+		}
+		if updatedName != name {
+			name = updatedName
+			result["name"] = name
+		}
+	}
+
+	if btype == "release" || btype == "hotfix" {
 		meta := WriteReleaseNotes(cfg, "")
 		if meta != nil {
 			result["release_notes"] = meta
-			_ = git.Exec("add", "RELEASE_NOTES.md")
-			_ = git.Exec("commit", "-m", fmt.Sprintf("docs: release notes for %s %s", btype, name))
+			if err := git.Exec("add", "RELEASE_NOTES.md"); err != nil {
+				result["result"] = "error"
+				result["error"] = "failed to stage release notes: " + err.Error()
+				return 1, result
+			}
+			if git.HasStagedChanges() {
+				if err := git.Exec("commit", "-m", fmt.Sprintf("docs: release notes for %s %s", btype, name)); err != nil {
+					result["result"] = "error"
+					result["error"] = "failed to commit release notes: " + err.Error()
+					return 1, result
+				}
+			}
 		}
 	}
 

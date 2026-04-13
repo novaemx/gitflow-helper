@@ -35,6 +35,11 @@ func newFinishCmd() *cobra.Command {
 				output.JSONOutput(result)
 			}
 			if code != 0 {
+				if !output.IsJSONMode() {
+					if msg, ok := result["error"].(string); ok && msg != "" {
+						output.Infof("  %s✗ %s%s", output.Red, msg, output.Reset)
+					}
+				}
 				os.Exit(code)
 			}
 			return nil
