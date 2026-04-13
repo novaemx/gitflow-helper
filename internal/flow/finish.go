@@ -138,6 +138,40 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		"name":   name,
 	}
 
+	wt := git.WorkingTreeStatus()
+	if wt.Total > 0 {
+		var parts []string
+		if wt.Staged > 0 {
+			parts = append(parts, fmt.Sprintf("%d staged", wt.Staged))
+		}
+		if wt.Unstaged > 0 {
+			parts = append(parts, fmt.Sprintf("%d modified", wt.Unstaged))
+		}
+		if wt.Untracked > 0 {
+			parts = append(parts, fmt.Sprintf("%d untracked", wt.Untracked))
+		}
+		detail := strings.Join(parts, ", ")
+
+		if wt.Staged > 0 || wt.Unstaged > 0 {
+			output.Infof("  %s✗ Cannot finish: working tree has uncommitted changes (%s).%s",
+				output.Red, detail, output.Reset)
+			output.Infof("  %sCommit or stash your changes first, then retry.%s",
+				output.Dim, output.Reset)
+			result["result"] = "error"
+			result["error"] = fmt.Sprintf("dirty working tree: %s", detail)
+			result["dirty"] = map[string]int{
+				"staged": wt.Staged, "modified": wt.Unstaged, "untracked": wt.Untracked,
+			}
+			return 1, result
+		}
+
+		if wt.Untracked > 0 {
+			output.Infof("  %sWarning:%s %d untracked file(s) detected. They won't be affected by the merge, but consider committing or .gitignore-ing them.",
+				output.Yellow, output.Reset, wt.Untracked)
+			result["warning_untracked"] = wt.Untracked
+		}
+	}
+
 	var err error
 	switch btype {
 	case "feature", "bugfix":

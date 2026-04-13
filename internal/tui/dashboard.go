@@ -180,6 +180,12 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		lines = append(lines, dashLine{fmt.Sprintf("   Branch '%s' is not a standard gitflow branch.", s.Current), "dim"})
 	}
 
+	if s.Dirty {
+		lines = append(lines, dashLine{"", "normal"})
+		lines = append(lines, dashLine{fmt.Sprintf(" ⚠  Dirty working tree (%d file(s))", s.UncommittedCount), "warn"})
+		lines = append(lines, dashLine{"    Commit or stash before start/finish operations.", "dim"})
+	}
+
 	if len(s.Releases) > 0 && btype != "release" && !s.Merge.InMerge {
 		lines = append(lines, dashLine{"", "normal"})
 		lines = append(lines, dashLine{fmt.Sprintf(" ⚠  Release '%s' is open. Finish it first.", s.Releases[0].Name), "warn"})

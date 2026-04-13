@@ -86,7 +86,8 @@ var ideRuleRegistry = map[string]ideRuleSpec{
 
 // EnsureRulesForIDE checks if rules exist for the detected IDE.
 // If missing, it creates them. Also ensures AGENTS.md is present as a
-// universal fallback. Returns list of newly created files (empty if all exist).
+// universal fallback, and MCP config for IDEs that support it.
+// Returns list of newly created files (empty if all exist).
 func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
 	var created []string
 
@@ -108,6 +109,14 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 			return created, err
 		}
 		created = append(created, path)
+	}
+
+	// Auto-provision MCP config for IDEs that support it
+	if MCPSupportedIDEs[detected.ID] && !MCPConfigExists(projectRoot, detected.ID) {
+		path, err := EnsureMCPConfig(projectRoot, detected.ID)
+		if err == nil && path != "" {
+			created = append(created, path)
+		}
 	}
 
 	return created, nil
@@ -254,7 +263,7 @@ func matchParentProcess(name string) bool {
 }
 
 // Generate dispatches to the appropriate rule/instruction file generators.
-// For explicit setup: always generates for the specified IDE + AGENTS.md.
+// For explicit setup: always generates for the specified IDE + AGENTS.md + MCP config.
 func Generate(projectRoot, ideType string) ([]string, error) {
 	var files []string
 
@@ -285,6 +294,20 @@ func Generate(projectRoot, ideType string) ([]string, error) {
 		return nil, err
 	}
 	files = append(files, f)
+
+	// Generate MCP config for supported IDEs
+	mcpTargets := []string{ideType}
+	if ideType == IDEBoth || ideType == IDEUnknown {
+		mcpTargets = []string{IDECursor, IDECopilot}
+	}
+	for _, id := range mcpTargets {
+		if MCPSupportedIDEs[id] {
+			p, err := EnsureMCPConfig(projectRoot, id)
+			if err == nil && p != "" {
+				files = append(files, p)
+			}
+		}
+	}
 
 	return files, nil
 }
