@@ -7,6 +7,7 @@ import (
 
 	"github.com/luis-lozano/gitflow-helper/internal/branch"
 	"github.com/luis-lozano/gitflow-helper/internal/config"
+	"github.com/luis-lozano/gitflow-helper/internal/git"
 	"github.com/luis-lozano/gitflow-helper/internal/state"
 )
 
@@ -188,11 +189,21 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	switch {
 	case btype == "base" && s.Current == cfg.DevelopBranch:
 		if len(s.Releases) > 0 {
-			rel := s.Releases[0]
-			normal = append(normal, action{
-				Label: fmt.Sprintf("Switch to release '%s' and finish it", rel.Name), Tag: "finish",
-				Recommended: true, Command: fmt.Sprintf("git checkout %s && gitflow finish", rel.Name),
-			})
+			var candidate *state.BranchInfo
+			for i := range s.Releases {
+				rel := &s.Releases[i]
+				tagName := cfg.TagPrefix + rel.ShortName
+				if !git.TagExists(tagName) {
+					candidate = rel
+					break
+				}
+			}
+			if candidate != nil {
+				normal = append(normal, action{
+					Label: fmt.Sprintf("Switch to release '%s' and finish it", candidate.Name), Tag: "finish",
+					Recommended: true, Command: fmt.Sprintf("git checkout %s && gitflow finish", candidate.Name),
+				})
+			}
 		}
 		if len(s.Releases) == 0 {
 			normal = append(normal, action{

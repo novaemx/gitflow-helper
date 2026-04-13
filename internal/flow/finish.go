@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/luis-lozano/gitflow-helper/internal/config"
@@ -9,6 +10,80 @@ import (
 	"github.com/luis-lozano/gitflow-helper/internal/output"
 	"github.com/luis-lozano/gitflow-helper/internal/version"
 )
+
+func bumpPatchVersion(ver string) (string, error) {
+	parts := strings.Split(ver, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid version %q (expected x.y.z)", ver)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return "", fmt.Errorf("invalid major version in %q", ver)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("invalid minor version in %q", ver)
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("invalid patch version in %q", ver)
+	}
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), nil
+}
+
+func nextAvailableTagVersion(cfg config.FlowConfig, start string) (string, error) {
+	candidate := start
+	for i := 0; i < 1000; i++ {
+		tagName := cfg.TagPrefix + candidate
+		if !git.TagExists(tagName) {
+			return candidate, nil
+		}
+		next, err := bumpPatchVersion(candidate)
+		if err != nil {
+			return "", err
+		}
+		candidate = next
+	}
+	return "", fmt.Errorf("unable to find available version after %s", start)
+}
+
+func autoBumpFlowVersionIfTagExists(cfg config.FlowConfig, btype, name string, result map[string]any) (string, error) {
+	tagName := cfg.TagPrefix + name
+	if !git.TagExists(tagName) {
+		return name, nil
+	}
+
+	next, err := nextAvailableTagVersion(cfg, name)
+	if err != nil {
+		return "", err
+	}
+	if next == name {
+		return name, nil
+	}
+
+	if cfg.VersionFile == "" {
+		return "", fmt.Errorf("cannot auto-bump %s: version_file is not configured", btype)
+	}
+
+	oldBranch := btype + "/" + name
+	newBranch := btype + "/" + next
+	if git.BranchExists(newBranch) {
+		return "", fmt.Errorf("cannot auto-bump: target branch %s already exists", newBranch)
+	}
+
+	output.Infof("  %s⚠ Tag %s already exists; auto-bumping %s to %s.%s", output.Yellow, tagName, btype, next, output.Reset)
+	version.WriteVersionFile(cfg, next)
+
+	if err := git.Exec("branch", "-m", oldBranch, newBranch); err != nil {
+		return "", fmt.Errorf("failed to rename %s to %s: %w", oldBranch, newBranch, err)
+	}
+
+	result["auto_bumped"] = true
+	result["auto_bumped_from"] = name
+	result["auto_bumped_to"] = next
+	result["auto_bump_reason"] = fmt.Sprintf("tag %s already exists", tagName)
+	return next, nil
+}
 
 func finishFeatureOrBugfix(cfg config.FlowConfig, btype, name string) error {
 	branchName := btype + "/" + name
@@ -145,20 +220,6 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		name = strings.TrimLeft(strings.TrimPrefix(branch, prefixes[btype]), "v")
 	}
 
-	if btype == "release" || btype == "hotfix" {
-		fileVer := git.FlowVersion(version.ReadVersion(cfg))
-		if fileVer != "" && fileVer != "0.0.0" && fileVer != name {
-			return 1, map[string]any{
-				"action":            "finish",
-				"type":              btype,
-				"name":              name,
-				"version_file":      cfg.VersionFile,
-				"version_from_file": fileVer,
-				"error":             fmt.Sprintf("version mismatch: branch %s/%s but %s=%s", btype, name, cfg.VersionFile, fileVer),
-			}
-		}
-	}
-
 	result := map[string]any{
 		"action": "finish",
 		"type":   btype,
@@ -191,6 +252,28 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 
 	if wt.Untracked > 0 {
 		result["warning_untracked"] = wt.Untracked
+	}
+
+	if btype == "release" || btype == "hotfix" {
+		fileVer := git.FlowVersion(version.ReadVersion(cfg))
+		if fileVer != "" && fileVer != "0.0.0" && fileVer != name {
+			result["result"] = "error"
+			result["version_file"] = cfg.VersionFile
+			result["version_from_file"] = fileVer
+			result["error"] = fmt.Sprintf("version mismatch: branch %s/%s but %s=%s", btype, name, cfg.VersionFile, fileVer)
+			return 1, result
+		}
+
+		updatedName, err := autoBumpFlowVersionIfTagExists(cfg, btype, name, result)
+		if err != nil {
+			result["result"] = "error"
+			result["error"] = err.Error()
+			return 1, result
+		}
+		if updatedName != name {
+			name = updatedName
+			result["name"] = name
+		}
 	}
 
 	if btype == "release" || btype == "hotfix" {

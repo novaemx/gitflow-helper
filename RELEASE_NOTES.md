@@ -1,6 +1,11 @@
-# Release 0.5.3
+# Release 0.5.5
 
 **Date:** 2026-04-12
+
+## What's New
+
+- Implement automatic patch version bumping and branch renaming on tag conflict during finish
+- Enhance version handling and error reporting in flow management
 
 ## Improvements
 
