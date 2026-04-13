@@ -177,6 +177,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	// T3 NORMAL: pull, start work, diffs
 	normal = append(normal, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
+	hasReleasableDiff := s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0
 
 	if s.DevelopAheadOfMain > 0 {
 		normal = append(normal, action{
@@ -215,7 +216,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			Label: "Start a bugfix", Tag: "start",
 			NeedsInput: true, InputPrompt: "Bugfix name:", Command: "gitflow start bugfix %s",
 		})
-		if s.DevelopAheadOfMain > 0 && len(s.Releases) == 0 {
+		if hasReleasableDiff && len(s.Releases) == 0 {
 			normal = append(normal, action{
 				Label:       fmt.Sprintf("Start a release (%d unreleased commit(s))", s.DevelopAheadOfMain),
 				Tag:         "release",
@@ -242,7 +243,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	}
 
 	// Recommend release from any branch when develop is ahead and no release exists
-	if s.DevelopAheadOfMain > 0 && len(s.Releases) == 0 && !hasTag(normal, "release") {
+	if hasReleasableDiff && len(s.Releases) == 0 && !hasTag(normal, "release") {
 		normal = append(normal, action{
 			Label:       fmt.Sprintf("Start a release (%d unreleased commit(s))", s.DevelopAheadOfMain),
 			Tag:         "release",
