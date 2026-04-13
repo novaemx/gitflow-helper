@@ -225,11 +225,16 @@ func (gf *Logic) Health() map[string]any {
 		issues = append(issues, fmt.Sprintf("'%s' branch missing", cfg.MainBranch))
 	}
 
-	fetchCode, _, _ := git.ExecResult("ls-remote", "--exit-code", cfg.Remote, "HEAD")
-	if fetchCode != 0 {
-		warnings = append(warnings, fmt.Sprintf("remote '%s' unreachable", cfg.Remote))
+	remoteExists := git.RemoteExists(cfg.Remote)
+	if !remoteExists {
+		warnings = append(warnings, fmt.Sprintf("remote '%s' not configured — fix: git remote add %s <url>", cfg.Remote, cfg.Remote))
 	} else {
-		okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", cfg.Remote))
+		fetchCode, _, _ := git.ExecResult("ls-remote", "--exit-code", cfg.Remote, "HEAD")
+		if fetchCode != 0 {
+			warnings = append(warnings, fmt.Sprintf("remote '%s' unreachable — fix: verify network/credentials or run 'git remote -v'", cfg.Remote))
+		} else {
+			okItems = append(okItems, fmt.Sprintf("remote '%s' reachable", cfg.Remote))
+		}
 	}
 
 	if localSet[cfg.DevelopBranch] && localSet[cfg.MainBranch] {

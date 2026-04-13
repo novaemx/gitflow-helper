@@ -1,14 +1,14 @@
-# Release 0.5.9
+# Release 0.5.10
 
 **Date:** 2026-04-12
 
 ## What's New
 
+- Enhance health check and TUI output handling with improved remote checks and action labels
 - Improve sync and backmerge functionality with remote checks
-- Enhance pull functionality with remote checks and update dashboard messages
 
 ## Bug Fixes
 
-- Merge hotfix '0.5.8' into main
-- Release notes for hotfix 0.5.8
+- Merge hotfix '0.5.9' into main
+- Release notes for hotfix 0.5.9
 

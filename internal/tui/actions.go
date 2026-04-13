@@ -176,7 +176,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	}
 
 	// T3 NORMAL: pull, start work, diffs
-	if s.HasDefaultRemote {
+	if s.MainAheadOfDevelop > 0 {
+		normal = append(normal, action{Label: "Pull deferred: fix backmerge first", Tag: "pull"})
+	} else if s.HasDefaultRemote {
 		normal = append(normal, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
 	} else {
 		normal = append(normal, action{Label: fmt.Sprintf("Pull disabled (no '%s' remote configured)", cfg.Remote), Tag: "pull"})

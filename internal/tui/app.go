@@ -624,6 +624,14 @@ func classifyOutputLine(line string) (string, string) {
 	switch {
 	case trimmed == "":
 		return "", "blank"
+	case strings.HasPrefix(trimmed, "✓"):
+		return "", "ok"
+	case strings.HasPrefix(trimmed, "✗"):
+		return "", "error"
+	case strings.HasPrefix(trimmed, "⚠"):
+		return "", "warn"
+	case strings.HasPrefix(trimmed, "↪") || strings.HasPrefix(trimmed, "›"):
+		return "", "dim"
 	case strings.Contains(lower, "error") || strings.Contains(lower, "failed") || strings.Contains(lower, "fatal"):
 		return "✗", "error"
 	case strings.Contains(lower, "conflict"):
@@ -696,19 +704,23 @@ func (m model) renderOutputOverlay(base string) string {
 		if len(text) > maxW {
 			text = text[:maxW]
 		}
+		content := text
+		if icon != "" {
+			content = icon + " " + text
+		}
 
 		var styled string
 		switch cat {
 		case "error":
-			styled = errorStyle.Render(icon + " " + text)
+			styled = errorStyle.Render(content)
 		case "warn":
-			styled = warnStyle.Render(icon + " " + text)
+			styled = warnStyle.Render(content)
 		case "ok":
-			styled = okStyle.Render(icon + " " + text)
+			styled = okStyle.Render(content)
 		case "dim":
-			styled = dimStyle.Render(icon + " " + text)
+			styled = dimStyle.Render(content)
 		default:
-			styled = icon + " " + text
+			styled = content
 		}
 		processed = append(processed, "  "+styled)
 	}
