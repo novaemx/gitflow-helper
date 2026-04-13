@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
-	"github.com/luis-lozano/gitflow-helper/internal/version"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/version"
 )
 
 func bumpPatchVersion(ver string) (string, error) {

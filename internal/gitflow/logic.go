@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/debug"
-	"github.com/luis-lozano/gitflow-helper/internal/flow"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/ide"
-	"github.com/luis-lozano/gitflow-helper/internal/state"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/debug"
+	"github.com/novaemx/gitflow-helper/internal/flow"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/ide"
+	"github.com/novaemx/gitflow-helper/internal/state"
 )
 
 // Logic is the top-level facade that coordinates all gitflow workflow
@@ -24,11 +24,11 @@ type Logic struct {
 	State      state.RepoState
 	IDE        ide.DetectedIDE
 	AppVersion string
-	
+
 	// Caches for git checks (immutable during command execution)
-	gitAvailCache    *bool
-	isgitRepoCache   *bool
-	gfInitCache      *bool
+	gitAvailCache  *bool
+	isgitRepoCache *bool
+	gfInitCache    *bool
 }
 
 // New creates a Gitflow facade from a project root path.
@@ -36,23 +36,23 @@ type Logic struct {
 func New(projectRoot string) *Logic {
 	deferTotal := debug.Start("gitflow.New.total")
 	defer deferTotal()
-	
+
 	deferFind := debug.Start("gitflow.New.FindProjectRoot")
 	if projectRoot == "" {
 		projectRoot = config.FindProjectRoot()
 	}
 	deferFind()
-	
+
 	deferLoad := debug.Start("gitflow.New.LoadConfig")
 	cfg := config.LoadConfig(projectRoot)
 	deferLoad()
-	
+
 	git.ProjectRoot = cfg.ProjectRoot
 
 	deferDetect := debug.Start("gitflow.New.DetectPrimary")
 	detectedIDE := ide.DetectPrimary(cfg.ProjectRoot)
 	deferDetect()
-	
+
 	debug.Printf("Gitflow initialized with IDE: %s", detectedIDE.ID)
 
 	gf := &Logic{

@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
 

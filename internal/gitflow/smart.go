@@ -3,9 +3,9 @@ package gitflow
 import (
 	"fmt"
 
-	"github.com/luis-lozano/gitflow-helper/internal/flow"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/flow"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/output"
 )
 
 // PreMergeReport describes the divergence risk before finishing a branch.

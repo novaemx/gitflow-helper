@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"github.com/luis-lozano/gitflow-helper/internal/tui"
+	"github.com/novaemx/gitflow-helper/internal/tui"
 )
 
 func runTUI() error {

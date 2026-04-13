@@ -4,7 +4,7 @@ $toolsDir    = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $packageName = 'gitflow-helper'
 $version     = '0.1.0'
 
-$url      = "https://github.com/luis-lozano/gitflow-helper/releases/download/v$version/gitflow-$version-windows-amd64.zip"
+$url      = "https://github.com/novaemx/gitflow-helper/releases/download/v$version/gitflow-$version-windows-amd64.zip"
 $checksum = 'PLACEHOLDER_SHA256_WINDOWS'
 
 Install-ChocolateyZipPackage `
