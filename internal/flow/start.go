@@ -3,6 +3,7 @@ package flow
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/luis-lozano/gitflow-helper/internal/config"
@@ -12,6 +13,41 @@ import (
 )
 
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+func bumpPatch(ver string) (string, error) {
+	parts := strings.Split(ver, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid version %q (expected x.y.z)", ver)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return "", fmt.Errorf("invalid major version in %q", ver)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("invalid minor version in %q", ver)
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("invalid patch version in %q", ver)
+	}
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), nil
+}
+
+func nextAvailableStartVersion(cfg config.FlowConfig, start string) (string, error) {
+	candidate := start
+	for i := 0; i < 1000; i++ {
+		if !git.TagExists(cfg.TagPrefix + candidate) {
+			return candidate, nil
+		}
+		next, err := bumpPatch(candidate)
+		if err != nil {
+			return "", err
+		}
+		candidate = next
+	}
+	return "", fmt.Errorf("unable to find available version after %s", start)
+}
 
 func startFlowBranch(cfg config.FlowConfig, branchType, name string) error {
 	parent := cfg.DevelopBranch
@@ -75,6 +111,12 @@ func resolveStartVersion(cfg config.FlowConfig, branchType, requested string) (s
 			return "", fmt.Errorf("could not auto-detect %s version from %s", branchType, cfg.VersionFile)
 		}
 		resolved = auto
+
+		next, err := nextAvailableStartVersion(cfg, resolved)
+		if err != nil {
+			return "", err
+		}
+		resolved = next
 	}
 
 	if !semverPattern.MatchString(resolved) {
