@@ -95,10 +95,10 @@ func (gf *Logic) SmartFinish(name string) (int, map[string]any) {
 	report, err := gf.PreMergeCheck(true)
 	if err != nil {
 		return 1, map[string]any{
-			"action":       "finish",
-			"error":        err.Error(),
-			"premerge":     report,
-			"needs_human":  true,
+			"action":      "finish",
+			"error":       err.Error(),
+			"premerge":    report,
+			"needs_human": true,
 		}
 	}
 
@@ -174,8 +174,8 @@ func (gf *Logic) StatusWithHealing(autoHeal bool) map[string]any {
 	if s.MainAheadOfDevelop > 0 {
 		result["action_required"] = "backmerge"
 		result["divergence"] = map[string]any{
-			"main_ahead":   s.MainAheadOfDevelop,
-			"files":        s.MainOnlyFiles,
+			"main_ahead": s.MainAheadOfDevelop,
+			"files":      s.MainOnlyFiles,
 		}
 
 		if autoHeal {

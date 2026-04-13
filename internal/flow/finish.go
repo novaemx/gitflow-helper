@@ -136,15 +136,7 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		"name":   name,
 	}
 
-	if btype == "release" || btype == "hotfix" {
-		meta := WriteReleaseNotes(cfg, "")
-		if meta != nil {
-			result["release_notes"] = meta
-			_ = git.Exec("add", "RELEASE_NOTES.md")
-			_ = git.Exec("commit", "-m", fmt.Sprintf("docs: release notes for %s %s", btype, name))
-		}
-	}
-
+	// Dirty check must run before any side-effects (release notes commit, etc.)
 	wt := git.WorkingTreeStatus()
 	if wt.Staged > 0 || wt.Unstaged > 0 {
 		var parts []string
@@ -170,6 +162,15 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 
 	if wt.Untracked > 0 {
 		result["warning_untracked"] = wt.Untracked
+	}
+
+	if btype == "release" || btype == "hotfix" {
+		meta := WriteReleaseNotes(cfg, "")
+		if meta != nil {
+			result["release_notes"] = meta
+			_ = git.Exec("add", "RELEASE_NOTES.md")
+			_ = git.Exec("commit", "-m", fmt.Sprintf("docs: release notes for %s %s", btype, name))
+		}
 	}
 
 	var err error
