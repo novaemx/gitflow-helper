@@ -329,6 +329,10 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 }
 
 func suggestReleaseVersion(s state.RepoState) string {
+	if s.Version != "" && s.Version != "0.0.0" {
+		return strings.TrimPrefix(s.Version, "v")
+	}
+
 	tag := s.LastTag
 	if tag == "" || tag == "none" {
 		return "0.1.0"
