@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/luis-lozano/gitflow-helper/internal/config"
@@ -9,6 +10,8 @@ import (
 	"github.com/luis-lozano/gitflow-helper/internal/output"
 	"github.com/luis-lozano/gitflow-helper/internal/version"
 )
+
+var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 func startFlowBranch(cfg config.FlowConfig, branchType, name string) error {
 	parent := cfg.DevelopBranch
@@ -59,6 +62,28 @@ func StartHotfix(cfg config.FlowConfig, ver string) error {
 	return startFlowBranch(cfg, "hotfix", git.FlowVersion(ver))
 }
 
+func resolveStartVersion(cfg config.FlowConfig, branchType, requested string) (string, error) {
+	resolved := git.FlowVersion(strings.TrimSpace(requested))
+
+	if branchType != "release" && branchType != "hotfix" {
+		return resolved, nil
+	}
+
+	if resolved == "" || strings.EqualFold(resolved, "auto") {
+		auto := git.FlowVersion(version.ReadVersion(cfg))
+		if auto == "" || auto == "0.0.0" {
+			return "", fmt.Errorf("could not auto-detect %s version from %s", branchType, cfg.VersionFile)
+		}
+		resolved = auto
+	}
+
+	if !semverPattern.MatchString(resolved) {
+		return "", fmt.Errorf("invalid %s version %q (expected x.y.z)", branchType, resolved)
+	}
+
+	return resolved, nil
+}
+
 func bumpVersionOnBranch(cfg config.FlowConfig, branchType, ver string) {
 	if branchType != "release" && branchType != "hotfix" {
 		return
@@ -93,6 +118,30 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 		"type":   branchType,
 		"name":   name,
 	}
+	originalRequested := strings.TrimSpace(name)
+
+	resolvedName, err := resolveStartVersion(cfg, branchType, name)
+	if err != nil {
+		result["result"] = "error"
+		result["error"] = err.Error()
+		return 1, result
+	}
+	if resolvedName != "" {
+		name = resolvedName
+		result["name"] = name
+	}
+	if strings.EqualFold(originalRequested, "auto") || originalRequested == "" {
+		result["resolved_name"] = name
+	}
+
+	if branchType == "release" || branchType == "hotfix" {
+		tagName := cfg.TagPrefix + name
+		if git.TagExists(tagName) {
+			result["result"] = "error"
+			result["error"] = fmt.Sprintf("tag %s already exists", tagName)
+			return 1, result
+		}
+	}
 
 	wt := git.WorkingTreeStatus()
 	stashed := false
@@ -105,24 +154,24 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 		stashed = true
 	}
 
-	var err error
+	var startErr error
 	switch branchType {
 	case "feature":
-		err = StartFeature(cfg, name)
+		startErr = StartFeature(cfg, name)
 	case "bugfix":
-		err = StartBugfix(cfg, name)
+		startErr = StartBugfix(cfg, name)
 	case "release":
-		err = StartRelease(cfg, name)
+		startErr = StartRelease(cfg, name)
 	case "hotfix":
-		err = StartHotfix(cfg, name)
+		startErr = StartHotfix(cfg, name)
 	}
 
-	if err != nil {
+	if startErr != nil {
 		if stashed {
 			_ = git.StashPop()
 		}
 		result["result"] = "error"
-		result["error"] = err.Error()
+		result["error"] = startErr.Error()
 		return 1, result
 	}
 

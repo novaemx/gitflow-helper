@@ -210,6 +210,16 @@ func StashPop() error {
 	return Exec("stash", "pop")
 }
 
+func HasStagedChanges() bool {
+	code, _, _ := ExecResult("diff", "--cached", "--quiet")
+	return code == 1
+}
+
+func TagExists(tag string) bool {
+	code, _, _ := ExecResult("rev-parse", "-q", "--verify", "refs/tags/"+tag)
+	return code == 0
+}
+
 func LatestTag() string {
 	tag := ExecQuiet("describe", "--tags", "--abbrev=0")
 	if tag == "" {
