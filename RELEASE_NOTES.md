@@ -7,6 +7,7 @@
 - Bump version to 0.5.4
 - Bump version to 0.5.3
 - Bump version to 0.5-2
+- Release notes for release 0.5.4
 - Merge tag 'v0.5.3' back into develop
 - Merge release '0.5.3' into main
 - Release notes for release 0.5.3
