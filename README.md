@@ -1,6 +1,6 @@
 # gitflow-helper
 
-A single static binary that enforces the [git-flow branching model](https://nvie.com/posts/a-successful-git-branching-model/) with an interactive TUI for humans and a `--json` mode for AI agents. Detects your IDE (Cursor / VSCode Copilot) and generates pre-flight rules automatically.
+A single static binary that enforces the [git-flow branching model](https://nvie.com/posts/a-successful-git-branching-model/) with an interactive TUI for humans and a `--json` mode for AI agents. Detects your IDE (Cursor / VS Code Copilot) and generates pre-flight rules automatically.
 
 ## Features
 
@@ -8,7 +8,7 @@ A single static binary that enforces the [git-flow branching model](https://nvie
 - **Interactive TUI** with dashboard, action menu, command palette, and help overlay
 - **JSON mode** (`--json`) for seamless integration with AI agents (Cursor, Copilot, Claude Code, etc.)
 - **IDE detection** — automatically generates `.cursor/rules/`, `.github/copilot-instructions.md`, or `AGENTS.md`
-- **Zero runtime dependencies** — static binary, only needs `git` and `git-flow` extensions
+- **Zero runtime dependencies** — static binary, only needs `git` (no git-flow extensions required)
 - **Cross-platform** — Linux x86_64, Windows x86_64, macOS universal (x86 + ARM)
 - **Publishable as an [Agent Skill](https://skills.sh/)** via `npx skills add`
 
@@ -116,13 +116,25 @@ Exit codes: `0` success, `1` error, `2` conflict needing human intervention.
 
 Run `gitflow setup` once per project. It auto-detects your IDE and creates:
 
-| IDE               | Generated file                                |
+| IDE               | Generated files                               |
 |-------------------|-----------------------------------------------|
-| Cursor            | `.cursor/rules/gitflow-preflight.mdc`         |
-| VSCode + Copilot  | `.github/copilot-instructions.md`             |
-| Both / Unknown    | All of the above + `AGENTS.md`                |
+| Cursor            | `.cursor/rules/gitflow-preflight.mdc`, `.cursor/mcp.json` |
+| VS Code + Copilot | `.github/copilot-instructions.md`, `.vscode/mcp.json` |
+| Both / Unknown    | Cursor + Copilot files + `AGENTS.md`          |
 
 These files instruct the AI agent to run `gitflow --json status` before modifying any code, enforcing the pre-flight check automatically.
+
+### Copilot-Specific Notes
+
+To ensure the gitflow skill works in Copilot end-to-end:
+
+1. Install `gitflow` binary and make sure it is in PATH.
+2. Run `gitflow setup --ide copilot` in your repository root.
+3. Verify these files exist:
+  - `.github/copilot-instructions.md`
+  - `.vscode/mcp.json` (contains `"gitflow"` server using `gitflow serve`)
+
+If `gitflow` is not in PATH when setup runs, MCP config still gets generated, but command execution will fail until PATH is fixed.
 
 ## Agent Skill (skills.sh)
 
@@ -169,3 +181,7 @@ make install      # install to GOPATH/bin
 ## License
 
 MIT
+
+## Author
+
+Luis Lozano

@@ -8,12 +8,7 @@ DIST     := dist
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: package-homebrew package-choco package-winget package-skill package-all
 
-# ── Install directory detection ──────────────────────────────
-# Prefer /usr/local/bin (non-OS, universally in PATH).
-# Override: make install INSTALL_DIR=/your/path
-INSTALL_DIR ?= /usr/local/bin
-
-# Detect OS/arch for the running system
+# ── OS/arch detection ────────────────────────────────────────
 UNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 UNAME_M := $(shell uname -m)
 
@@ -23,6 +18,20 @@ else ifeq ($(UNAME_S),linux)
   HOST_OS := linux
 else
   HOST_OS := windows
+endif
+
+# ── Install directory detection ──────────────────────────────
+# Automatically selects a user-writable directory already in PATH.
+# No sudo/root/admin required. Override: make install INSTALL_DIR=/your/path
+ifeq ($(HOST_OS),windows)
+  # Git Bash on Windows: use cygpath to get a proper Unix-style path
+  HOME_UNIX := $(shell cygpath -u '$(HOME)')
+  INSTALL_DIR ?= $(HOME_UNIX)/bin
+else ifeq ($(HOST_OS),darwin)
+  INSTALL_DIR ?= $(HOME)/.local/bin
+else
+  # Linux: ~/.local/bin (XDG standard, no root needed)
+  INSTALL_DIR ?= $(HOME)/.local/bin
 endif
 
 ifeq ($(UNAME_M),x86_64)
@@ -87,10 +96,9 @@ release:
 release-snapshot:
 	goreleaser release --snapshot --clean
 
-## install: build for current OS/arch and install to INSTALL_DIR (/usr/local/bin)
-## Usage: make install              (may need sudo)
-##        sudo make install         (if /usr/local/bin is root-owned)
-##        make install INSTALL_DIR=~/.local/bin   (no sudo needed)
+## install: build for current OS/arch and install to a user-writable directory (no sudo needed)
+## Windows → ~/bin | Linux/macOS → ~/.local/bin
+## Override: make install INSTALL_DIR=/custom/path
 install: build
 	@echo "→ Installing $(BINARY) to $(INSTALL_DIR) ($(HOST_OS)/$(HOST_ARCH))"
 	@mkdir -p $(INSTALL_DIR) 2>/dev/null || { echo "Cannot create $(INSTALL_DIR). Try: sudo make install"; exit 1; }

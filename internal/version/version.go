@@ -25,6 +25,16 @@ func ReadVersion(cfg config.FlowConfig) string {
 	if err != nil {
 		return "0.0.0"
 	}
+	if cfg.VersionFile == "VERSION" {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			return strings.TrimPrefix(line, "v")
+		}
+		return "0.0.0"
+	}
 	re, err := regexp.Compile(cfg.VersionPattern)
 	if err != nil {
 		return "0.0.0"
