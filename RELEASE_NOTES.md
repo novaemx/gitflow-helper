@@ -1,17 +1,17 @@
-# Release 0.5.13
+# Release 0.5.14
 
 **Date:** 2026-04-13
 
 ## What's New
 
+- Implement embedded gitflow skill and update setup process
 - Merge feature 'local-release-binaries' into develop
 
 ## Bug Fixes
 
-- Merge bugfix 'ide-detection-vscode-terminal' into develop
+- Merge bugfix 'copilot-skill-guidance' into develop
 
 ## Improvements
 
 - Update repository references from luis-lozano to novaemx
-- Optimize IDE detection by 13.5x with registry reordering and short-circuits
 
