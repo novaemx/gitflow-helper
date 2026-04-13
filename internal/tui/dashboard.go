@@ -190,6 +190,12 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		lines = append(lines, dashLine{"    Commit or stash before start/finish operations.", "dim"})
 	}
 
+	if !s.HasDefaultRemote {
+		lines = append(lines, dashLine{"", "normal"})
+		lines = append(lines, dashLine{fmt.Sprintf(" ℹ  No '%s' remote configured (local-only mode).", cfg.Remote), "dim"})
+		lines = append(lines, dashLine{"    Pull/sync fetch steps will be skipped safely.", "dim"})
+	}
+
 	if len(s.Releases) > 0 && btype != "release" && !s.Merge.InMerge {
 		lines = append(lines, dashLine{"", "normal"})
 		lines = append(lines, dashLine{fmt.Sprintf(" ⚠  Release '%s' is open. Finish it first.", s.Releases[0].Name), "warn"})

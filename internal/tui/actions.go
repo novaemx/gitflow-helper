@@ -176,7 +176,11 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	}
 
 	// T3 NORMAL: pull, start work, diffs
-	normal = append(normal, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
+	if s.HasDefaultRemote {
+		normal = append(normal, action{Label: "Pull latest (safe fetch + merge)", Tag: "pull", Command: "gitflow pull"})
+	} else {
+		normal = append(normal, action{Label: fmt.Sprintf("Pull disabled (no '%s' remote configured)", cfg.Remote), Tag: "pull"})
+	}
 	hasReleasableDiff := s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0
 
 	if s.DevelopAheadOfMain > 0 {
