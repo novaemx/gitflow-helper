@@ -96,7 +96,7 @@ changelog:
 
 release:
   github:
-    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    owner: luis-lozano
     name: gitflow-helper
   draft: false
   prerelease: auto
@@ -104,11 +104,11 @@ release:
 brews:
   - name: gitflow-helper
     repository:
-      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      owner: luis-lozano
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gitflow-helper"
+    homepage: "https://github.com/luis-lozano/gitflow-helper"
     description: "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
     license: "MIT"
     dependencies:
@@ -117,3 +117,5 @@ brews:
       assert_match "gitflow", shell_output("#{bin}/gitflow --version")
     install: |
       bin.install "gitflow"
+    # Only upload to homebrew if token is provided (typically in CI/CD)
+    skip_upload: "true"
