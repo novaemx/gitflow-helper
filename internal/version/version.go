@@ -61,6 +61,37 @@ func SuggestVersion(cfg config.FlowConfig, bumpType string) string {
 	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
 }
 
+func WriteVersionFile(cfg config.FlowConfig, ver string) {
+	if cfg.VersionFile == "" {
+		return
+	}
+	ver = strings.TrimPrefix(ver, "v")
+	path := filepath.Join(cfg.ProjectRoot, cfg.VersionFile)
+
+	if cfg.VersionFile == "VERSION" {
+		_ = os.WriteFile(path, []byte(ver+"\n"), 0644)
+		_ = git.Exec("add", cfg.VersionFile)
+		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: bump version to %s", ver))
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	re, err := regexp.Compile(cfg.VersionPattern)
+	if err != nil {
+		return
+	}
+	loc := re.FindSubmatchIndex(data)
+	if len(loc) >= 4 {
+		updated := string(data[:loc[2]]) + ver + string(data[loc[3]:])
+		_ = os.WriteFile(path, []byte(updated), 0644)
+		_ = git.Exec("add", cfg.VersionFile)
+		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: bump version to %s", ver))
+	}
+}
+
 func RunBumpCommand(cfg config.FlowConfig, part string) {
 	if cfg.BumpCommand == "" {
 		return

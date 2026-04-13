@@ -25,7 +25,7 @@ func finishFeatureOrBugfix(cfg config.FlowConfig, btype, name string) error {
 	}
 
 	_ = git.Exec("branch", "-d", branchName)
-	output.Infof("  %s%s '%s' merged into %s and branch deleted.%s", output.Green, btype, name, cfg.DevelopBranch, output.Reset)
+	output.Infof("  %s✓ %s/%s → %s%s", output.Green, btype, name, cfg.DevelopBranch, output.Reset)
 	return nil
 }
 
@@ -57,7 +57,7 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 	}
 
 	_ = git.Exec("branch", "-d", branchName)
-	output.Infof("  %sRelease %s merged into %s (tagged %s) and back-merged into %s.%s",
+	output.Infof("  %s✓ release/%s → %s (tagged %s) → %s%s",
 		output.Green, ver, cfg.MainBranch, tagName, cfg.DevelopBranch, output.Reset)
 	return nil
 }
@@ -84,8 +84,6 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 	backTarget := cfg.DevelopBranch
 	if len(releases) > 0 {
 		backTarget = releases[0]
-		output.Infof("  %sNote:%s Hotfix will merge into active release '%s' (nvie rule).",
-			output.Yellow, output.Reset, backTarget)
 	}
 
 	if err := git.Exec("checkout", backTarget); err != nil {
@@ -98,7 +96,7 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 	}
 
 	_ = git.Exec("branch", "-d", branchName)
-	output.Infof("  %sHotfix %s merged into %s (tagged %s) and back-merged into %s.%s",
+	output.Infof("  %s✓ hotfix/%s → %s (tagged %s) → %s%s",
 		output.Green, ver, cfg.MainBranch, tagName, backTarget, output.Reset)
 	return nil
 }
@@ -138,20 +136,15 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		"name":   name,
 	}
 
-	// Phase 1: gitflow auto-commits (release notes, version bump)
-	// These run BEFORE dirty check so gitflow's own generated files don't block finish.
 	if btype == "release" || btype == "hotfix" {
-		output.Infof("  %sGenerating release notes...%s", output.Dim, output.Reset)
 		meta := WriteReleaseNotes(cfg, "")
 		if meta != nil {
 			result["release_notes"] = meta
 			_ = git.Exec("add", "RELEASE_NOTES.md")
 			_ = git.Exec("commit", "-m", fmt.Sprintf("docs: release notes for %s %s", btype, name))
-			output.Infof("  %s✓ RELEASE_NOTES.md committed to %s branch.%s", output.Green, btype, output.Reset)
 		}
 	}
 
-	// Phase 2: dirty check — only blocks on USER changes (gitflow files already committed above)
 	wt := git.WorkingTreeStatus()
 	if wt.Staged > 0 || wt.Unstaged > 0 {
 		var parts []string
@@ -165,10 +158,8 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 			parts = append(parts, fmt.Sprintf("%d untracked", wt.Untracked))
 		}
 		detail := strings.Join(parts, ", ")
-		output.Infof("  %s✗ Cannot finish: working tree has uncommitted changes (%s).%s",
+		output.Infof("  %s✗ Uncommitted changes (%s) — commit or stash first.%s",
 			output.Red, detail, output.Reset)
-		output.Infof("  %sCommit or stash your changes first, then retry.%s",
-			output.Dim, output.Reset)
 		result["result"] = "error"
 		result["error"] = fmt.Sprintf("dirty working tree: %s", detail)
 		result["dirty"] = map[string]int{
@@ -178,12 +169,9 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 	}
 
 	if wt.Untracked > 0 {
-		output.Infof("  %sWarning:%s %d untracked file(s) — won't affect merge but consider committing.",
-			output.Yellow, output.Reset, wt.Untracked)
 		result["warning_untracked"] = wt.Untracked
 	}
 
-	// Phase 3: merge
 	var err error
 	switch btype {
 	case "feature", "bugfix":
@@ -199,8 +187,6 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		result["error"] = err.Error()
 		conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
 		if len(conflicts) > 0 {
-			output.Infof("\n  %sMerge conflict detected during %s finish.%s",
-				output.Red, btype, output.Reset)
 			result["conflicts"] = conflicts
 			result["needs_human"] = true
 			return 2, result
@@ -208,6 +194,12 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 		return 1, result
 	}
 
+	cur := git.CurrentBranch()
+	if cur != cfg.DevelopBranch {
+		_ = git.Exec("checkout", cfg.DevelopBranch)
+	}
+
 	result["result"] = "ok"
+	result["landed_on"] = cfg.DevelopBranch
 	return 0, result
 }
