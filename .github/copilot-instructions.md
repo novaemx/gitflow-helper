@@ -69,3 +69,10 @@ gitflow --json start feature|bugfix|release|hotfix <name>
 ```
 
 Exit codes: 0=success, 1=error, 2=conflict-needs-human
+
+
+### When to use the gitflow skill
+
+- Use the gitflow skill before any code modifications.
+- Run `gitflow --json status` first and follow its branch/merge checks.
+- Use `gitflow setup` after updating gitflow to refresh embedded skill content.

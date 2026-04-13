@@ -1,116 +1,99 @@
 ---
 name: gitflow
 description: >-
-  MANDATORY pre-flight check before ANY code modification. Analyzes git state,
-  ensures correct branch, asks user intent (feature/bugfix/hotfix/release),
-  and enforces gitflow discipline throughout the entire development cycle.
-  Triggers on: any task that will modify code, gitflow, branching, feature,
-  bugfix, hotfix, release, pull, merge, or branch workflow.
+  MANDATORY pre-flight check before ANY code modification. Enforces gitflow,
+  auto-detects task type, auto-generates branch names, and forbids direct code
+  edits on main/develop.
 ---
 
 # Git Flow Skill
 
-## CRITICAL: This skill activates BEFORE any code is modified
+## CRITICAL
 
-**Every time the user asks you to write, modify, fix, refactor, or delete code,
-you MUST run the pre-flight check below FIRST.** Do not touch a single file
-until you have confirmed the gitflow state is correct and the user has chosen
-a workflow.
-
----
-
-## Step 0 — Choose transport: MCP or CLI
-
-### 0a. Check if gitflow MCP tools are available
-
-If you are running inside an IDE with MCP support (Cursor, Claude Code,
-VS Code + Copilot, Windsurf), check whether the `gitflow` MCP server tools
-are registered. MCP tools have these names: `status`, `init`, `pull`, `sync`,
-`switch`, `backmerge`, `cleanup`, `health`, `doctor`, `log`, `undo`,
-`releasenotes`, `start`, `finish`.
-
-### 0b. Fall back to CLI
-
-If MCP tools are NOT available, verify the CLI binary exists:
-
-```bash
-command -v gitflow && echo "available" || echo "not found"
-```
-
-If not found, install via `make install` from the project root, or
-download from GitHub releases. Then use `gitflow --json <command>`.
-
----
-
-## Step 1 — MANDATORY Pre-flight Check (run before ANY code change)
-
-Before writing a single line of code, execute this analysis **every time**:
+Run pre-flight before any code/track-file change.
 
 ```bash
 gitflow --json status
 ```
 
-Then evaluate the JSON response in this exact order:
+Do not edit files until branch workflow is valid.
 
-### 1a. Is git-flow initialized?
+## Step 1 - Pre-flight order
 
-If `git_flow_initialized` is `false`:
+1. If `git_flow_initialized=false` -> `gitflow --json init`
+2. If `merge.in_merge=true` -> STOP and report conflict
+3. If `main_ahead_of_develop>0` -> run `gitflow --json backmerge` first
+4. If current branch is `main` or `develop` and task modifies code -> create flow branch first
+
+## Step 2 - Branch policy (strict)
+
+Never modify code on `main` or `develop`.
+
+Required coding branches:
+
+- Feature work -> `feature/*`
+- Non-urgent bug fix -> `bugfix/*`
+- Production urgent fix -> `hotfix/*`
+- Release prep -> `release/*`
+
+## Step 3 - Auto type inference
+
+Infer task type from user request:
+
+- release: words like release, cut release, tag release
+- hotfix: words like prod, production, outage, urgent, critical fix
+- bugfix: words like bug, fix, error, regression
+- feature: default for enhancement/refactor/new capability
+
+Only ask user when intent is truly ambiguous between bugfix vs hotfix.
+
+## Step 4 - Auto branch naming (no prompt)
+
+Do not ask user how to name branch unless user explicitly requests custom name.
+
+Feature/Bugfix naming:
+
+- Build slug from user request text
+- Lowercase
+- Convert spaces/underscores to `-`
+- Keep `a-z`, `0-9`, `-`
+- Remove common stopwords (`the`, `a`, `an`, `to`, `for`, `and`, `or`, `de`, `la`, `el`)
+- Keep first 5 meaningful tokens
+- Max 48 chars
+- Fallback: `auto-YYYYMMDD-HHMM`
+
+Hotfix/Release naming:
+
+- If version provided, use it
+- Else use `auto`
+
+Commands:
 
 ```bash
-gitflow --json init
+gitflow --json start feature <auto-name>
+gitflow --json start bugfix <auto-name>
+gitflow --json start hotfix <version-or-auto>
+gitflow --json start release <version-or-auto>
 ```
 
-### 1b. Is there a merge conflict?
+## Step 5 - Work and finish
 
-If `merge.in_merge` is `true` → **STOP.** Report the conflict to the user.
-
-### 1c. Is there branch divergence?
-
-If `main_ahead_of_develop > 0` → **STOP all other work.** Fix immediately:
-
-```bash
-gitflow --json backmerge
-```
-
-### 1d. Are we on the right branch?
-
-| User wants to...          | Correct branch                | If wrong, run                              |
-|---------------------------|-------------------------------|--------------------------------------------|
-| Add a new feature         | `feature/*` or `develop`      | `switch develop`, then `start feature`     |
-| Fix a bug (non-urgent)    | `bugfix/*` or `develop`       | `switch develop`, then `start bugfix`      |
-| Fix a production bug      | `hotfix/*` or `main`          | `switch main`, then `start hotfix`         |
-| Prepare a release         | `release/*` or `develop`      | `switch develop`, then `start release`     |
-
-**NEVER modify code on main. NEVER commit directly to develop.**
-
-### 1e. Only NOW proceed with code changes
-
----
-
-## Step 2 — During Development
+During work:
 
 ```bash
 gitflow --json sync
 gitflow --json pull
 ```
 
-## Step 3 — Finishing Work
+Finish when done:
 
 ```bash
 gitflow --json finish
 ```
 
-## IDE Setup
+## Guardrails
 
-Run `gitflow setup` to install or update the embedded gitflow skill.
-
-- Project-capable IDEs: `.agents/skills/gitflow/SKILL.md`
-- Fallback location: `~/.agents/skills/gitflow/SKILL.md`
-
-## CLI Reference
-
-```bash
-gitflow --json status|pull|init|sync|switch|backmerge|cleanup|health|doctor|log|undo|releasenotes|finish
-gitflow --json start feature|bugfix|release|hotfix <name>
-gitflow setup
-```
+- Never commit directly on `main`/`develop`
+- Never bypass backmerge when `main_ahead_of_develop>0`
+- Always use `--json` in agent mode
+- Exit codes: `0` success, `1` error, `2` conflict-needs-human
