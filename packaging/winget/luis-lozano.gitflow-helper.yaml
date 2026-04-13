@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: luis-lozano.gitflow-helper
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: luis-lozano
+PublisherUrl: https://github.com/luis-lozano
+PackageName: Gitflow Helper
+PackageUrl: https://github.com/luis-lozano/gitflow-helper
+License: MIT
+LicenseUrl: https://github.com/luis-lozano/gitflow-helper/blob/main/LICENSE
+ShortDescription: Git Flow workflow helper with interactive TUI and CLI
+Description: >-
+  A comprehensive Git Flow workflow helper with an interactive full-screen TUI
+  and CLI subcommands. Only requires git — no git-flow extensions needed.
+  Detects IDE environment (Cursor, VS Code, Claude Code, Windsurf, Zed, etc.)
+  and auto-initializes gitflow branch structure.
+Tags:
+  - git
+  - gitflow
+  - cli
+  - tui
+  - devtools
+  - workflow
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    InstallerUrl: https://github.com/luis-lozano/gitflow-helper/releases/download/v0.1.0/gitflow-0.1.0-windows-amd64.zip
+    InstallerSha256: PLACEHOLDER_SHA256_WINDOWS
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: gitflow.exe
+        PortableCommandAlias: gitflow
+ManifestType: singleton
+ManifestVersion: 1.6.0

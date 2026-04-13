@@ -1,0 +1,119 @@
+version: 2
+
+project_name: gitflow
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - id: linux-amd64
+    main: ./cmd/gitflow
+    binary: gitflow
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: windows-amd64
+    main: ./cmd/gitflow
+    binary: gitflow
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: darwin-amd64
+    main: ./cmd/gitflow
+    binary: gitflow
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+  - id: darwin-arm64
+    main: ./cmd/gitflow
+    binary: gitflow
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+universal_binaries:
+  - id: darwin-universal
+    ids:
+      - darwin-amd64
+      - darwin-arm64
+    name_template: gitflow
+    replace: true
+
+archives:
+  - id: linux
+    builds:
+      - linux-amd64
+    name_template: "{{ .ProjectName }}-{{ .Version }}-linux-amd64"
+    format: tar.gz
+
+  - id: windows
+    builds:
+      - windows-amd64
+    name_template: "{{ .ProjectName }}-{{ .Version }}-windows-amd64"
+    format: zip
+
+  - id: darwin
+    builds:
+      - darwin-universal
+    name_template: "{{ .ProjectName }}-{{ .Version }}-darwin-universal"
+    format: tar.gz
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: gitflow-helper
+  draft: false
+  prerelease: auto
+
+brews:
+  - name: gitflow-helper
+    repository:
+      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/gitflow-helper"
+    description: "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
+    license: "MIT"
+    dependencies:
+      - name: git
+    test: |
+      assert_match "gitflow", shell_output("#{bin}/gitflow --version")
+    install: |
+      bin.install "gitflow"
