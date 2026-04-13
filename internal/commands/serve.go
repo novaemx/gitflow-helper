@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	mcpserver "github.com/luis-lozano/gitflow-helper/internal/mcp"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
+	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
 

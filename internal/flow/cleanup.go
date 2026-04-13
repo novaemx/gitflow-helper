@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/output"
 )
 
 func Cleanup(cfg config.FlowConfig) (int, map[string]any) {
@@ -29,9 +29,9 @@ func Cleanup(cfg config.FlowConfig) (int, map[string]any) {
 	}
 
 	protected := map[string]bool{
-		cfg.MainBranch:       true,
-		cfg.DevelopBranch:    true,
-		"master":             true,
+		cfg.MainBranch:      true,
+		cfg.DevelopBranch:   true,
+		"master":            true,
 		git.CurrentBranch(): true,
 	}
 

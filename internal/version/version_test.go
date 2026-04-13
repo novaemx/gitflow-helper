@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/git"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/git"
 )
 
 func TestReadVersionFromVERSIONFile(t *testing.T) {

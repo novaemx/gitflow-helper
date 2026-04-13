@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/luis-lozano/gitflow-helper/internal/debug"
-	"github.com/luis-lozano/gitflow-helper/internal/gitflow"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/debug"
+	"github.com/novaemx/gitflow-helper/internal/gitflow"
+	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ func NewRootCmd(version string) *cobra.Command {
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			deferTotal := debug.Start("root.PersistentPreRun.total")
 			defer deferTotal()
-			
+
 			output.SetJSONMode(jsonFlag)
 
 			deferNew := debug.Start("root.PersistentPreRun.gitflow.New")

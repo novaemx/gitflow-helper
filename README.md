@@ -20,12 +20,12 @@ Download the latest binary for your platform from the [Releases](../../releases)
 
 ```bash
 # macOS (universal binary — works on Intel and Apple Silicon)
-curl -Lo gitflow https://github.com/<owner>/gitflow-helper/releases/latest/download/gitflow-darwin-universal
+curl -Lo gitflow https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-darwin-universal
 chmod +x gitflow
 sudo mv gitflow /usr/local/bin/
 
 # Linux x86_64
-curl -Lo gitflow https://github.com/<owner>/gitflow-helper/releases/latest/download/gitflow-linux-amd64
+curl -Lo gitflow https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-linux-amd64
 chmod +x gitflow
 sudo mv gitflow /usr/local/bin/
 
@@ -36,13 +36,13 @@ sudo mv gitflow /usr/local/bin/
 ### From Source
 
 ```bash
-go install github.com/luis-lozano/gitflow-helper/cmd/gitflow@latest
+go install github.com/novaemx/gitflow-helper/cmd/gitflow@latest
 ```
 
 ### Build Locally
 
 ```bash
-git clone https://github.com/<owner>/gitflow-helper.git
+git clone https://github.com/novaemx/gitflow-helper.git
 cd gitflow-helper
 make build          # current platform
 make build-all      # all platforms
@@ -174,13 +174,41 @@ make build-all    # cross-compile linux/windows/macOS
 make universal    # create macOS universal binary with lipo
 make test         # run tests
 make vet          # run go vet
-make release      # run goreleaser (requires goreleaser)
+make release-local                    # build release artifacts locally (no publish)
+make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts
+make publish-homebrew TAG=v0.5.12     # update Homebrew formula checksums/URLs
+make publish-winget TAG=v0.5.12       # update Winget manifest checksum/URL
+make publish-choco TAG=v0.5.12        # update Chocolatey metadata checksum/URL
+make publish-all TAG=v0.5.12          # do all of the above in one command
 make install      # install to GOPATH/bin
+```
+
+## Local-Only Release Policy
+
+This repository does not use GitHub Actions to compile binaries.
+
+- All release binaries are built locally on maintainer machines.
+- GitHub Releases are used only as artifact hosting/distribution.
+- Homebrew, Winget, and Chocolatey manifests point to those GitHub Release artifacts.
+
+### Publish Flow (No Cloud Build)
+
+```bash
+# Create/update the GitHub release and upload locally-built binaries
+make publish-github TAG=v0.5.12
+
+# Refresh package manifests to point at that GitHub release
+make publish-homebrew TAG=v0.5.12
+make publish-winget TAG=v0.5.12
+make publish-choco TAG=v0.5.12
+
+# Or do everything in one shot
+make publish-all TAG=v0.5.12
 ```
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
 
 ## Author
 

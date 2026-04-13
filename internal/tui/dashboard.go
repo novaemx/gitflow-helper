@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/luis-lozano/gitflow-helper/internal/branch"
-	"github.com/luis-lozano/gitflow-helper/internal/config"
-	"github.com/luis-lozano/gitflow-helper/internal/state"
+	"github.com/novaemx/gitflow-helper/internal/branch"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/state"
 )
 
 type dashLine struct {

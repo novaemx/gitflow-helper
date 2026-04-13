@@ -4,8 +4,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/luis-lozano/gitflow-helper/internal/branch"
-	"github.com/luis-lozano/gitflow-helper/internal/output"
+	"github.com/novaemx/gitflow-helper/internal/branch"
+	"github.com/novaemx/gitflow-helper/internal/output"
 )
 
 // ProjectRoot is the working directory for all git commands.

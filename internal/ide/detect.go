@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luis-lozano/gitflow-helper/internal/debug"
+	"github.com/novaemx/gitflow-helper/internal/debug"
 )
 
 // IDE type constants
@@ -68,7 +68,7 @@ func DetectAll(projectRoot string) []DetectedIDE {
 func DetectPrimary(projectRoot string) DetectedIDE {
 	deferEnd := debug.Start("DetectPrimary.total")
 	defer deferEnd()
-	
+
 	for _, entry := range ideRegistry {
 		deferEntry := debug.Start(fmt.Sprintf("DetectPrimary.%s", entry.id))
 		if entry.detect(projectRoot) {
@@ -153,7 +153,7 @@ func detectCursor(projectRoot string) bool {
 	if !isVSCodeTerminal() {
 		return false
 	}
-	
+
 	return matchParentProcess("cursor")
 }
 
