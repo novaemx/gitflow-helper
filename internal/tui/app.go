@@ -155,7 +155,20 @@ func resolveGitDir(root string) string {
 	if filepath.IsAbs(rel) {
 		return rel
 	}
-	return filepath.Clean(filepath.Join(root, rel))
+	resolved := filepath.Clean(filepath.Join(root, rel))
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return ""
+	}
+	absResolved, err := filepath.Abs(resolved)
+	if err != nil {
+		return ""
+	}
+	prefix := filepath.Clean(absRoot) + string(os.PathSeparator)
+	if absResolved != filepath.Clean(absRoot) && !strings.HasPrefix(absResolved, prefix) {
+		return ""
+	}
+	return resolved
 }
 
 func statPart(path string) string {

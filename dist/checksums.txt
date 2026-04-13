@@ -1,3 +1,0 @@
-7be7a4d8d01398f4495d41f1b252881907e2cdde5586cb7cbb59db711a399c65  gitflow-0.0.0-SNAPSHOT-none-darwin-universal.tar.gz
-140d5c1b34ae2734400f15d038f3615a1995cc84832fac415cb92b7dbac3388b  gitflow-0.0.0-SNAPSHOT-none-linux-amd64.tar.gz
-f13562bc6d5c9510a0eab793e087a6ebc3c1895e0f15b3813608256061e099f9  gitflow-0.0.0-SNAPSHOT-none-windows-amd64.zip

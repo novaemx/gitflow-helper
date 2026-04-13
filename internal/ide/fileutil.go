@@ -32,7 +32,7 @@ func fileContainsGitflow(path string) bool {
 // templateChoice: "full" uses GitflowInstructionsFull, anything else uses Compact.
 func ensureFileWithGitflow(path, headerIfNew, templateChoice string) (string, error) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
 
@@ -51,14 +51,14 @@ func ensureFileWithGitflow(path, headerIfNew, templateChoice string) (string, er
 		}
 		// Always use compact when appending to keep existing files concise
 		content += "\n" + GitflowInstructionsCompact
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 			return "", err
 		}
 		return path, nil
 	}
 
 	content := headerIfNew + fullTemplate
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return "", err
 	}
 	return path, nil

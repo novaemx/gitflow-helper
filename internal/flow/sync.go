@@ -2,11 +2,41 @@ package flow
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/git"
 	"github.com/novaemx/gitflow-helper/internal/output"
 )
+
+var execResult = git.ExecResult
+
+func buildMergeConflictResult(action, branch, parent string, conflicts []string) (int, map[string]any) {
+	result := map[string]any{
+		"action":      action,
+		"result":      "conflict",
+		"files":       conflicts,
+		"needs_human": true,
+	}
+	if branch != "" {
+		result["branch"] = branch
+	}
+	if parent != "" {
+		result["parent"] = parent
+	}
+
+	if output.IsJSONMode() {
+		abortCode, _, abortErr := execResult("merge", "--abort")
+		if abortCode != 0 {
+			result["abort_failed"] = true
+			if strings.TrimSpace(abortErr) != "" {
+				result["abort_error"] = strings.TrimSpace(abortErr)
+			}
+		}
+	}
+
+	return 2, result
+}
 
 func Pull(cfg config.FlowConfig) (int, map[string]any) {
 	branch := git.CurrentBranch()
@@ -50,11 +80,11 @@ func Pull(cfg config.FlowConfig) (int, map[string]any) {
 	}
 
 	mergeRef := fmt.Sprintf("%s/%s", remoteBranch, branch)
-	code, _, _ := git.ExecResult("merge", "--ff-only", mergeRef)
+	code, _, _ := execResult("merge", "--ff-only", mergeRef)
 	if code == 0 {
 		output.Infof("  %sFast-forward merge successful for '%s'.%s", output.Green, branch, output.Reset)
 		if stashed {
-			popCode, _, _ := git.ExecResult("stash", "pop")
+			popCode, _, _ := execResult("stash", "pop")
 			if popCode != 0 {
 				return 2, map[string]any{"action": "pull", "branch": branch, "result": "ok_stash_conflict"}
 			}
@@ -65,11 +95,11 @@ func Pull(cfg config.FlowConfig) (int, map[string]any) {
 	output.Infof("  %sFast-forward not possible — branches have diverged.%s", output.Yellow, output.Reset)
 	output.Infof("  %sAttempting rebase...%s", output.Dim, output.Reset)
 
-	rebaseCode, _, _ := git.ExecResult("rebase", mergeRef)
+	rebaseCode, _, _ := execResult("rebase", mergeRef)
 	if rebaseCode == 0 {
 		output.Infof("  %sRebase successful for '%s'.%s", output.Green, branch, output.Reset)
 		if stashed {
-			popCode, _, _ := git.ExecResult("stash", "pop")
+			popCode, _, _ := execResult("stash", "pop")
 			if popCode != 0 {
 				return 2, map[string]any{"action": "pull", "branch": branch, "result": "rebase_ok_stash_conflict"}
 			}
@@ -105,7 +135,7 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 	if cfg.Remote != "" && git.RemoteExists(cfg.Remote) {
 		_ = git.Exec("fetch", cfg.Remote, parent)
 		remoteRef := fmt.Sprintf("%s/%s", cfg.Remote, parent)
-		code, _, _ := git.ExecResult("rev-parse", "--verify", remoteRef)
+		code, _, _ := execResult("rev-parse", "--verify", remoteRef)
 		if code == 0 {
 			mergeRef = remoteRef
 		}
@@ -113,7 +143,7 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 		output.Infof("  %sNo remote '%s' configured. Sync uses local '%s' branch.%s", output.Dim, cfg.Remote, parent, output.Reset)
 	}
 
-	code, _, _ := git.ExecResult("merge", "--no-ff", mergeRef)
+	code, _, _ := execResult("merge", "--no-ff", mergeRef)
 	if code == 0 {
 		output.Infof("  %sSync successful.%s", output.Green, output.Reset)
 		return 0, map[string]any{"action": "sync", "branch": branch, "parent": parent, "result": "ok"}
@@ -122,13 +152,7 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 	conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
 	if len(conflicts) > 0 {
 		output.Infof("  %sMerge conflicts during sync:%s", output.Red, output.Reset)
-		if output.IsJSONMode() {
-			_ = git.Exec("merge", "--abort")
-			return 2, map[string]any{
-				"action": "sync", "branch": branch, "parent": parent,
-				"result": "conflict", "files": conflicts, "needs_human": true,
-			}
-		}
+		return buildMergeConflictResult("sync", branch, parent, conflicts)
 	}
 
 	return 1, map[string]any{"action": "sync", "branch": branch, "result": "error"}
@@ -167,7 +191,7 @@ func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
 		output.Infof("  %sNo remote '%s' configured. Back-merge uses local '%s' branch.%s", output.Dim, cfg.Remote, cfg.MainBranch, output.Reset)
 	}
 	mergeMsg := fmt.Sprintf("Merge %s into %s (backmerge)", cfg.MainBranch, cfg.DevelopBranch)
-	code, _, _ := git.ExecResult("merge", "--no-ff", cfg.MainBranch, "-m", mergeMsg)
+	code, _, _ := execResult("merge", "--no-ff", cfg.MainBranch, "-m", mergeMsg)
 
 	if code == 0 {
 		output.Infof("  %sBack-merge successful. %s now contains all of %s.%s",
@@ -180,14 +204,7 @@ func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
 
 	conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
 	if len(conflicts) > 0 {
-		if output.IsJSONMode() {
-			_ = git.Exec("merge", "--abort")
-			return 2, map[string]any{
-				"action": "backmerge", "result": "conflict",
-				"files": conflicts, "needs_human": true,
-			}
-		}
-		return 2, map[string]any{"action": "backmerge", "result": "conflict", "files": conflicts}
+		return buildMergeConflictResult("backmerge", "", "", conflicts)
 	}
 
 	return 1, map[string]any{"action": "backmerge", "result": "error"}
