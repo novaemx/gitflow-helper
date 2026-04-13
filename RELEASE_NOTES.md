@@ -1,9 +1,11 @@
-# Release 0.5.15
+# Release 0.5.16
 
 **Date:** 2026-04-13
 
 ## What's New
 
+- Merge feature 'auto-branch-skill-enforcement' into develop
+- Enhance gitflow skill with automatic task type inference and branch naming
 - Merge feature 'ai-integration-onboarding' into develop
 - Remove deprecated Gitflow binaries and associated files; enhance merge conflict handling and AI integration consent features
 - Implement embedded gitflow skill and update setup process
@@ -42,6 +44,7 @@
 
 ## Improvements
 
+- Update gitflow skill instructions and usage guidelines
 - Update repository references from luis-lozano to novaemx
 - Optimize IDE detection by 13.5x with registry reordering and short-circuits
 - Clean up code formatting and improve readability in finish.go, smart.go, and app.go

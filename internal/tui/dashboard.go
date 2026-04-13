@@ -23,6 +23,8 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 			fmt.Sprintf(" ⚠  BRANCH DIVERGENCE: %s has %d commit(s) not in %s",
 				cfg.MainBranch, s.MainAheadOfDevelop, cfg.DevelopBranch), "error"})
 		lines = append(lines, dashLine{"    Run backmerge to restore the gitflow invariant.", "dim"})
+		lines = append(lines, dashLine{"    Common causes: finished hotfix/release, or direct commit on main.", "dim"})
+		lines = append(lines, dashLine{"    Next step: gitflow backmerge", "dim"})
 		if len(s.MainOnlyFiles) > 0 {
 			lines = append(lines, dashLine{"", "normal"})
 			lines = append(lines, dashLine{fmt.Sprintf("    Files in %s missing from %s:", cfg.MainBranch, cfg.DevelopBranch), "dim"})
@@ -62,6 +64,7 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 			fmt.Sprintf(" %s is %d commit(s) ahead of %s", cfg.DevelopBranch, s.DevelopAheadOfMain, cfg.MainBranch), "feature"})
 		if len(s.DevelopOnlyFiles) > 0 {
 			lines = append(lines, dashLine{"    Unreleased files:", "dim"})
+			lines = append(lines, dashLine{"    This usually means pending work not yet released from develop.", "dim"})
 			limit := 6
 			if len(s.DevelopOnlyFiles) < limit {
 				limit = len(s.DevelopOnlyFiles)
@@ -74,6 +77,7 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 			}
 		} else {
 			lines = append(lines, dashLine{"    No unreleased file changes (metadata-only commit).", "dim"})
+			lines = append(lines, dashLine{"    Expected after finish release/hotfix: tag back-merge commit on develop.", "dim"})
 		}
 	}
 
@@ -125,8 +129,10 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		if s.Merge.OperationType != "" {
 			lines = append(lines, dashLine{fmt.Sprintf("   Merge conflict during %s finish v%s.",
 				s.Merge.OperationType, s.Merge.OperationVersion), "error"})
+			lines = append(lines, dashLine{"   Resolve files, then commit merge; if needed: git merge --abort", "dim"})
 		} else {
 			lines = append(lines, dashLine{fmt.Sprintf("   Merge conflict with %d file(s).", len(s.Merge.ConflictedFiles)), "error"})
+			lines = append(lines, dashLine{"   Resolve files, then continue merge; if needed: git merge --abort", "dim"})
 		}
 	case btype == "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
@@ -170,10 +176,12 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		lines = append(lines, dashLine{"   Integration branch (develop).", "feature"})
 		if s.MainAheadOfDevelop > 0 {
 			lines = append(lines, dashLine{"   CRITICAL: backmerge required before any work.", "error"})
+			lines = append(lines, dashLine{"   Run: gitflow backmerge", "dim"})
 		} else if s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0 {
 			lines = append(lines, dashLine{fmt.Sprintf("   %d unreleased commit(s). Consider a release.", s.DevelopAheadOfMain), "ok"})
+			lines = append(lines, dashLine{"   Run: gitflow start release <version>", "dim"})
 		} else if s.DevelopAheadOfMain > 0 {
-			lines = append(lines, dashLine{"   Ahead by metadata-only commit; no release needed.", "dim"})
+			lines = append(lines, dashLine{"   Ahead by metadata-only back-merge commit; no release needed.", "dim"})
 		} else {
 			lines = append(lines, dashLine{fmt.Sprintf("   Up to date with %s.", cfg.MainBranch), "dim"})
 		}
@@ -199,9 +207,11 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 	if len(s.Releases) > 0 && btype != "release" && !s.Merge.InMerge {
 		lines = append(lines, dashLine{"", "normal"})
 		lines = append(lines, dashLine{fmt.Sprintf(" ⚠  Release '%s' is open. Finish it first.", s.Releases[0].Name), "warn"})
+		lines = append(lines, dashLine{"    Switch to release branch and run finish when ready.", "dim"})
 	}
 	if len(s.Hotfixes) > 0 && btype != "hotfix" && !s.Merge.InMerge {
 		lines = append(lines, dashLine{fmt.Sprintf(" ⚠  Hotfix '%s' is open. Finish it quickly.", s.Hotfixes[0].Name), "hotfix"})
+		lines = append(lines, dashLine{"    Switch to hotfix branch and finish to unblock branch flow.", "dim"})
 	}
 
 	return lines
