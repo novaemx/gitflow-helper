@@ -1,354 +1,102 @@
 ---
 name: gitflow
 description: >-
-  MANDATORY pre-flight check before ANY code modification. Analyzes git state,
-  ensures correct branch, infers task type automatically, auto-creates flow branch names,
-  and enforces gitflow discipline throughout the entire development cycle.
-  Triggers on: any task that will modify code, gitflow, branching, feature,
-  bugfix, hotfix, release, pull, merge, or branch workflow.
+  MANDATORY pre-flight check before ANY code modification. Enforces nvie gitflow
+  core rules (main/develop + feature/release/hotfix), auto-detects task type,
+  auto-generates branch names, and forbids direct edits on main/develop.
 ---
 
 # Git Flow Skill
 
-## CRITICAL: This skill activates BEFORE any code is modified
+## Source of Truth
 
-**Every time the user asks you to write, modify, fix, refactor, or delete code,
-you MUST run the pre-flight check below FIRST.** Do not touch a single file
-until you have confirmed the gitflow state is correct and a flow branch exists.
+Canonical model: https://nvie.com/posts/a-successful-git-branching-model
 
----
+Core branches:
 
-## Step 0 — Choose transport: MCP or CLI
+- permanent: `main` and `develop`
+- supporting: `feature/*`, `release/*`, `hotfix/*`
 
-### 0a. Check if gitflow MCP tools are available
+Project compatibility note:
 
-If you are running inside an IDE with MCP support (Cursor, Claude Code,
-VS Code + Copilot, Windsurf), check whether the `gitflow` MCP server tools
-are registered. MCP tools have these names: `status`, `init`, `pull`, `sync`,
-`switch`, `backmerge`, `cleanup`, `health`, `doctor`, `log`, `undo`,
-`releasenotes`, `start`, `finish`.
+- `bugfix/*` is treated as a project alias for non-production fixes from `develop`
+- this alias does not change nvie merge targets (`develop`)
 
-**If MCP tools are available → use them for all gitflow operations.**
-MCP is preferred because it returns structured JSON directly without
-spawning shell processes, and the interactive TUI shows MCP activity
-in real time.
-
-### 0b. Fall back to CLI
-
-If MCP tools are NOT available (running in an external terminal, or
-IDE does not support MCP), verify the CLI binary exists:
-
-```bash
-command -v gitflow && echo "available" || echo "not found"
-```
-
-If not found, install via `make install` from the project root, or
-download from GitHub releases. Then use `gitflow --json <command>`
-for all operations.
-
-The binary requires **only `git`** — no git-flow extensions needed. It
-implements the full nvie gitflow model using raw git commands.
-
----
-
-## Step 1 — MANDATORY Pre-flight Check (run before ANY code change)
-
-Before writing a single line of code, execute this analysis **every time**:
+## Mandatory pre-flight (before any code change)
 
 ```bash
 gitflow --json status
 ```
 
-Then evaluate the JSON response in this exact order:
+Evaluate in this order:
 
-### 1a. Is git-flow initialized?
+1. if `git_flow_initialized=false` -> `gitflow --json init`
+2. if `merge.in_merge=true` -> STOP and report
+3. if `main_ahead_of_develop>0` -> `gitflow --json backmerge`
+4. if current branch is `main` or `develop` and task modifies code -> create flow branch first
 
-If `git_flow_initialized` is `false`:
+Never edit code directly on `main` or `develop`.
 
-```bash
-gitflow --json init
-```
+## Branch selection by intent
 
-### 1b. Is there a merge conflict?
+- New work / non-production fix -> `feature/*` (or `bugfix/*` alias if project asks)
+- Prepare release -> `release/*` (from `develop`)
+- Urgent production fix -> `hotfix/*` (from `main`)
 
-If `merge.in_merge` is `true` → **STOP.** Report the conflict to the user.
-Do not modify any code. The user must resolve conflicts first.
+## Auto type inference
 
-### 1c. Is there branch divergence?
+Infer from user request:
 
-If `main_ahead_of_develop > 0` → **STOP all other work.** Fix immediately:
+- `release`: release, cut release, prep release, tag release
+- `hotfix`: prod, production outage, urgent, critical
+- `feature`: default for enhancement/refactor/non-production fix
 
-```bash
-gitflow --json backmerge
-```
+Use `bugfix` only if user explicitly requests bugfix branch type.
 
-This is a gitflow invariant violation. Nothing else should happen until
-develop contains all of main.
+## Auto naming (no user prompt)
 
-### 1d. Are we on the right branch?
+Do not ask branch name unless user asks custom name.
 
-Evaluate `current` (the active branch) against the user's intent:
+For `feature`/`bugfix` names:
 
-| User wants to...          | Required coding branch        | If wrong, run                              |
-|---------------------------|-------------------------------|--------------------------------------------|
-| Add a new feature         | `feature/*`                   | `switch develop`, then `start feature`     |
-| Fix a bug (non-urgent)    | `bugfix/*`                    | `switch develop`, then `start bugfix`      |
-| Fix a production bug      | `hotfix/*`                    | `switch main`, then `start hotfix`         |
-| Prepare a release         | `release/*`                   | `switch develop`, then `start release`     |
-| Continue existing work    | The correct `feature/bugfix/hotfix/release` branch | `switch <branch>` |
-
-**Never modify code on `main` or `develop` directly. Always create/use a flow branch first.**
-
-### 1e. Infer type and auto-create branch name
-
-If no flow branch exists for the task, infer task type from request and create
-branch automatically.
-
-Inference:
-
-- `release`: release/tag/cut release
-- `hotfix`: production/prod/urgent/critical outage fix
-- `bugfix`: bug/fix/regression/error
-- `feature`: default
-
-Branch name generation (feature/bugfix):
-
-- slug from request text, lowercase, `a-z0-9-`, compact, <=48 chars
-- remove common stopwords
+- slug from request text
+- lowercase
+- `a-z0-9-` only
+- max 48 chars
 - fallback `auto-YYYYMMDD-HHMM`
 
-Do not ask user to name branch unless user explicitly requests custom name.
+For `release`/`hotfix` names:
 
-Then execute the appropriate `start` command:
+- explicit version if given
+- else use `auto`
+
+Commands:
 
 ```bash
 gitflow --json start feature <auto-generated-name>
 gitflow --json start bugfix <auto-generated-name>
-gitflow --json start hotfix <version-or-auto>
 gitflow --json start release <version-or-auto>
+gitflow --json start hotfix <version-or-auto>
 ```
 
-### 1f. Version bumping
+## nvie merge targets (strict)
 
-When `start release <version>` or `start hotfix <version>` runs, gitflow
-automatically updates the `VERSION` file (or configured version file) and
-commits the bump. This means the release branch already contains the correct
-version. **Do not manually edit the VERSION file for releases/hotfixes.**
+- feature -> merge back to `develop` with `--no-ff`
+- release -> merge to `main`, tag, then merge back to `develop`
+- hotfix -> merge to `main`, tag, then merge to `develop`
+- hotfix exception: if release branch exists, merge hotfix to release branch first
 
-Automation rules:
-
-- You can pass `auto` as version (`start release auto`, `start hotfix auto`)
-  and gitflow resolves the version from `VERSION` / configured version file.
-- In interactive/TUI mode, release and hotfix start use `auto` by default
-  (no manual version prompt required).
-- If `auto` resolves to an already tagged version, gitflow increments patch
-  (`x.y.z` -> `x.y.(z+1)`) until it finds the next available tag.
-- Finishing a release/hotfix validates that branch version matches the version
-  file and aborts on mismatch instead of producing partial success output.
-- During finish, if the intended tag already exists, gitflow automatically
-  bumps to the next available patch version (x.y.z), updates `VERSION`, renames
-  the flow branch (`release/*` or `hotfix/*`), and continues with the new tag.
-- Tag creation and release-branch deletion are treated as required steps;
-  failures abort finish with an error (no false "success" message).
-
-### 1g. Are there uncommitted changes?
-
-If `dirty` is `true` and we need to switch branches, the tool handles
-auto-stashing. But warn the user if they have uncommitted work that might
-belong to a different task.
-
-### 1h. Only NOW proceed with code changes
-
-Once all checks pass and you are on the correct branch, you may begin
-modifying code.
-
----
-
-## Step 2 — During Development
-
-While making code changes on the flow branch:
-
-- **Sync regularly** if the branch is long-lived:
-  ```bash
-  gitflow --json sync
-  ```
-- **Pull before pushing** to avoid conflicts:
-  ```bash
-  gitflow --json pull
-  ```
-
----
-
-## Step 3 — Finishing Work
-
-When the user's task is complete and code is committed:
+## During work / finish
 
 ```bash
+gitflow --json sync
+gitflow --json pull
 gitflow --json finish
 ```
 
-For releases, this automatically generates release notes.
+## Guardrails
 
----
-
-## Step 4 — Release Notes (automatic on release finish)
-
-When finishing a release, the tool generates a `RELEASE_NOTES.md` file:
-
-```bash
-gitflow --json releasenotes           # from last tag to HEAD
-gitflow --json releasenotes v0.5.1    # from specific tag
-```
-
----
-
-## Canonical Gitflow Model
-
-Based on [nvie](https://nvie.com/posts/a-successful-git-branching-model/) and
-[Atlassian](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow).
-
-### Permanent branches
-
-| Branch    | Purpose                                                    |
-|-----------|------------------------------------------------------------|
-| `main`    | Production-ready code. Every merge here IS a release.      |
-| `develop` | Integration branch. Latest delivered development changes.  |
-
-### Supporting branches
-
-| Type      | From      | Merges into               | Naming           |
-|-----------|-----------|---------------------------|------------------|
-| `feature` | `develop` | `develop`                 | `feature/*`      |
-| `bugfix`  | `develop` | `develop`                 | `bugfix/*`       |
-| `release` | `develop` | `main` AND `develop`      | `release/*`      |
-| `hotfix`  | `main`    | `main` AND `develop`*     | `hotfix/*`       |
-
-*Hotfix exception: if a release branch exists, hotfix merges into the
-release branch instead of develop.
-
-### Guardrails
-
-- **Always `--no-ff`** on merges.
-- **Tag every merge into main.**
-- **Never commit directly to `main` or `develop`** — use flow branches.
-- **No new features during an active release.**
-- **develop must always be a superset of main.**
-
----
-
-## CLI Reference (always use `--json` for agent mode)
-
-```bash
-gitflow --json status                     # repo state
-gitflow --json pull                       # safe fetch + merge
-gitflow --json start feature my-feature   # start feature
-gitflow --json start bugfix fix-name      # start bugfix
-gitflow --json start release 1.2.0        # start release
-gitflow --json start hotfix 1.1.1         # start hotfix
-gitflow --json finish                     # finish current branch
-gitflow --json sync                       # sync with parent
-gitflow --json switch develop             # switch branch
-gitflow --json backmerge                  # merge main→develop
-gitflow --json cleanup                    # delete merged branches
-gitflow --json health                     # full repo audit
-gitflow --json doctor                     # validate prerequisites
-gitflow --json log -n 20                  # gitflow commit log
-gitflow --json undo                       # undo last operation
-gitflow --json releasenotes               # generate release notes
-gitflow --json init                       # initialize git-flow
-gitflow serve                             # start MCP server (stdio)
-gitflow setup                             # detect IDE & generate rules
-gitflow setup --ide cursor                # force Cursor rules
-gitflow setup --ide copilot               # force Copilot instructions
-```
-
-Exit codes: `0` success, `1` error, `2` conflict needing human intervention.
-
-## MCP Tool Reference (when MCP server is available)
-
-All 14 tools return JSON. Use MCP tools when available instead of CLI.
-
-| MCP Tool       | Parameters                                 | Equivalent CLI                    |
-|----------------|--------------------------------------------|------------------------------------|
-| `status`       | (none)                                     | `gitflow --json status`            |
-| `init`         | (none)                                     | `gitflow --json init`              |
-| `pull`         | (none)                                     | `gitflow --json pull`              |
-| `sync`         | (none)                                     | `gitflow --json sync`              |
-| `backmerge`    | (none)                                     | `gitflow --json backmerge`         |
-| `cleanup`      | (none)                                     | `gitflow --json cleanup`           |
-| `health`       | (none)                                     | `gitflow --json health`            |
-| `doctor`       | (none)                                     | `gitflow --json doctor`            |
-| `log`          | `{"count": 20}`                            | `gitflow --json log -n 20`         |
-| `undo`         | (none)                                     | `gitflow --json undo`              |
-| `releasenotes` | `{"from_tag": "v0.5.1"}` (optional)        | `gitflow --json releasenotes`      |
-| `start`        | `{"type": "feature", "name": "my-feat"}`   | `gitflow --json start feature ...` |
-| `finish`       | `{"name": ""}` (optional)                  | `gitflow --json finish`            |
-| `switch`       | `{"branch": "develop"}`                    | `gitflow --json switch develop`    |
-
----
-
-## IDE Setup
-
-Run `gitflow setup` to auto-detect your IDE and generate the appropriate
-pre-flight enforcement rules **and MCP configuration**:
-
-- **Cursor**: Creates `.cursor/rules/gitflow-preflight.mdc` + `.cursor/mcp.json`
-- **VSCode / Copilot**: Creates `.github/copilot-instructions.md` + `.vscode/mcp.json`
-- **Claude Code**: Creates `CLAUDE.md` + `.claude/mcp.json`
-- **Windsurf**: Creates `.windsurfrules` + `.windsurf/mcp.json`
-- **Both/Unknown**: Creates all of the above plus `AGENTS.md`
-
-MCP config is auto-generated only when `gitflow` is in PATH. The config
-points to `gitflow serve` which starts the MCP server over stdio.
-
-Detected IDEs (shown in TUI title bar): Cursor, VS Code, VS Code + Copilot,
-Claude Code, Windsurf, Cline, Zed, Neovim, JetBrains.
-
----
-
-## Interactive TUI Mode (for humans)
-
-Run `gitflow` without arguments to launch the full-screen TUI with:
-
-- Title bar with project name, branch, version, tag, dirty indicator, and detected IDE
-- Dashboard panel with phase analysis and in-flight branches
-- Action menu with highlighted selection and recommended markers
-- Command palette (`/` to search), help (`?`), and refresh (`r`)
-
----
-
-## Agent Decision Flowchart
-
-```
- USER ASKS TO MODIFY CODE
-          │
-          ▼
- ┌─── Run `gitflow --json status` ───┐
- │                                     │
- ▼                                     ▼
- git_flow_initialized?              merge conflict?
- NO → run `init`                    YES → STOP, report to user
- │                                     │
- ▼                                     ▼
- main_ahead_of_develop?             On correct branch?
- YES → run `backmerge`              NO → `switch` to correct branch
- │                                     │
- ▼                                     ▼
- On a flow branch?                  Has dirty state?
- NO → ask user intent               YES → warn about uncommitted changes
-      then `start`
- │
- ▼
- ✅ NOW safe to modify code
- │
- ▼ (when done)
- `finish` → for releases, generates RELEASE_NOTES.md
-```
-
----
-
-## Configuration
-
-The tool reads `.gitflow.json` in the project root for project-specific
-settings (version file, bump commands, branch names). If absent, it
-auto-detects common patterns and uses git tags for versioning.
+- no direct commits to `main` or `develop`
+- keep `develop` superset of `main`
+- always use structured `--json` output for agents
+- exit codes: `0` success, `1` error, `2` conflict-needs-human
