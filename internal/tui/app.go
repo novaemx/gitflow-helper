@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -43,6 +44,9 @@ type model struct {
 	outputTitle  string
 	outputLines  []string
 	outputScroll int
+	running      bool
+	runningTitle string
+	spinner      spinner.Model
 
 	// Command palette
 	paletteQuery string
@@ -70,7 +74,9 @@ type cmdDoneMsg struct {
 }
 
 func Run(gf *gitflow.Logic) error {
-	m := model{gf: gf, mode: viewDashboard}
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{gf: gf, mode: viewDashboard, spinner: s}
 	m.refresh(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -214,6 +220,7 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return activityTickMsg{} }),
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg { return watchTickMsg{} }),
+		m.spinner.Tick,
 	)
 }
 
@@ -232,9 +239,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.outputLines = lines
 		m.outputScroll = 0
+		m.running = false
+		m.runningTitle = ""
 		m.mode = viewOutput
 		m.refresh(false)
 		return m, nil
+
+	case spinner.TickMsg:
+		if !m.running {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 
 	case refreshMsg:
 		m.refresh(false)
@@ -282,6 +299,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.running {
+		switch {
+		case key.Matches(msg, key.NewBinding(key.WithKeys("q", "ctrl+c"))):
+			m.quitting = true
+			return m, tea.Quit
+		case key.Matches(msg, key.NewBinding(key.WithKeys("?"))):
+			m.mode = viewHelp
+		}
+		return m, nil
+	}
+
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("q", "ctrl+c"))):
 		m.quitting = true
@@ -321,7 +349,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, ti.Cursor.BlinkCmd()
 			}
 			if a.Command != "" {
-				return m, m.runCommandAsync(a)
+				return m, m.startCommand(a)
 			}
 		}
 	case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
@@ -373,7 +401,7 @@ func (m model) handlePaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if a.Command != "" {
-				return m, m.runCommandAsync(a)
+				return m, m.startCommand(a)
 			}
 		}
 		m.mode = viewDashboard
@@ -417,7 +445,7 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Command: finalCmd,
 			}
 			m.pendingAction = nil
-			return m, m.runCommandAsync(a)
+			return m, m.startCommand(a)
 		}
 		m.pendingAction = nil
 		return m, nil
@@ -425,6 +453,12 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.inputField, cmd = m.inputField.Update(msg)
 	return m, cmd
+}
+
+func (m model) startCommand(a action) tea.Cmd {
+	m.running = true
+	m.runningTitle = a.Label
+	return tea.Batch(m.spinner.Tick, m.runCommandAsync(a))
 }
 
 func (m model) filteredActions() []action {
@@ -601,6 +635,12 @@ func (m model) renderTitleBar() string {
 
 func (m model) renderDashboard() string {
 	var lines []string
+	dividerWidth := m.width - 2
+	if dividerWidth < 8 {
+		dividerWidth = 8
+	}
+	divider := strings.Repeat("-", dividerWidth)
+
 	for _, dl := range m.dashLines {
 		var s lipgloss.Style
 		switch dl.style {
@@ -626,6 +666,9 @@ func (m model) renderDashboard() string {
 			s = lipgloss.NewStyle()
 		}
 		text := dl.text
+		if text == dashboardDividerToken {
+			text = divider
+		}
 		if len(text) > m.width-2 {
 			text = text[:m.width-2]
 		}
@@ -711,8 +754,10 @@ func (m model) renderActions() string {
 
 func (m model) renderStatusBar() string {
 	var hint string
-	switch m.mode {
-	case viewOutput:
+	switch {
+	case m.running:
+		hint = " " + m.spinner.View() + " Running: " + m.runningTitle + "  [q] quit"
+	case m.mode == viewOutput:
 		hint = " [j/k] scroll  [q/Esc/Enter] close"
 	default:
 		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [q] quit"

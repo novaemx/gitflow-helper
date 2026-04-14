@@ -3,7 +3,10 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/bubbles/spinner"
 )
 
 func TestResolveGitDir_DirectoryDotGit(t *testing.T) {
@@ -142,5 +145,36 @@ func TestSelectionIndexForRefresh_DefaultRecommended(t *testing.T) {
 	got := selectionIndexForRefresh(actions, &prev)
 	if got != 1 {
 		t.Fatalf("expected recommended index 1, got %d", got)
+	}
+}
+
+func TestRenderDashboard_DividerUsesViewportWidth(t *testing.T) {
+	m := model{
+		width: 20,
+		dashLines: []dashLine{
+			{text: dashboardDividerToken, style: "dim"},
+		},
+	}
+
+	rendered := m.renderDashboard()
+	if !strings.Contains(rendered, strings.Repeat("-", 18)) {
+		t.Fatalf("expected dynamic divider sized to viewport, got %q", rendered)
+	}
+}
+
+func TestRenderStatusBar_ShowsRunningAction(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+
+	m := model{
+		width:        120,
+		running:      true,
+		runningTitle: "Finish release v1.2.3",
+		spinner:      s,
+	}
+
+	rendered := m.renderStatusBar()
+	if !strings.Contains(rendered, "Running: Finish release v1.2.3") {
+		t.Fatalf("expected running status in status bar, got %q", rendered)
 	}
 }

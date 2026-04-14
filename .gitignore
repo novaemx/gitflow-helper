@@ -5,6 +5,7 @@ dist/
 
 # Test & coverage output
 *.out
+cover.out
 *.test
 *.prof
 cover.html
@@ -36,5 +37,5 @@ tmp/
 # Log files
 *.log
 
-.agents/
+.agents/*
 gitflow
