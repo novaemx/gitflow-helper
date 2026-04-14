@@ -349,7 +349,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, ti.Cursor.BlinkCmd()
 			}
 			if a.Command != "" {
-				return m, m.startCommand(a)
+				return m.startCommand(a)
 			}
 		}
 	case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
@@ -401,7 +401,7 @@ func (m model) handlePaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if a.Command != "" {
-				return m, m.startCommand(a)
+				return m.startCommand(a)
 			}
 		}
 		m.mode = viewDashboard
@@ -445,7 +445,7 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Command: finalCmd,
 			}
 			m.pendingAction = nil
-			return m, m.startCommand(a)
+			return m.startCommand(a)
 		}
 		m.pendingAction = nil
 		return m, nil
@@ -455,10 +455,10 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) startCommand(a action) tea.Cmd {
+func (m model) startCommand(a action) (tea.Model, tea.Cmd) {
 	m.running = true
 	m.runningTitle = a.Label
-	return tea.Batch(m.spinner.Tick, m.runCommandAsync(a))
+	return m, tea.Batch(m.spinner.Tick, m.runCommandAsync(a))
 }
 
 func (m model) filteredActions() []action {
