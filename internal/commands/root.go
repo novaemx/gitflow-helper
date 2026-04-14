@@ -20,7 +20,7 @@ func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "gitflow",
 		Short: "Git Flow helper — interactive TUI + CLI subcommands",
-		Long:  "A comprehensive Git Flow workflow helper with an interactive TUI and CLI subcommands for agent and human use.\nOnly requires git — no git-flow extensions needed.",
+		Long:  "A comprehensive Git Flow workflow helper with an interactive TUI and CLI subcommands for agent and human use.",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			deferTotal := debug.Start("root.PersistentPreRun.total")
 			defer deferTotal()
