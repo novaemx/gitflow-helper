@@ -14,6 +14,8 @@ type dashLine struct {
 	style string // "normal", "error", "warn", "dim", "ok", "section", "feature", "bugfix", "release", "hotfix"
 }
 
+const dashboardDividerToken = "__dashboard_divider__"
+
 func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 	var lines []dashLine
 
@@ -119,7 +121,7 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 	}
 
 	lines = append(lines, dashLine{"", "normal"})
-	lines = append(lines, dashLine{strings.Repeat("─", 55), "dim"})
+	lines = append(lines, dashLine{dashboardDividerToken, "dim"})
 	lines = append(lines, dashLine{" Phase analysis:", "section"})
 	lines = append(lines, dashLine{"", "normal"})
 
