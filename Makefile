@@ -81,7 +81,9 @@ universal: build-all
 
 ## clean: remove build artifacts
 clean:
-	rm -rf $(DIST) $(BINARY)
+	rm -rf $(DIST) $(BINARY) $(BINARY).exe
+	@# Remove common test/coverage/debug and packaging temp artifacts across the repo.
+	find . -type f \( -name "*.out" -o -name "*.test" -o -name "*.prof" -o -name "cover.out" -o -name "cover.html" -o -name "__debug_bin*" -o -name "*.bak" -o -name "*.tmp" -o -name ".DS_Store" \) -not -path "./.git/*" -delete
 
 ## test: run all tests
 test:
