@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/gitflow"
 )
 
 func TestResolveGitDir_DirectoryDotGit(t *testing.T) {
@@ -176,5 +178,25 @@ func TestRenderStatusBar_ShowsRunningAction(t *testing.T) {
 	rendered := m.renderStatusBar()
 	if !strings.Contains(rendered, "Running: Finish release v1.2.3") {
 		t.Fatalf("expected running status in status bar, got %q", rendered)
+	}
+}
+
+func TestStartCommand_SetsRunningState(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+
+	m := model{spinner: s}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+	next, _ := m.startCommand(action{Label: "Sync branches", Command: "echo ok"})
+
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatalf("expected model type after startCommand")
+	}
+	if !updated.running {
+		t.Fatalf("expected running to be true")
+	}
+	if updated.runningTitle != "Sync branches" {
+		t.Fatalf("expected runningTitle to be set, got %q", updated.runningTitle)
 	}
 }
