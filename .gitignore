@@ -5,6 +5,7 @@ dist/
 
 # Test & coverage output
 *.out
+cover.out
 *.test
 *.prof
 cover.html
