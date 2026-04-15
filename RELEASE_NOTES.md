@@ -1,24 +1,26 @@
-# Release 0.5.23
+# Release 0.5.24
 
 **Date:** 2026-04-15
 
 ## What's New
 
+- Merge feature 'atomic-commits-remote-branch-check' into develop
+- Merge feature 'fix-init-files-on-develop-branch' into develop
 - Merge feature 'audit-deep-dives' into develop
 - Enhance git command execution and testing capabilities - Introduced GitClient interface and LocalGitClient implementation for better abstraction. - Added auto-initialization of git repository in root command. - Implemented coverage reporting in Makefile and updated README. - Added tests for git command execution and version handling. - Updated .gitignore to exclude coverage files.
 - Introduce SplitCommand wrapper and refactor command execution
-- Merge feature 'gitflow-cd-smart-finish-improvements' into develop
-- Implement fast-release command and enhance finish command with rebase and squash options
-- Merge feature 'tui-selector-activity-toggle' into develop
-- Implement integration mode toggle and enhance TUI with mode display
-- Enhance TUI with activity panel toggle and improve commit warning diagnostics
-- Merge feature 'enforce-base-branch-guard' into develop
-- Enforce protection on base branches with uncommitted changes and provide TUI guidance
-- Merge feature 'tui-push-activity-panel' into develop
-- Add activity logging for CLI commands and enhance TUI with push action
 
 ## Bug Fixes
 
+- Enhance HARD STOP branch check and clarify mandatory pre-flight sequence
+- Skip remote branch delete when branch is absent
+- Enhance HARD STOP decision tree and clarify pre-flight checks
+- Ask AI consent before provisioning IDE rules; TUI A-key 3-state activity panel
+- Silent git plumbing, clean output, commit .gitflow.json on develop
+- Generate init files on develop branch, AGENTS.md only for IDEs without .agents/
 - Resolve executables when PATH missing (fallback to project/home bin)
-- Correct formatting of error message in invariant check test
+
+## Improvements
+
+- Streamline mandatory pre-flight checks and clarify branch creation rules
 
