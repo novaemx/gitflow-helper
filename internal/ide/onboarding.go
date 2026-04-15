@@ -12,6 +12,7 @@ import (
 type aiIntegrationChoice struct {
 	Enabled bool   `json:"enabled"`
 	IDEID   string `json:"ide_id,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 var askAIIntegrationFunc = askAIIntegration
@@ -82,22 +83,31 @@ func askAIIntegration(detected DetectedIDE) (bool, error) {
 // skill only when user consent for AI integration is enabled.
 //
 // Consent is persisted at $HOME/.gitflow/ai-integration.json.
-// In non-interactive mode this function defaults to enabled to preserve
-// automation behavior for agents and scripts.
-func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interactive bool) ([]string, error) {
+// In non-interactive mode (agents / --json) this function does NOT auto-enable;
+// it skips provisioning when no prior consent exists, preserving explicit
+// user opt-in.
+//
+// When consent exists and the stored version matches appVersion, provisioning
+// is skipped entirely (zero file I/O). On version mismatch, rules are
+// re-provisioned idempotently and the stored version is updated.
+func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interactive bool, appVersion string) ([]string, error) {
 	choice, exists, err := loadAIIntegrationChoice()
 	if err != nil {
 		return nil, err
 	}
 
 	if !exists {
-		enabled := true
-		if interactive {
-			enabled, err = askAIIntegrationFunc(detected)
-			if err != nil {
-				return nil, err
-			}
+		if !interactive {
+			// Non-interactive (agent/JSON): do not auto-enable — require
+			// explicit user consent from a prior interactive session.
+			return []string{}, nil
 		}
+		enabled, err := askAIIntegrationFunc(detected)
+		if err != nil {
+			return nil, err
+		}
+		// Save consent WITHOUT version so the provisioning path below runs
+		// on this first invocation.  The version is stamped after provisioning.
 		choice = aiIntegrationChoice{Enabled: enabled, IDEID: detected.ID}
 		if err := saveAIIntegrationChoice(choice); err != nil {
 			return nil, err
@@ -108,5 +118,22 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 		return []string{}, nil
 	}
 
-	return EnsureRulesForIDE(projectRoot, detected)
+	// If the stored version matches the running binary, all rules are
+	// already up-to-date — skip all file I/O.
+	if appVersion != "" && choice.Version == appVersion {
+		return []string{}, nil
+	}
+
+	created, err := EnsureRulesForIDE(projectRoot, detected)
+	if err != nil {
+		return created, err
+	}
+
+	// Update stored version so subsequent runs skip provisioning.
+	if appVersion != "" && choice.Version != appVersion {
+		choice.Version = appVersion
+		_ = saveAIIntegrationChoice(choice)
+	}
+
+	return created, nil
 }
