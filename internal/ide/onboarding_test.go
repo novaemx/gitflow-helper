@@ -55,7 +55,7 @@ func TestEnsureRulesWithAIConsent_FirstRunAccepts(t *testing.T) {
 	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return true, nil }
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true)
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestEnsureRulesWithAIConsent_FirstRunDeclines(t *testing.T) {
 	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return false, nil }
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true)
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
@@ -111,7 +111,8 @@ func TestEnsureRulesWithAIConsent_UsesExistingEnabledChoice(t *testing.T) {
 	}
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true)
+	// Pass empty version to bypass version check for this legacy-consent test
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestEnsureRulesWithAIConsent_UsesExistingDeclinedChoice(t *testing.T) {
 	}
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true)
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
@@ -152,7 +153,7 @@ func TestEnsureRulesWithAIConsent_UsesExistingDeclinedChoice(t *testing.T) {
 	}
 }
 
-func TestEnsureRulesWithAIConsent_NonInteractiveDefaultsToInstall(t *testing.T) {
+func TestEnsureRulesWithAIConsent_NonInteractiveSkipsWithoutPriorConsent(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
 
@@ -167,12 +168,12 @@ func TestEnsureRulesWithAIConsent_NonInteractiveDefaultsToInstall(t *testing.T) 
 	}
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, false)
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, false, "1.0.0")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
-	if len(created) < 3 {
-		t.Fatalf("expected files in non-interactive mode, got %d", len(created))
+	if len(created) != 0 {
+		t.Fatalf("expected no files when non-interactive and no prior consent, got %d", len(created))
 	}
 }
 
@@ -227,8 +228,95 @@ func TestEnsureRulesWithAIConsent_InvalidStoredChoiceFails(t *testing.T) {
 		t.Fatalf("write invalid consent: %v", err)
 	}
 
-	_, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true)
+	_, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err == nil {
 		t.Fatal("expected parse error for invalid consent file")
+	}
+}
+
+func TestEnsureRulesWithAIConsent_SkipsWhenVersionMatches(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	// Pre-create consent with version "1.0.0"
+	p := filepath.Join(home, ".gitflow", "ai-integration.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"enabled":true,"ide_id":"cursor","version":"1.0.0"}`)
+	if err := os.WriteFile(p, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("expected zero files when version matches, got %d: %v", len(created), created)
+	}
+}
+
+func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	// Pre-create consent with old version
+	p := filepath.Join(home, ".gitflow", "ai-integration.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"enabled":true,"ide_id":"cursor","version":"0.9.0"}`)
+	if err := os.WriteFile(p, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
+	}
+	if len(created) < 1 {
+		t.Fatalf("expected files to be provisioned on version upgrade, got %d", len(created))
+	}
+
+	// Verify stored version was updated
+	raw, _ := os.ReadFile(p)
+	var choice aiIntegrationChoice
+	_ = json.Unmarshal(raw, &choice)
+	if choice.Version != "1.0.0" {
+		t.Fatalf("expected version updated to 1.0.0, got %q", choice.Version)
+	}
+}
+
+func TestEnsureRulesWithAIConsent_NonInteractiveSkipsFirstRun(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	prevAsk := askAIIntegrationFunc
+	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+		t.Fatal("should not prompt in non-interactive mode")
+		return false, nil
+	}
+	defer func() { askAIIntegrationFunc = prevAsk }()
+
+	// Non-interactive first run should NOT provision (no consent file exists)
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, false, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("expected no files in non-interactive first run, got %d", len(created))
 	}
 }
