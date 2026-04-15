@@ -197,7 +197,7 @@ func NewRootCmd(version string) *cobra.Command {
 				// 2. Ask AI consent and provision IDE rules
 				if name != "doctor" && name != "health" {
 					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules.freshInit")
-					created, _ := ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
+					created, _ := ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode(), version)
 					deferEnsure()
 					if len(created) > 0 {
 						output.Infof("  %s✓ agent rules%s — %s", output.Green, output.Reset, GF.IDE.DisplayName)
@@ -220,7 +220,7 @@ func NewRootCmd(version string) *cobra.Command {
 				ensureIntegrationModeConfigured(cmd)
 				if name != "doctor" && name != "health" {
 					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
-					_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
+					_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode(), version)
 					deferEnsure()
 				}
 			}

@@ -651,6 +651,10 @@ func (m model) renderBase() string {
 		if normalW > m.width/2 {
 			normalW = m.width / 2
 		}
+	} else if m.width >= 60 {
+		normalW = 30
+	} else {
+		normalW = 24
 	}
 	fullW := m.width - 2
 	if fullW < 24 {
