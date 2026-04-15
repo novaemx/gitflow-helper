@@ -2,7 +2,6 @@ package gitflow
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -14,7 +13,6 @@ import (
 	"github.com/novaemx/gitflow-helper/internal/flow"
 	"github.com/novaemx/gitflow-helper/internal/git"
 	"github.com/novaemx/gitflow-helper/internal/ide"
-	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/novaemx/gitflow-helper/internal/state"
 )
 
@@ -146,21 +144,6 @@ func (gf *Logic) Status() state.RepoState {
 func (gf *Logic) Init() (bool, string) {
 	ok, msg := flow.InitGitFlow(gf.Config)
 	if ok {
-		if msg != "already_initialized" {
-			// Provision IDE rules on develop so every generated file is committed
-			// on the correct branch before the caller regains control.
-			if created, err := ide.EnsureRulesForIDE(gf.Config.ProjectRoot, gf.IDE); err == nil && len(created) > 0 {
-				for _, absPath := range created {
-					rel, relErr := filepath.Rel(gf.Config.ProjectRoot, absPath)
-					if relErr != nil {
-						rel = absPath
-					}
-					_ = git.ExecSilent("add", rel)
-				}
-				_ = git.ExecSilent("commit", "-m", "chore: add gitflow agent rules")
-				output.Infof("  %s✓ agent rules%s — %s", output.Green, output.Reset, gf.IDE.DisplayName)
-			}
-		}
 		gf.Refresh()
 	}
 	return ok, msg

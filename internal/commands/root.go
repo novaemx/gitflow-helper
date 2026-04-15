@@ -189,25 +189,39 @@ func NewRootCmd(version string) *cobra.Command {
 			}
 
 			// Auto-provision IDE rules when missing (silent, idempotent)
-			if name != "doctor" && name != "health" {
-				deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
-				_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
-				deferEnsure()
-			}
-
-			ensureIntegrationModeConfigured(cmd)
-
-			// After fresh init, commit .gitflow.json on develop so the working
-			// tree is completely clean before the user starts working.
 			if freshInit && git.CurrentBranch() == GF.Config.DevelopBranch {
-				lines := git.ExecLines("status", "--porcelain", ".gitflow.json")
-				if len(lines) > 0 {
-					_ = git.ExecSilent("add", ".gitflow.json")
-					_ = git.ExecSilent("commit", "-m", "chore: configure gitflow integration mode")
-					output.Infof("  %s✓ .gitflow.json%s — integration mode committed", output.Green, output.Reset)
+				// --- Fresh repo: ask consent FIRST, then provision, then commit ---
+				// 1. Ask integration mode (writes .gitflow.json)
+				ensureIntegrationModeConfigured(cmd)
+
+				// 2. Ask AI consent and provision IDE rules
+				if name != "doctor" && name != "health" {
+					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules.freshInit")
+					created, _ := ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
+					deferEnsure()
+					if len(created) > 0 {
+						output.Infof("  %s✓ agent rules%s — %s", output.Green, output.Reset, GF.IDE.DisplayName)
+					}
 				}
+
+				// 3. Commit all workspace files (ide rules + .gitflow.json) on develop
+				staged := git.ExecLines("status", "--porcelain")
+				if len(staged) > 0 {
+					_ = git.ExecSilent("add", ".")
+					_ = git.ExecSilent("commit", "-m", "chore: initialize gitflow workspace")
+					output.Infof("  %s✓ workspace configuration committed on %s%s", output.Green, GF.Config.DevelopBranch, output.Reset)
+				}
+
 				if !output.IsJSONMode() {
 					output.Infof("  %s✦ Repository ready — working branch: %s%s%s", output.Cyan, output.Bold, GF.Config.DevelopBranch, output.Reset)
+				}
+			} else {
+				// Not a fresh init — idempotent consent check (silent if already answered)
+				ensureIntegrationModeConfigured(cmd)
+				if name != "doctor" && name != "health" {
+					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
+					_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
+					deferEnsure()
 				}
 			}
 		},

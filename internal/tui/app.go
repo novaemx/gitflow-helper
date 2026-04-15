@@ -30,6 +30,14 @@ const (
 	viewInput
 )
 
+type activityPanelState int
+
+const (
+	activityHidden   activityPanelState = 0
+	activityNormal   activityPanelState = 1
+	activityExpanded activityPanelState = 2
+)
+
 type model struct {
 	gf        *gitflow.Logic
 	actions   []action
@@ -60,8 +68,8 @@ type model struct {
 	// IDE activity from MCP server
 	mcpActivity []mcpserver.ActivityEntry
 
-	// Activity panel visibility
-	showActivity bool
+	// Activity panel state (0=hidden, 1=normal right panel, 2=expanded full-width)
+	activityPanel activityPanelState
 
 	// Git state watch
 	lastGitFingerprint string
@@ -80,7 +88,7 @@ type cmdDoneMsg struct {
 func Run(gf *gitflow.Logic) error {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{gf: gf, mode: viewDashboard, spinner: s, showActivity: true}
+	m := model{gf: gf, mode: viewDashboard, spinner: s, activityPanel: activityNormal}
 	m.refresh(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -382,7 +390,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("?"))):
 		m.mode = viewHelp
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
-		m.showActivity = !m.showActivity
+		switch m.activityPanel {
+		case activityHidden:
+			m.activityPanel = activityNormal
+		case activityNormal:
+			m.activityPanel = activityExpanded
+		case activityExpanded:
+			m.activityPanel = activityHidden
+		}
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 		m.refresh(false)
 	}
@@ -571,8 +586,17 @@ func (m model) renderBase() string {
 	sections = append(sections, m.renderTitleBar())
 
 	contentHeight := m.height - 3
+
+	// Expanded mode: render activity panel as full-width primary content
+	if m.activityPanel == activityExpanded {
+		panel := m.renderActivityPanel(m.width-2, contentHeight)
+		sections = append(sections, panel)
+		sections = append(sections, m.renderStatusBar())
+		return strings.Join(sections, "\n")
+	}
+
 	rightW := 0
-	if m.showActivity && m.width >= 100 {
+	if m.activityPanel == activityNormal && m.width >= 100 {
 		rightW = 40
 		if rightW > m.width/2 {
 			rightW = m.width / 2
@@ -900,7 +924,14 @@ func (m model) renderStatusBar() string {
 	case m.mode == viewOutput:
 		hint = " [j/k] scroll  [q/Esc/Enter] close"
 	default:
-		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [a] activity  [Ctrl+M/m] mode  [q] quit"
+		activityHint := "[a] activity"
+		switch m.activityPanel {
+		case activityNormal:
+			activityHint = "[a] expand"
+		case activityExpanded:
+			activityHint = "[a] close"
+		}
+		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  " + activityHint + "  [Ctrl+M/m] mode  [q] quit"
 	}
 	if len(hint) > m.width {
 		hint = hint[:m.width]
