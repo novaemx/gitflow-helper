@@ -26,6 +26,9 @@ func logCLIActivity(cmd *cobra.Command, args []string) {
 	if tool == "" {
 		tool = "gitflow"
 	}
+	if cmd.Parent() == nil && len(args) == 0 {
+		tool = "interactive-tui"
+	}
 	entry := mcp.ActivityEntry{
 		Tool:   tool,
 		Args:   strings.Join(args, " "),

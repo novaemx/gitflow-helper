@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -279,5 +280,35 @@ func TestHealthReport_ToMap(t *testing.T) {
 	}
 	if got, ok := m["issues"].([]string); !ok || len(got) != 1 || got[0] != "a" {
 		t.Fatalf("unexpected issues map value: %#v", m["issues"])
+	}
+}
+
+func TestHealthReport_DirtyDevelopIsIssue(t *testing.T) {
+	dir := setupTestRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+	run("git", "checkout", "develop")
+	if err := os.WriteFile(filepath.Join(dir, "dirty.txt"), []byte("x\n"), 0644); err != nil {
+		t.Fatalf("write dirty file: %v", err)
+	}
+
+	gf := New(dir)
+	report := gf.HealthReport()
+	found := false
+	for _, issue := range report.Issues {
+		if strings.Contains(issue, "protected base branch 'develop' has uncommitted changes") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected protected branch dirty issue, got %+v", report.Issues)
 	}
 }

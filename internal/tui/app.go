@@ -615,7 +615,7 @@ func (m model) renderBase() string {
 		return strings.Join(sections, "\n")
 	}
 
-	rightPanel := m.renderActivityPanel(rightW)
+	rightPanel := m.renderActivityPanel(rightW, contentHeight)
 	rightLines := strings.Split(rightPanel, "\n")
 	if len(rightLines) > contentHeight {
 		rightLines = rightLines[:contentHeight]
@@ -752,21 +752,32 @@ func (m model) renderDashboard() string {
 	return m.renderDashboardForWidth(m.width)
 }
 
-func (m model) renderActivityPanel(width int) string {
+func (m model) renderActivityPanel(width, height int) string {
 	if width < 24 {
 		width = 24
+	}
+	if height < 5 {
+		height = 5
 	}
 
 	var lines []string
 	lines = append(lines, boldStyle.Render("Agent Activity"))
-	lines = append(lines, dimStyle.Render("MCP + CLI"))
 	lines = append(lines, "")
 
-	if len(m.mcpActivity) == 0 {
+	entries := m.mcpActivity
+	maxEntries := height - 4
+	if maxEntries < 1 {
+		maxEntries = 1
+	}
+	if len(entries) > maxEntries {
+		entries = entries[len(entries)-maxEntries:]
+	}
+
+	if len(entries) == 0 {
 		lines = append(lines, dimStyle.Render("No activity yet."))
 	}
 
-	for _, entry := range m.mcpActivity {
+	for _, entry := range entries {
 		ts := entry.Timestamp
 		if len(ts) > 19 {
 			ts = ts[11:19]
@@ -780,23 +791,50 @@ func (m model) renderActivityPanel(width int) string {
 			source = "mcp"
 		}
 
-		detail := "[" + source + "] " + entry.Tool
+		detail := entry.Tool
 		if entry.Args != "" {
 			detail += " " + entry.Args
 		}
-
-		line := fmt.Sprintf("%s %s %s", icon, dimStyle.Render(ts), detail)
-		if len(line) > width-4 {
-			line = line[:width-4]
+		detail = strings.TrimSpace(detail)
+		if detail == "" {
+			detail = "(no details)"
 		}
-		lines = append(lines, line)
+
+		plainPrefix := ts + " [" + source + "] "
+		plainLine := plainPrefix + detail
+		lineWidth := width - 4
+		if lineWidth < 8 {
+			lineWidth = 8
+		}
+		if lipgloss.Width(plainLine) > lineWidth {
+			plainLine = lipgloss.NewStyle().MaxWidth(lineWidth).Render(plainLine)
+		}
+
+		parts := strings.SplitN(plainLine, " ", 3)
+		rendered := plainLine
+		if len(parts) >= 3 {
+			rendered = lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				icon,
+				" ",
+				dimStyle.Render(parts[0]),
+				" ",
+				parts[1],
+				" ",
+				parts[2],
+			)
+		} else {
+			rendered = lipgloss.JoinHorizontal(lipgloss.Top, icon, " ", plainLine)
+		}
+		lines = append(lines, rendered)
 	}
 
 	panel := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("8")).
 		Padding(0, 1).
-		Width(width)
+		Width(width).
+		Height(height)
 
 	return panel.Render(strings.Join(lines, "\n"))
 }

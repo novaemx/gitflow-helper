@@ -75,6 +75,10 @@ func appendTierWithPriority(dst []action, tier []action) []action {
 	return dst
 }
 
+func isProtectedBaseBranchDirty(s state.RepoState, cfg config.FlowConfig) bool {
+	return s.Dirty && (s.Current == cfg.DevelopBranch || s.Current == cfg.MainBranch)
+}
+
 // buildActions builds the action list ordered by priority tiers:
 //
 //	T1 CRITICAL  — backmerge / continue merge / init
@@ -140,6 +144,35 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			Recommended: true,
 			Command:     "gitflow init",
 		})
+	}
+
+	if isProtectedBaseBranchDirty(s, cfg) {
+		if s.Current == cfg.DevelopBranch {
+			critical = append(critical, action{
+				Label:       "Move current changes to a feature branch",
+				Tag:         "start",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Feature name:",
+				Command:     "gitflow start feature %s",
+			})
+			critical = append(critical, action{
+				Label:       "Move current changes to a bugfix branch",
+				Tag:         "start",
+				NeedsInput:  true,
+				InputPrompt: "Bugfix name:",
+				Command:     "gitflow start bugfix %s",
+			})
+		} else if s.Current == cfg.MainBranch {
+			critical = append(critical, action{
+				Label:       "Move current changes to a hotfix branch",
+				Tag:         "hotfix",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Hotfix version:",
+				Command:     "gitflow start hotfix %s",
+			})
+		}
 	}
 
 	// T2 HIGH: finish current flow branch / sync with parent
@@ -255,6 +288,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	switch {
 	case btype == "base" && s.Current == cfg.DevelopBranch:
+		if isProtectedBaseBranchDirty(s, cfg) {
+			break
+		}
 		if len(s.Releases) > 0 {
 			var candidate *state.BranchInfo
 			for i := range s.Releases {
@@ -292,6 +328,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 
 	case btype == "base" && s.Current == cfg.MainBranch:
+		if isProtectedBaseBranchDirty(s, cfg) {
+			break
+		}
 		normal = append(normal, action{
 			Label: "Start a hotfix (urgent)", Tag: "hotfix",
 			Command: "gitflow start hotfix auto",

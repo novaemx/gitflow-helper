@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
+	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
 )
 
 func TestResolveGitDir_DirectoryDotGit(t *testing.T) {
@@ -198,5 +199,28 @@ func TestStartCommand_SetsRunningState(t *testing.T) {
 	}
 	if updated.runningTitle != "Sync branches" {
 		t.Fatalf("expected runningTitle to be set, got %q", updated.runningTitle)
+	}
+}
+
+func TestRenderActivityPanel_ShowsDetailsWithoutSubtitle(t *testing.T) {
+	m := model{
+		mcpActivity: []mcpserver.ActivityEntry{{
+			Tool:      "interactive-tui",
+			Args:      "gitflow push",
+			Result:    "started",
+			Source:    "cli",
+			Timestamp: "2026-04-14T03:35:32Z",
+		}},
+	}
+
+	rendered := stripANSI(m.renderActivityPanel(60, 10))
+	if strings.Contains(rendered, "MCP + CLI") {
+		t.Fatalf("did not expect legacy subtitle in activity panel: %q", rendered)
+	}
+	if !strings.Contains(rendered, "interactive-tui") {
+		t.Fatalf("expected CLI activity details in panel, got %q", rendered)
+	}
+	if got := len(strings.Split(rendered, "\n")); got < 10 {
+		t.Fatalf("expected panel to use full available height, got %d lines", got)
 	}
 }
