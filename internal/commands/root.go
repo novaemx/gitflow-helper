@@ -3,10 +3,12 @@ package commands
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
+	"github.com/novaemx/gitflow-helper/internal/mcp"
 	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -15,6 +17,23 @@ var (
 	jsonFlag bool
 	GF       *gitflow.Logic
 )
+
+func logCLIActivity(cmd *cobra.Command, args []string) {
+	if GF == nil || GF.Config.ProjectRoot == "" {
+		return
+	}
+	tool := cmd.Name()
+	if tool == "" {
+		tool = "gitflow"
+	}
+	entry := mcp.ActivityEntry{
+		Tool:   tool,
+		Args:   strings.Join(args, " "),
+		Result: "started",
+		Source: "cli",
+	}
+	_ = mcp.AppendActivityLog(GF.Config.ProjectRoot, entry)
+}
 
 func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
@@ -37,6 +56,8 @@ func NewRootCmd(version string) *cobra.Command {
 			if name == "help" || name == "completion" {
 				return
 			}
+
+			logCLIActivity(cmd, args)
 
 			deferGitAvail := debug.Start("root.PersistentPreRun.IsGitAvailable")
 			if !GF.IsGitAvailable() {
