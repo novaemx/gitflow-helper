@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/output"
 )
 
@@ -179,6 +180,62 @@ func TestFinishOptions_ZeroValueIsStandardMerge(t *testing.T) {
 	}
 	if opts.DeleteRemote {
 		t.Fatal("default FinishOptions should not have DeleteRemote=true")
+	}
+}
+
+func TestTryDeleteRemote_SkipsWhenRemoteBranchDoesNotExist(t *testing.T) {
+	prevRemoteExists := remoteExistsFinish
+	prevRemoteBranchExists := remoteBranchExistsFinish
+	prevExec := execResultFinish
+	defer func() {
+		remoteExistsFinish = prevRemoteExists
+		remoteBranchExistsFinish = prevRemoteBranchExists
+		execResultFinish = prevExec
+	}()
+
+	remoteExistsFinish = func(string) bool { return true }
+	remoteBranchExistsFinish = func(string, string) bool { return false }
+
+	calls := 0
+	execResultFinish = func(args ...string) (int, string, string) {
+		if len(args) > 0 && args[0] == "push" {
+			calls++
+		}
+		return 0, "", ""
+	}
+
+	tryDeleteRemote(config.FlowConfig{Remote: "origin"}, "feature/demo", true)
+
+	if calls != 0 {
+		t.Fatalf("expected no remote delete push when branch does not exist, got %d push call(s)", calls)
+	}
+}
+
+func TestTryDeleteRemote_DeletesWhenRemoteBranchExists(t *testing.T) {
+	prevRemoteExists := remoteExistsFinish
+	prevRemoteBranchExists := remoteBranchExistsFinish
+	prevExec := execResultFinish
+	defer func() {
+		remoteExistsFinish = prevRemoteExists
+		remoteBranchExistsFinish = prevRemoteBranchExists
+		execResultFinish = prevExec
+	}()
+
+	remoteExistsFinish = func(string) bool { return true }
+	remoteBranchExistsFinish = func(string, string) bool { return true }
+
+	calls := 0
+	execResultFinish = func(args ...string) (int, string, string) {
+		if len(args) >= 4 && args[0] == "push" && args[2] == "--delete" {
+			calls++
+		}
+		return 0, "", ""
+	}
+
+	tryDeleteRemote(config.FlowConfig{Remote: "origin"}, "feature/demo", true)
+
+	if calls != 1 {
+		t.Fatalf("expected one remote delete push call, got %d", calls)
 	}
 }
 
