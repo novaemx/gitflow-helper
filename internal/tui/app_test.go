@@ -246,37 +246,49 @@ func TestRenderActionsForWidth_AllActionsHavePrefix(t *testing.T) {
 	}
 }
 
-func TestShowActivityToggle_DefaultsTrue(t *testing.T) {
+func TestActivityPanel_DefaultsNormal(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{gf: nil, mode: viewDashboard, spinner: s, showActivity: true}
-	if !m.showActivity {
-		t.Fatal("expected showActivity to default true")
+	m := model{gf: nil, mode: viewDashboard, spinner: s, activityPanel: activityNormal}
+	if m.activityPanel != activityNormal {
+		t.Fatal("expected activityPanel to default to activityNormal")
 	}
 }
 
-func TestShowActivityToggle_TogglesOnKeyA(t *testing.T) {
+func TestActivityPanel_CyclesOnKeyA(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{spinner: s, showActivity: true, mode: viewDashboard}
+	m := model{spinner: s, activityPanel: activityNormal, mode: viewDashboard}
 	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
 
+	// normal → expanded
 	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	updated, ok := next.(model)
 	if !ok {
 		t.Fatal("expected model type")
 	}
-	if updated.showActivity {
-		t.Fatal("expected showActivity to toggle to false")
+	if updated.activityPanel != activityExpanded {
+		t.Fatalf("expected activityPanel to be activityExpanded, got %d", updated.activityPanel)
 	}
 
+	// expanded → hidden
 	next2, _ := updated.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	updated2, ok := next2.(model)
 	if !ok {
 		t.Fatal("expected model type")
 	}
-	if !updated2.showActivity {
-		t.Fatal("expected showActivity to toggle back to true")
+	if updated2.activityPanel != activityHidden {
+		t.Fatalf("expected activityPanel to be activityHidden, got %d", updated2.activityPanel)
+	}
+
+	// hidden → normal
+	next3, _ := updated2.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	updated3, ok := next3.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated3.activityPanel != activityNormal {
+		t.Fatalf("expected activityPanel to cycle back to activityNormal, got %d", updated3.activityPanel)
 	}
 }
 

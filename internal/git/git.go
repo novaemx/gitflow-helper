@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -27,6 +28,17 @@ func ExecResult(args ...string) (int, string, string) {
 func ExecQuiet(args ...string) string {
 	_, stdout, _ := ExecResult(args...)
 	return stdout
+}
+
+// ExecSilent runs git without logging the command or printing any output.
+// Use for internal plumbing (init, branch creation, commits) where verbose
+// output would pollute the user-facing progress display.
+func ExecSilent(args ...string) error {
+	code, _, _ := ExecResult(args...)
+	if code != 0 {
+		return fmt.Errorf("git %s: exit code %d", strings.Join(args, " "), code)
+	}
+	return nil
 }
 
 // ExecLines runs git with explicit arguments and returns stdout split by newline.

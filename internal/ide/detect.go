@@ -125,8 +125,11 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 		created = append(created, skillPath)
 	}
 
-	// Always ensure AGENTS.md as universal fallback
-	if !agentsRuleExists(projectRoot) {
+	// Create AGENTS.md only for IDEs that do not support .agents/ or ~/.agents/
+	// (i.e. IDEs not in projectScopedSkillIDEs). For those IDEs the embedded
+	// skill already lands in .agents/skills/gitflow/SKILL.md, making AGENTS.md
+	// redundant.
+	if !projectScopedSkillIDEs[detected.ID] && !agentsRuleExists(projectRoot) {
 		path, err := generateAgentsMD(projectRoot)
 		if err != nil {
 			return created, err

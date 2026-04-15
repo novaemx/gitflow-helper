@@ -148,13 +148,13 @@ func NewRootCmd(version string) *cobra.Command {
 					os.Exit(1)
 				}
 				// Interactive path: attempt to initialize a git repo in-place.
-				output.Infof("  %sNot inside a git repository.%s", output.Yellow, output.Reset)
-				output.Infof("  Attempting auto-initialize: running %sgit init%s...", output.Bold, output.Reset)
-				if err := git.Exec("init"); err != nil {
-					output.Infof("  %sFailed to run 'git init': %v%s", output.Red, err, output.Reset)
+				output.Infof("  %s✦ Initializing new git repository...%s", output.Cyan, output.Reset)
+				if err := git.ExecSilent("init"); err != nil {
+					output.Infof("  %s✗ git init failed: %v%s", output.Red, err, output.Reset)
 					output.Infof("  Run %sgit init%s first, then %sgitflow init%s.", output.Bold, output.Reset, output.Bold, output.Reset)
 					os.Exit(1)
 				}
+				output.Infof("  %s✓ empty repository created%s", output.Green, output.Reset)
 				// Reset cached checks so the new git repo is detected by subsequent
 				// evaluations (IsGitRepo / IsGitFlowInitialized).
 				GF.ResetChecks()
@@ -162,12 +162,13 @@ func NewRootCmd(version string) *cobra.Command {
 			deferIsRepo()
 
 			// Auto-initialize gitflow structure if running a command that needs it
+			freshInit := false
 			if name != "doctor" && name != "health" && name != "setup" {
 				deferInitCheck := debug.Start("root.PersistentPreRun.IsGitFlowInitialized")
 				if !GF.IsGitFlowInitialized() {
 					deferInitCheck()
 					if !output.IsJSONMode() {
-						output.Infof("  %sGitflow structure not detected. Auto-initializing...%s", output.Yellow, output.Reset)
+						output.Infof("  %s✦ Setting up gitflow structure...%s", output.Cyan, output.Reset)
 					}
 					deferInit := debug.Start("root.PersistentPreRun.GF.Init")
 					ok, msg := GF.Init()
@@ -181,19 +182,48 @@ func NewRootCmd(version string) *cobra.Command {
 						}
 						os.Exit(1)
 					}
+					freshInit = true
 				} else {
 					deferInitCheck()
 				}
 			}
 
 			// Auto-provision IDE rules when missing (silent, idempotent)
-			if name != "doctor" && name != "health" {
-				deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
-				_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
-				deferEnsure()
-			}
+			if freshInit && git.CurrentBranch() == GF.Config.DevelopBranch {
+				// --- Fresh repo: ask consent FIRST, then provision, then commit ---
+				// 1. Ask integration mode (writes .gitflow.json)
+				ensureIntegrationModeConfigured(cmd)
 
-			ensureIntegrationModeConfigured(cmd)
+				// 2. Ask AI consent and provision IDE rules
+				if name != "doctor" && name != "health" {
+					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules.freshInit")
+					created, _ := ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
+					deferEnsure()
+					if len(created) > 0 {
+						output.Infof("  %s✓ agent rules%s — %s", output.Green, output.Reset, GF.IDE.DisplayName)
+					}
+				}
+
+				// 3. Commit all workspace files (ide rules + .gitflow.json) on develop
+				staged := git.ExecLines("status", "--porcelain")
+				if len(staged) > 0 {
+					_ = git.ExecSilent("add", ".")
+					_ = git.ExecSilent("commit", "-m", "chore: initialize gitflow workspace")
+					output.Infof("  %s✓ workspace configuration committed on %s%s", output.Green, GF.Config.DevelopBranch, output.Reset)
+				}
+
+				if !output.IsJSONMode() {
+					output.Infof("  %s✦ Repository ready — working branch: %s%s%s", output.Cyan, output.Bold, GF.Config.DevelopBranch, output.Reset)
+				}
+			} else {
+				// Not a fresh init — idempotent consent check (silent if already answered)
+				ensureIntegrationModeConfigured(cmd)
+				if name != "doctor" && name != "health" {
+					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
+					_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
+					deferEnsure()
+				}
+			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonFlag {

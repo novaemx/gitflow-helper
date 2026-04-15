@@ -65,20 +65,32 @@ Use skills from `.agents/skills/` as contextual rules. Do not preload all skills
 
 ## Gitflow Enforcement
 
-**Before modifying ANY code, run the gitflow pre-flight check.**
+### BLOCKING RULE — load and apply the gitflow skill for EVERY task that touches tracked files
+
+The `gitflow` skill at `.agents/skills/gitflow/SKILL.md` is **always-apply** — not optional, not "when relevant". Load it:
+
+- before writing, editing, or deleting any file in the workspace
+- before running any command that could modify git state
+- before creating directories, generating config, or scaffolding
+- before responding to ANY user request that implies code change
+
+**There is no task small enough to skip the gitflow skill.**
+
+### Pre-flight sequence (mandatory, every time)
 
 ```bash
 gitflow --json status
 ```
 
-### Pre-flight sequence
-
 1. Check `git_flow_initialized` → if false, run `gitflow --json init`
 2. Check `merge.in_merge` → if true, STOP and report to user
 3. Check `main_ahead_of_develop` → if > 0, run `gitflow --json backmerge`
-4. Infer task type automatically and create/switch to flow branch before edits
+4. Check current branch — if `main` or `develop`: **CREATE FLOW BRANCH FIRST, then edit**
 5. NEVER modify code on main or develop directly — use flow branches
 6. When done: `gitflow --json finish`
+
+> **If you find yourself about to commit and `git branch --show-current` outputs `main` or `develop` → STOP.**
+> Create the flow branch first. Move uncommitted changes via `gitflow --json start feature <slug>` (auto-stash is built in).
 
 ### Branch routing
 
@@ -110,3 +122,17 @@ Exit codes: 0=success, 1=error, 2=conflict-needs-human
 - Use the gitflow skill before any code modifications.
 - Run `gitflow --json status` first and follow its branch/merge checks.
 - Use `gitflow setup` after updating gitflow to refresh embedded skill content.
+
+### Recovery — if you already committed on develop/main by mistake
+
+```bash
+# 1. create the flow branch (auto-stash picks up dirty state)
+gitflow --json start feature <slug>
+# 2. cherry-pick wrong commits if already committed on develop:
+git cherry-pick <sha>
+# 3. revert those commits from develop
+git checkout develop && git revert <sha> --no-edit
+git checkout feature/<slug>
+```
+
+Report the violation to the user immediately.
