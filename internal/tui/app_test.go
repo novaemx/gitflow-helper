@@ -292,6 +292,110 @@ func TestActivityPanel_CyclesOnKeyA(t *testing.T) {
 	}
 }
 
+func TestActivityAnimationTick_MovesTowardTargetState(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewDashboard, activityPanel: activityExpanded, activityAnim: float64(activityNormal)}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.Update(uiAnimTickMsg{})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated.activityAnim <= float64(activityNormal) {
+		t.Fatalf("expected activity animation to advance, got %.2f", updated.activityAnim)
+	}
+}
+
+// TestActivityAnimation_RequiresMinFrames verifies that the activity panel
+// animation is slow enough to be visually perceptible (≥8 frames ≈ 128ms).
+func TestActivityAnimation_RequiresMinFrames(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewDashboard, activityPanel: activityNormal, activityAnim: 0}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	frames := 0
+	for m.activityAnim < float64(activityNormal)-0.001 {
+		next, _ := m.Update(uiAnimTickMsg{})
+		cast, ok := next.(model)
+		if !ok {
+			t.Fatal("expected model type")
+		}
+		m = cast
+		frames++
+		if frames > 100 {
+			t.Fatal("animation did not converge")
+		}
+	}
+	if frames < 8 {
+		t.Fatalf("animation too fast: %d frames (need ≥8 for ~128ms perceptible transition)", frames)
+	}
+}
+
+// TestOutputAnimation_RequiresMinFrames verifies output overlay animation
+// takes ≥8 frames to open fully.
+func TestOutputAnimation_RequiresMinFrames(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewOutput, outputAnim: 0, outputClosing: false}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	frames := 0
+	for m.outputAnim < 1.0-0.001 {
+		next, _ := m.Update(uiAnimTickMsg{})
+		cast, ok := next.(model)
+		if !ok {
+			t.Fatal("expected model type")
+		}
+		m = cast
+		frames++
+		if frames > 100 {
+			t.Fatal("animation did not converge")
+		}
+	}
+	if frames < 8 {
+		t.Fatalf("output animation too fast: %d frames (need ≥8 for ~128ms perceptible transition)", frames)
+	}
+}
+
+func TestOutputOverlayClose_AnimatesThenReturnsDashboard(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewOutput, outputAnim: 1.0}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.handleOutputKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if !updated.outputClosing {
+		t.Fatal("expected outputClosing to be enabled after close key")
+	}
+
+	cur := updated
+	for i := 0; i < 50; i++ {
+		nextModel, _ := cur.Update(uiAnimTickMsg{})
+		cast, ok := nextModel.(model)
+		if !ok {
+			t.Fatal("expected model type during animation")
+		}
+		cur = cast
+		if cur.mode == viewDashboard && !cur.outputClosing {
+			break
+		}
+	}
+
+	if cur.mode != viewDashboard {
+		t.Fatalf("expected mode to return to dashboard after close animation, got %v", cur.mode)
+	}
+	if cur.outputAnim != 0 {
+		t.Fatalf("expected output animation to end at 0, got %.2f", cur.outputAnim)
+	}
+}
+
 func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse

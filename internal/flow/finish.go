@@ -239,9 +239,11 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 
 	// Merge the release branch (not the tag) so the genealogy is traceable via
 	// branch ancestry, not via tag dereferencing — nvie canonical flow.
+	output.Infof("  %sBack-merging %s into %s...%s", output.Dim, branchName, cfg.DevelopBranch, output.Reset)
 	backmergeMsg := fmt.Sprintf("Merge release '%s' into %s", ver, cfg.DevelopBranch)
 	if err := git.Exec("merge", "--no-ff", branchName, "-m", backmergeMsg); err != nil {
-		return fmt.Errorf("back-merge of %s into %s failed: %w", branchName, cfg.DevelopBranch, err)
+		return fmt.Errorf("back-merge of %s into %s failed: %w (release already merged to %s and tagged; resolve conflicts on %s, commit the merge, then continue)",
+			branchName, cfg.DevelopBranch, err, cfg.MainBranch, cfg.DevelopBranch)
 	}
 
 	if err := git.Exec("branch", "-d", branchName); err != nil {
@@ -315,6 +317,13 @@ func nonAtomicCommitWarnings(subjects []string) []string {
 		}
 	}
 	return warnings
+}
+
+func shouldAutoAtomicizeFinish(btype, integrationMode string) bool {
+	if integrationMode == config.IntegrationModePullRequest {
+		return false
+	}
+	return btype == "feature" || btype == "bugfix"
 }
 
 // remoteParentAheadCount returns how many commits origin/parent has that local
@@ -461,14 +470,25 @@ func FinishCurrent(cfg config.FlowConfig, name string, opts ...FinishOptions) (i
 			parent = cfg.MainBranch
 		}
 
-		// 1. Non-atomic commit detection
+		// 1. Non-atomic commit detection + smart auto-atomic conversion.
 		subjects := git.BranchCommitSubjects(parent, branch)
 		if warns := nonAtomicCommitWarnings(subjects); len(warns) > 0 {
-			for _, w := range warns {
-				output.Infof("  %s⚠ Non-atomic commit detected: %q — consider splitting before finish.%s",
-					output.Yellow, w, output.Reset)
-			}
 			result["non_atomic_commits"] = warns
+
+			if shouldAutoAtomicizeFinish(btype, cfg.IntegrationMode) {
+				if !opt.Squash {
+					opt.Squash = true
+					output.Infof("  %s✦ Non-atomic commits detected — auto-converting to atomic finish via squash.%s",
+						output.Cyan, output.Reset)
+					result["auto_atomic"] = true
+					result["auto_atomic_strategy"] = "squash"
+				}
+			} else {
+				for _, w := range warns {
+					output.Infof("  %s⚠ Non-atomic commit detected: %q — consider splitting before finish.%s",
+						output.Yellow, w, output.Reset)
+				}
+			}
 		}
 
 		// 2. Remote parent drift — uses cached tracking ref, no fetch

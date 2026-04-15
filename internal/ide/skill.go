@@ -53,10 +53,23 @@ func embeddedSkillContent() (string, error) {
 	return content, nil
 }
 
+func isDevRepo(projectRoot string) bool {
+	marker := filepath.Join(projectRoot, "internal", "ide", "assets", "gitflow_skill.md")
+	_, err := os.Stat(marker)
+	return err == nil
+}
+
 func ensureEmbeddedSkill(projectRoot, ideID string) (string, error) {
 	path, err := skillPathForIDE(projectRoot, ideID)
 	if err != nil {
 		return "", err
+	}
+
+	// Skip overwriting the skill file when running inside the gitflow-helper
+	// development repository.  The dev repo owns its own SKILL.md; the
+	// embedded asset must not clobber local edits.
+	if projectScopedSkillIDEs[ideID] && isDevRepo(projectRoot) {
+		return "", nil
 	}
 
 	content, err := embeddedSkillContent()
