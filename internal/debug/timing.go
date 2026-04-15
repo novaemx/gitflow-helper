@@ -8,11 +8,11 @@ import (
 )
 
 var (
-	enabled  = os.Getenv("GITFLOW_DEBUG") == "1"
-	mu       sync.Mutex
-	timings  []TimingEntry
-	startMu  sync.Mutex
-	markers  = make(map[string]time.Time)
+	enabled = os.Getenv("GITFLOW_DEBUG") == "1"
+	mu      sync.Mutex
+	timings []TimingEntry
+	startMu sync.Mutex
+	markers = make(map[string]time.Time)
 )
 
 // TimingEntry represents a timed measurement
@@ -42,11 +42,11 @@ func End(name string) {
 	start, ok := markers[name]
 	delete(markers, name)
 	startMu.Unlock()
-	
+
 	if !ok {
 		return
 	}
-	
+
 	duration := time.Since(start)
 	mu.Lock()
 	timings = append(timings, TimingEntry{
@@ -79,11 +79,11 @@ func PrintTimings() {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	
+
 	if len(timings) == 0 {
 		return
 	}
-	
+
 	fmt.Fprintf(os.Stderr, "\n=== TIMING REPORT ===\n")
 	var total time.Duration
 	for _, t := range timings {

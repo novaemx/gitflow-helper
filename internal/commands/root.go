@@ -8,6 +8,7 @@ import (
 
 	gfconfig "github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/debug"
+	"github.com/novaemx/gitflow-helper/internal/git"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
 	"github.com/novaemx/gitflow-helper/internal/mcp"
@@ -135,6 +136,9 @@ func NewRootCmd(version string) *cobra.Command {
 			deferIsRepo := debug.Start("root.PersistentPreRun.IsGitRepo")
 			if !GF.IsGitRepo() {
 				deferIsRepo()
+				// Preserve machine/json behavior for agents: return a structured
+				// error rather than mutating the repo (agents may not expect
+				// side-effects).
 				if output.IsJSONMode() {
 					output.JSONOutput(map[string]any{
 						"error":   "not_a_git_repo",
@@ -143,9 +147,17 @@ func NewRootCmd(version string) *cobra.Command {
 					})
 					os.Exit(1)
 				}
-				output.Infof("  %sNot inside a git repository.%s", output.Red, output.Reset)
-				output.Infof("  Run %sgit init%s first, then %sgitflow init%s.", output.Bold, output.Reset, output.Bold, output.Reset)
-				os.Exit(1)
+				// Interactive path: attempt to initialize a git repo in-place.
+				output.Infof("  %sNot inside a git repository.%s", output.Yellow, output.Reset)
+				output.Infof("  Attempting auto-initialize: running %sgit init%s...", output.Bold, output.Reset)
+				if err := git.Exec("init"); err != nil {
+					output.Infof("  %sFailed to run 'git init': %v%s", output.Red, err, output.Reset)
+					output.Infof("  Run %sgit init%s first, then %sgitflow init%s.", output.Bold, output.Reset, output.Bold, output.Reset)
+					os.Exit(1)
+				}
+				// Reset cached checks so the new git repo is detected by subsequent
+				// evaluations (IsGitRepo / IsGitFlowInitialized).
+				GF.ResetChecks()
 			}
 			deferIsRepo()
 
