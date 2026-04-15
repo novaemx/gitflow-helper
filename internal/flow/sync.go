@@ -143,10 +143,25 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 		output.Infof("  %sNo remote '%s' configured. Sync uses local '%s' branch.%s", output.Dim, cfg.Remote, parent, output.Reset)
 	}
 
+	// Feature and bugfix branches use rebase to keep the branch's commits
+	// contiguous and conflict-resolution incremental (proactive-sync policy).
+	// Release branches use merge because they may be shared with other developers.
+	if btype == "feature" || btype == "bugfix" {
+		rebaseCode, _, _ := execResult("rebase", mergeRef)
+		if rebaseCode == 0 {
+			output.Infof("  %sRebase sync successful.%s", output.Green, output.Reset)
+			return 0, map[string]any{"action": "sync", "branch": branch, "parent": parent, "strategy": "rebase", "result": "ok"}
+		}
+		output.Infof("  %sRebase conflicts during sync — aborting. Resolve conflicts manually or run 'gitflow sync' after resolving.%s", output.Red, output.Reset)
+		_ = git.Exec("rebase", "--abort")
+		conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")
+		return buildMergeConflictResult("sync", branch, parent, conflicts)
+	}
+
 	code, _, _ := execResult("merge", "--no-ff", mergeRef)
 	if code == 0 {
 		output.Infof("  %sSync successful.%s", output.Green, output.Reset)
-		return 0, map[string]any{"action": "sync", "branch": branch, "parent": parent, "result": "ok"}
+		return 0, map[string]any{"action": "sync", "branch": branch, "parent": parent, "strategy": "merge", "result": "ok"}
 	}
 
 	conflicts := git.ExecLines("diff", "--name-only", "--diff-filter=U")

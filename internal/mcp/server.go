@@ -124,6 +124,7 @@ func (s *Server) registerTools() {
 	s.registerReleaseNotes()
 	s.registerStart()
 	s.registerFinish()
+	s.registerFastRelease()
 	s.registerSwitch()
 	s.registerMode()
 }

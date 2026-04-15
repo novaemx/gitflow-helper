@@ -162,9 +162,17 @@ func (gf *Logic) Start(branchType, name string) (int, map[string]any) {
 	return code, result
 }
 
+// FastRelease merges a feature/bugfix branch directly to main, bypassing the
+// release/ staging phase. See flow.FastRelease for full semantics.
+func (gf *Logic) FastRelease(featureName string) (int, map[string]any) {
+	code, result := flow.FastRelease(gf.Config, featureName)
+	gf.Refresh()
+	return code, result
+}
+
 // Finish completes the current (or named) flow branch.
-func (gf *Logic) Finish(name string) (int, map[string]any) {
-	code, result := flow.FinishCurrent(gf.Config, name)
+func (gf *Logic) Finish(name string, opts ...flow.FinishOptions) (int, map[string]any) {
+	code, result := flow.FinishCurrent(gf.Config, name, opts...)
 	gf.Refresh()
 	return code, result
 }

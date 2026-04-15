@@ -89,8 +89,10 @@ func (gf *Logic) PreMergeCheck(autoSync bool) (*PreMergeReport, error) {
 	return report, nil
 }
 
-// SmartFinish wraps Finish() with a PreMergeCheck. If the branch is
-// behind its parent, it syncs first to reduce merge-hell risk.
+// SmartFinish wraps Finish() with a PreMergeCheck followed by a rebase-first
+// strategy. If the branch is behind its parent it rebases (via Sync) to resolve
+// conflicts incrementally. After a successful finish the remote tracking branch
+// is deleted automatically when a remote is configured.
 func (gf *Logic) SmartFinish(name string) (int, map[string]any) {
 	report, err := gf.PreMergeCheck(true)
 	if err != nil {
@@ -102,7 +104,10 @@ func (gf *Logic) SmartFinish(name string) (int, map[string]any) {
 		}
 	}
 
-	code, result := gf.Finish(name)
+	code, result := gf.Finish(name, flow.FinishOptions{
+		Rebase:       true,
+		DeleteRemote: true,
+	})
 	if report != nil {
 		result["premerge"] = report
 	}

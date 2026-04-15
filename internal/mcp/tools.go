@@ -5,6 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/flow"
 )
 
 // Each tool follows the pattern: define args struct, register with mcp.AddTool,
@@ -223,15 +224,30 @@ func (s *Server) registerStart() {
 // ── finish ──────────────────────────────────────────────────
 
 type finishArgs struct {
-	Name string `json:"name" jsonschema:"optional branch name (defaults to current branch)"`
+	Name   string `json:"name" jsonschema:"optional branch name (defaults to current branch)"`
+	Squash bool   `json:"squash" jsonschema:"squash all branch commits into one commit on develop"`
+	Rebase bool   `json:"rebase" jsonschema:"rebase branch onto develop before the final merge"`
 }
 
 func (s *Server) registerFinish() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "finish",
-		Description: "Finish current flow branch with pre-merge safety check (auto-syncs if behind parent)",
+		Description: "Finish current flow branch with pre-merge safety check. Supports rebase-first and squash strategies.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args finishArgs) (*mcp.CallToolResult, any, error) {
-		code, result := s.gf.SmartFinish(args.Name)
+		var code int
+		var result map[string]any
+
+		if args.Squash || args.Rebase {
+			opts := flow.FinishOptions{
+				Rebase:       args.Rebase,
+				Squash:       args.Squash,
+				DeleteRemote: true,
+			}
+			code, result = s.gf.Finish(args.Name, opts)
+		} else {
+			code, result = s.gf.SmartFinish(args.Name)
+		}
+
 		status := "ok"
 		errMsg := ""
 		if code != 0 {
@@ -241,6 +257,34 @@ func (s *Server) registerFinish() {
 			}
 		}
 		s.record("finish", args.Name, status, errMsg)
+		return textResult(result), nil, nil
+	})
+}
+
+// ── fast-release ─────────────────────────────────────────────
+
+type fastReleaseArgs struct {
+	Name string `json:"name" jsonschema:"feature or bugfix branch name (with or without prefix)"`
+}
+
+func (s *Server) registerFastRelease() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "fast-release",
+		Description: "Merge a feature/bugfix branch directly to main (skip the release/ phase). Tags the release with the current version.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args fastReleaseArgs) (*mcp.CallToolResult, any, error) {
+		if args.Name == "" {
+			return errResult("name is required")
+		}
+		code, result := s.gf.FastRelease(args.Name)
+		status := "ok"
+		errMsg := ""
+		if code != 0 {
+			status = "error"
+			if e, ok := result["error"]; ok {
+				errMsg, _ = e.(string)
+			}
+		}
+		s.record("fast-release", args.Name, status, errMsg)
 		return textResult(result), nil, nil
 	})
 }
