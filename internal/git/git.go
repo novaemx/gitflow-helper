@@ -162,6 +162,14 @@ func splitCommand(s string) []string {
 	return clean
 }
 
+// SplitCommand is an exported wrapper around splitCommand.
+// Use this when callers need to convert a single command string into
+// args suitable for exec.Command without invoking a shell. This helps
+// migrate callers away from legacy Run()/RunResult() wrappers.
+func SplitCommand(s string) []string {
+	return splitCommand(s)
+}
+
 // --- Convenience functions (use safe Exec internally) ---
 
 func CurrentBranch() string {
