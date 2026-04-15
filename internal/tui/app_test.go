@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
@@ -222,5 +223,78 @@ func TestRenderActivityPanel_ShowsDetailsWithoutSubtitle(t *testing.T) {
 	}
 	if got := len(strings.Split(rendered, "\n")); got < 10 {
 		t.Fatalf("expected panel to use full available height, got %d lines", got)
+	}
+}
+
+func TestRenderActionsForWidth_AllActionsHavePrefix(t *testing.T) {
+	m := model{
+		actions: []action{
+			{Tag: "start", Label: "Start a new feature", Recommended: true},
+			{Tag: "pull", Label: "Pull latest"},
+			{Tag: "push", Label: "Push current branch"},
+		},
+		selected: 0,
+	}
+
+	rendered := stripANSI(m.renderActionsForWidth(80))
+	// Non-recommended items should have the dim ▹ prefix so the cursor is trackable
+	if !strings.Contains(rendered, "▹ Pull latest") {
+		t.Fatalf("expected dim ▹ prefix on non-recommended action, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "▹ Push current branch") {
+		t.Fatalf("expected dim ▹ prefix on second non-recommended action, got:\n%s", rendered)
+	}
+}
+
+func TestShowActivityToggle_DefaultsTrue(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{gf: nil, mode: viewDashboard, spinner: s, showActivity: true}
+	if !m.showActivity {
+		t.Fatal("expected showActivity to default true")
+	}
+}
+
+func TestShowActivityToggle_TogglesOnKeyA(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, showActivity: true, mode: viewDashboard}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated.showActivity {
+		t.Fatal("expected showActivity to toggle to false")
+	}
+
+	next2, _ := updated.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	updated2, ok := next2.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if !updated2.showActivity {
+		t.Fatal("expected showActivity to toggle back to true")
+	}
+}
+
+func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewDashboard}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if !updated.running {
+		t.Fatal("expected mode shortcut to trigger mode toggle command")
+	}
+	if updated.runningTitle != "Toggle integration mode" {
+		t.Fatalf("expected mode toggle title, got %q", updated.runningTitle)
 	}
 }

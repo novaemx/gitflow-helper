@@ -153,9 +153,11 @@ func finishRelease(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("failed to checkout %s: %w", cfg.DevelopBranch, err)
 	}
 
-	backmergeMsg := fmt.Sprintf("Merge tag '%s' back into %s", tagName, cfg.DevelopBranch)
-	if err := git.Exec("merge", "--no-ff", tagName, "-m", backmergeMsg); err != nil {
-		return fmt.Errorf("back-merge of %s into %s failed: %w", tagName, cfg.DevelopBranch, err)
+	// Merge the release branch (not the tag) so the genealogy is traceable via
+	// branch ancestry, not via tag dereferencing — nvie canonical flow.
+	backmergeMsg := fmt.Sprintf("Merge release '%s' into %s", ver, cfg.DevelopBranch)
+	if err := git.Exec("merge", "--no-ff", branchName, "-m", backmergeMsg); err != nil {
+		return fmt.Errorf("back-merge of %s into %s failed: %w", branchName, cfg.DevelopBranch, err)
 	}
 
 	if err := git.Exec("branch", "-d", branchName); err != nil {
@@ -210,6 +212,91 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 	output.Infof("  %s✓ hotfix/%s → %s (tagged %s) → %s%s",
 		output.Green, ver, cfg.MainBranch, tagName, backTarget, output.Reset)
 	return nil
+}
+
+// nonAtomicCommitWarnings returns subjects that appear to mix multiple concerns
+// in a single commit (signals: " and " or "; " in the message body).
+// The conventional commit type prefix is stripped before the check so that
+// "feat(a-and-b): something clean" does not produce a spurious warning.
+func nonAtomicCommitWarnings(subjects []string) []string {
+	var warnings []string
+	for _, s := range subjects {
+		body := s
+		if idx := strings.Index(s, ": "); idx >= 0 {
+			body = s[idx+2:]
+		}
+		lower := strings.ToLower(body)
+		if strings.Contains(lower, " and ") || strings.Contains(lower, "; ") {
+			warnings = append(warnings, s)
+		}
+	}
+	return warnings
+}
+
+// remoteParentAheadCount returns how many commits origin/parent has that local
+// parent does not, using cached remote-tracking refs (no fetch).
+// Returns 0 when the remote ref does not exist.
+func remoteParentAheadCount(remote, parent string) int {
+	ref := remote + "/" + parent
+	code, _, _ := git.ExecResult("rev-parse", "--verify", ref)
+	if code != 0 {
+		return 0
+	}
+	raw := git.ExecQuiet("rev-list", "--count", parent+".."+ref)
+	n, _ := strconv.Atoi(strings.TrimSpace(raw))
+	return n
+}
+
+func parentForBranchType(cfg config.FlowConfig, btype string) string {
+	switch btype {
+	case "hotfix":
+		return cfg.MainBranch
+	default:
+		return cfg.DevelopBranch
+	}
+}
+
+func finishViaPullRequestMode(cfg config.FlowConfig, btype, name, branch string, result map[string]any) (int, map[string]any) {
+	parent := parentForBranchType(cfg, btype)
+	result["integration_mode"] = cfg.IntegrationMode
+	result["parent"] = parent
+	result["branch"] = branch
+
+	if !git.RemoteExists(cfg.Remote) {
+		result["result"] = "pr_required"
+		result["warning"] = "remote not configured; branch was not pushed"
+		result["needs_human"] = true
+		result["next"] = []string{
+			"Configure a remote (for example: git remote add origin <url>)",
+			"Push your branch",
+			"Open a pull request to the parent branch",
+		}
+		return 0, result
+	}
+
+	code, _, pushErr := git.ExecResult("push", "-u", cfg.Remote, branch)
+	if code != 0 {
+		result["result"] = "error"
+		result["error"] = "failed to push branch before PR: " + pushErr
+		return 1, result
+	}
+
+	result["result"] = "pr_ready"
+	result["needs_human"] = true
+	result["pr"] = map[string]any{
+		"head":  branch,
+		"base":  parent,
+		"title": fmt.Sprintf("%s: %s", btype, name),
+	}
+	result["next"] = []string{
+		fmt.Sprintf("Open a pull request from %s to %s", branch, parent),
+		"Merge in origin using your repository policy",
+		fmt.Sprintf("Then switch back to %s and pull latest", cfg.DevelopBranch),
+	}
+
+	output.Infof("  %s✓ Branch pushed for PR workflow.%s", output.Green, output.Reset)
+	output.Infof("  %sOpen PR:%s %s -> %s", output.Dim, output.Reset, branch, parent)
+	return 0, result
 }
 
 func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
@@ -273,6 +360,51 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 
 	if wt.Untracked > 0 {
 		result["warning_untracked"] = wt.Untracked
+	}
+
+	// Advisory pre-flight checks — non-blocking; results are attached to the
+	// JSON response and printed as warnings so the caller can decide.
+	{
+		parent := cfg.DevelopBranch
+		if btype == "hotfix" {
+			parent = cfg.MainBranch
+		}
+
+		// 1. Non-atomic commit detection
+		subjects := git.BranchCommitSubjects(parent, branch)
+		if warns := nonAtomicCommitWarnings(subjects); len(warns) > 0 {
+			for _, w := range warns {
+				output.Infof("  %s⚠ Non-atomic commit detected: %q — consider splitting before finish.%s",
+					output.Yellow, w, output.Reset)
+			}
+			result["non_atomic_commits"] = warns
+		}
+
+		// 2. Remote parent drift — uses cached tracking ref, no fetch
+		if cfg.Remote != "" && git.RemoteExists(cfg.Remote) {
+			if n := remoteParentAheadCount(cfg.Remote, parent); n > 0 {
+				output.Infof("  %s⚠ %s/%s has %d commit(s) ahead of local — run 'gitflow sync' before finish.%s",
+					output.Yellow, cfg.Remote, parent, n, output.Reset)
+				result["remote_parent_ahead"] = n
+			}
+		}
+
+		// 3. Sync-merge count in feature/bugfix — nudge toward rebase for clean graph
+		if btype == "feature" || btype == "bugfix" {
+			if n := len(git.BranchMergeCommitSubjects(parent, branch)); n > 0 {
+				output.Infof("  %sℹ %d sync merge(s) inside branch — rebase before finish for linear history.%s",
+					output.Dim, n, output.Reset)
+				result["sync_merges_in_branch"] = n
+			}
+		}
+	}
+
+	if cfg.IntegrationMode == config.IntegrationModePullRequest {
+		headBranch := branch
+		if !strings.HasPrefix(headBranch, btype+"/") {
+			headBranch = btype + "/" + name
+		}
+		return finishViaPullRequestMode(cfg, btype, name, headBranch, result)
 	}
 
 	if btype == "release" || btype == "hotfix" {

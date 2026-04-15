@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/novaemx/gitflow-helper/internal/config"
 )
 
 // Each tool follows the pattern: define args struct, register with mcp.AddTool,
@@ -250,6 +251,10 @@ type switchArgs struct {
 	Branch string `json:"branch" jsonschema:"target branch name or short name (e.g. 'develop' or 'my-feature')"`
 }
 
+type modeArgs struct {
+	Mode string `json:"mode" jsonschema:"optional mode: local-merge|pull-request|toggle"`
+}
+
 func (s *Server) registerSwitch() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "switch",
@@ -267,6 +272,56 @@ func (s *Server) registerSwitch() {
 			status = "error"
 		}
 		s.record("switch", args.Branch, status, "")
+		return textResult(result), nil, nil
+	})
+}
+
+// ── mode ───────────────────────────────────────────────────
+
+func (s *Server) registerMode() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "mode",
+		Description: "Get or set integration mode: local-merge or pull-request (use toggle to switch)",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args modeArgs) (*mcp.CallToolResult, any, error) {
+		if args.Mode == "" {
+			mode := s.gf.IntegrationMode()
+			result := map[string]any{
+				"action":              "mode",
+				"result":              "ok",
+				"integration_mode":    mode,
+				"integration_display": config.IntegrationModeDisplay(mode),
+			}
+			s.record("mode", "get", "ok", "")
+			return textResult(result), nil, nil
+		}
+
+		next := args.Mode
+		if next == "toggle" {
+			if s.gf.IntegrationMode() == config.IntegrationModePullRequest {
+				next = config.IntegrationModeLocalMerge
+			} else {
+				next = config.IntegrationModePullRequest
+			}
+		}
+
+		normalized := config.NormalizeIntegrationMode(next)
+		if normalized == "" {
+			s.record("mode", args.Mode, "error", "invalid mode")
+			return errResult("invalid mode; use local-merge|pull-request|toggle")
+		}
+
+		if err := s.gf.SetIntegrationMode(normalized); err != nil {
+			s.record("mode", args.Mode, "error", err.Error())
+			return errResult(err.Error())
+		}
+
+		result := map[string]any{
+			"action":              "mode",
+			"result":              "ok",
+			"integration_mode":    normalized,
+			"integration_display": config.IntegrationModeDisplay(normalized),
+		}
+		s.record("mode", normalized, "ok", "")
 		return textResult(result), nil, nil
 	})
 }

@@ -3,6 +3,7 @@ package git
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,92 @@ func TestSplitCommand_StripRedirects(t *testing.T) {
 		if a == "2>/dev/null" || a == "/dev/null" {
 			t.Errorf("redirect should be stripped: %v", args)
 		}
+	}
+}
+
+func TestBranchCommitSubjects_ReturnsNonMergeSubjects(t *testing.T) {
+	dir := setupGitRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	run("git", "checkout", "develop")
+	run("git", "checkout", "-b", "feature/test-subjects")
+	if err := os.WriteFile(dir+"/feature.txt", []byte("hello"), 0644); err != nil {
+		t.Fatalf("write feature file: %v", err)
+	}
+	run("git", "add", "feature.txt")
+	run("git", "commit", "-m", "feat(test): add feature file")
+
+	subjects := BranchCommitSubjects("develop", "feature/test-subjects")
+	if len(subjects) == 0 {
+		t.Fatal("expected at least one commit subject")
+	}
+	found := false
+	for _, s := range subjects {
+		if strings.Contains(s, "add feature file") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected feature commit subject, got %v", subjects)
+	}
+}
+
+func TestBranchMergeCommitSubjects_DetectsSyncMerge(t *testing.T) {
+	dir := setupGitRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	run("git", "checkout", "develop")
+	run("git", "checkout", "-b", "feature/merge-subjects")
+	if err := os.WriteFile(dir+"/f1.txt", []byte("one"), 0644); err != nil {
+		t.Fatalf("write f1: %v", err)
+	}
+	run("git", "add", "f1.txt")
+	run("git", "commit", "-m", "feat(test): first feature commit")
+
+	run("git", "checkout", "develop")
+	if err := os.WriteFile(dir+"/d1.txt", []byte("develop"), 0644); err != nil {
+		t.Fatalf("write d1: %v", err)
+	}
+	run("git", "add", "d1.txt")
+	run("git", "commit", "-m", "chore(test): develop update")
+
+	run("git", "checkout", "feature/merge-subjects")
+	run("git", "merge", "--no-ff", "develop", "-m", "Merge develop into feature/merge-subjects")
+
+	merges := BranchMergeCommitSubjects("develop", "feature/merge-subjects")
+	if len(merges) == 0 {
+		t.Fatal("expected at least one merge commit subject")
+	}
+	if !strings.Contains(strings.ToLower(merges[0]), "merge") {
+		t.Fatalf("expected merge subject, got %v", merges)
 	}
 }
 

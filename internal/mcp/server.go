@@ -125,4 +125,5 @@ func (s *Server) registerTools() {
 	s.registerStart()
 	s.registerFinish()
 	s.registerSwitch()
+	s.registerMode()
 }

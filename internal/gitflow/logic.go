@@ -221,6 +221,27 @@ func (gf *Logic) IDEDisplay() string {
 	return gf.IDE.DisplayName
 }
 
+func (gf *Logic) IntegrationMode() string {
+	mode := config.NormalizeIntegrationMode(gf.Config.IntegrationMode)
+	if mode == "" {
+		mode = config.IntegrationModeLocalMerge
+	}
+	return mode
+}
+
+func (gf *Logic) SetIntegrationMode(mode string) error {
+	normalized := config.NormalizeIntegrationMode(mode)
+	if normalized == "" {
+		normalized = config.IntegrationModeLocalMerge
+	}
+	if err := config.SetIntegrationMode(gf.Config.ProjectRoot, normalized); err != nil {
+		return err
+	}
+	gf.Config.IntegrationMode = normalized
+	gf.Config.ModeConfigured = true
+	return nil
+}
+
 // EnsureRules checks whether IDE-specific gitflow instruction files exist
 // for the detected IDE. If missing, it creates them silently. Also ensures
 // AGENTS.md has the gitflow section as a universal fallback.
