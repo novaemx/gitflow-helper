@@ -65,6 +65,7 @@ func printDashboard(s state.RepoState) {
     Last tag:  %s
     Git Flow:  %s
     IDE:       %s
+    Mode:      %s
     Uncommitted files: %s%d%s`,
 		output.Bold, output.Reset,
 		output.Bold, output.Reset,
@@ -72,6 +73,7 @@ func printDashboard(s state.RepoState) {
 		output.Green, s.Version, output.Reset,
 		tagDisplay, gfStatus,
 		GF.IDEDisplay(),
+		GF.IntegrationMode(),
 		dirtyColor, s.UncommittedCount, output.Reset)
 
 	if s.DevelopAheadOfMain > 0 {

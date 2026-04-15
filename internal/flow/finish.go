@@ -247,6 +247,58 @@ func remoteParentAheadCount(remote, parent string) int {
 	return n
 }
 
+func parentForBranchType(cfg config.FlowConfig, btype string) string {
+	switch btype {
+	case "hotfix":
+		return cfg.MainBranch
+	default:
+		return cfg.DevelopBranch
+	}
+}
+
+func finishViaPullRequestMode(cfg config.FlowConfig, btype, name, branch string, result map[string]any) (int, map[string]any) {
+	parent := parentForBranchType(cfg, btype)
+	result["integration_mode"] = cfg.IntegrationMode
+	result["parent"] = parent
+	result["branch"] = branch
+
+	if !git.RemoteExists(cfg.Remote) {
+		result["result"] = "pr_required"
+		result["warning"] = "remote not configured; branch was not pushed"
+		result["needs_human"] = true
+		result["next"] = []string{
+			"Configure a remote (for example: git remote add origin <url>)",
+			"Push your branch",
+			"Open a pull request to the parent branch",
+		}
+		return 0, result
+	}
+
+	code, _, pushErr := git.ExecResult("push", "-u", cfg.Remote, branch)
+	if code != 0 {
+		result["result"] = "error"
+		result["error"] = "failed to push branch before PR: " + pushErr
+		return 1, result
+	}
+
+	result["result"] = "pr_ready"
+	result["needs_human"] = true
+	result["pr"] = map[string]any{
+		"head":  branch,
+		"base":  parent,
+		"title": fmt.Sprintf("%s: %s", btype, name),
+	}
+	result["next"] = []string{
+		fmt.Sprintf("Open a pull request from %s to %s", branch, parent),
+		"Merge in origin using your repository policy",
+		fmt.Sprintf("Then switch back to %s and pull latest", cfg.DevelopBranch),
+	}
+
+	output.Infof("  %s✓ Branch pushed for PR workflow.%s", output.Green, output.Reset)
+	output.Infof("  %sOpen PR:%s %s -> %s", output.Dim, output.Reset, branch, parent)
+	return 0, result
+}
+
 func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 	branch := git.CurrentBranch()
 	btype := git.BranchTypeOf(branch)
@@ -345,6 +397,14 @@ func FinishCurrent(cfg config.FlowConfig, name string) (int, map[string]any) {
 				result["sync_merges_in_branch"] = n
 			}
 		}
+	}
+
+	if cfg.IntegrationMode == config.IntegrationModePullRequest {
+		headBranch := branch
+		if !strings.HasPrefix(headBranch, btype+"/") {
+			headBranch = btype + "/" + name
+		}
+		return finishViaPullRequestMode(cfg, btype, name, headBranch, result)
 	}
 
 	if btype == "release" || btype == "hotfix" {

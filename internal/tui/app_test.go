@@ -279,3 +279,22 @@ func TestShowActivityToggle_TogglesOnKeyA(t *testing.T) {
 		t.Fatal("expected showActivity to toggle back to true")
 	}
 }
+
+func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewDashboard}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if !updated.running {
+		t.Fatal("expected mode shortcut to trigger mode toggle command")
+	}
+	if updated.runningTitle != "Toggle integration mode" {
+		t.Fatalf("expected mode toggle title, got %q", updated.runningTitle)
+	}
+}

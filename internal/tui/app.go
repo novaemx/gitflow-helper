@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
@@ -348,6 +349,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scroll = 0
 	case key.Matches(msg, key.NewBinding(key.WithKeys("G", "end"))):
 		m.selected = len(m.actions) - 1
+	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+m", "m"))):
+		return m.startCommand(action{Label: "Toggle integration mode", Command: "gitflow mode toggle"})
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		if m.selected < len(m.actions) {
 			a := m.actions[m.selected]
@@ -688,6 +691,8 @@ func (m model) renderTitleBar() string {
 	}
 
 	segments := []string{" " + pname, "│", branchLabel}
+	modeLabel := config.IntegrationModeDisplay(m.gf.Config.IntegrationMode)
+	segments = append(segments, "│", "mode: "+modeLabel)
 	if s.Version != "0.0.0" {
 		segments = append(segments, "│", "v"+s.Version)
 	}
@@ -896,7 +901,7 @@ func (m model) renderStatusBar() string {
 	case m.mode == viewOutput:
 		hint = " [j/k] scroll  [q/Esc/Enter] close"
 	default:
-		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [a] activity  [q] quit"
+		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [a] activity  [Ctrl+M/m] mode  [q] quit"
 	}
 	if len(hint) > m.width {
 		hint = hint[:m.width]
@@ -1076,6 +1081,7 @@ func (m model) renderHelpOverlay(base string) string {
 		"  /            Search / filter actions",
 		"  r            Refresh dashboard",
 		"  a            Toggle activity panel",
+		"  Ctrl+M / m   Toggle integration mode",
 		"  ?            Toggle this help",
 		"  q / Ctrl+C   Quit",
 		"",

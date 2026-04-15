@@ -75,6 +75,27 @@ func appendTierWithPriority(dst []action, tier []action) []action {
 	return dst
 }
 
+func ensureRecommendedAction(actions []action) []action {
+	for _, a := range actions {
+		if a.Recommended {
+			return actions
+		}
+	}
+	for i := range actions {
+		if actions[i].Tag == "exit" {
+			continue
+		}
+		if actions[i].Command != "" || actions[i].NeedsInput {
+			actions[i].Recommended = true
+			return actions
+		}
+	}
+	if len(actions) > 0 {
+		actions[0].Recommended = true
+	}
+	return actions
+}
+
 func isProtectedBaseBranchDirty(s state.RepoState, cfg config.FlowConfig) bool {
 	return s.Dirty && (s.Current == cfg.DevelopBranch || s.Current == cfg.MainBranch)
 }
@@ -181,11 +202,15 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		dirtyNote = " ⚠ commit changes first"
 	}
 	curFlow := currentFlowBranchInfo(s, btype)
+	prMode := cfg.IntegrationMode == config.IntegrationModePullRequest
 	switch btype {
 	case "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
 		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
 		label := fmt.Sprintf("Finish feature '%s'", name)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for feature '%s'", name)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -207,6 +232,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		name := strings.TrimPrefix(s.Current, "bugfix/")
 		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
 		label := fmt.Sprintf("Finish bugfix '%s'", name)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for bugfix '%s'", name)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -227,6 +255,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	case "release":
 		ver := strings.TrimPrefix(strings.TrimPrefix(s.Current, "release/v"), "release/")
 		label := fmt.Sprintf("Finish release v%s", ver)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for release v%s", ver)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -246,6 +277,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	case "hotfix":
 		ver := strings.TrimPrefix(strings.TrimPrefix(s.Current, "hotfix/v"), "hotfix/")
 		label := fmt.Sprintf("Finish hotfix v%s", ver)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for hotfix v%s", ver)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -428,7 +462,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	ordered = appendTierWithPriority(ordered, high)
 	ordered = appendTierWithPriority(ordered, normal)
 	ordered = appendTierWithPriority(ordered, low)
-	return ordered
+	return ensureRecommendedAction(ordered)
 }
 
 func suggestReleaseVersion(s state.RepoState) string {
