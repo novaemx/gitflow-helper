@@ -2,6 +2,7 @@ package gitflow
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -138,9 +139,26 @@ func (gf *Logic) Status() state.RepoState {
 }
 
 // Init sets up the main/develop branch structure using raw git commands.
+// For a fresh repository (not already initialized) it also provisions IDE
+// agent-rule files and commits them on the develop branch so the working tree
+// is clean and all generated files are version-controlled from the start.
 func (gf *Logic) Init() (bool, string) {
 	ok, msg := flow.InitGitFlow(gf.Config)
 	if ok {
+		if msg != "already_initialized" {
+			// Provision IDE rules on develop so every generated file is committed
+			// on the correct branch before the caller regains control.
+			if created, err := ide.EnsureRulesForIDE(gf.Config.ProjectRoot, gf.IDE); err == nil && len(created) > 0 {
+				for _, absPath := range created {
+					rel, relErr := filepath.Rel(gf.Config.ProjectRoot, absPath)
+					if relErr != nil {
+						rel = absPath
+					}
+					_ = git.Exec("add", rel)
+				}
+				_ = git.Exec("commit", "-m", "chore: add gitflow agent rules")
+			}
+		}
 		gf.Refresh()
 	}
 	return ok, msg

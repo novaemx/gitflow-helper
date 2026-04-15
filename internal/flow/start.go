@@ -2,6 +2,8 @@ package flow
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -268,6 +270,19 @@ func InitGitFlow(cfg config.FlowConfig) (bool, string) {
 	if !localSet[cfg.DevelopBranch] {
 		output.Infof("  %sCreating %s branch from %s...%s", output.Dim, cfg.DevelopBranch, cfg.MainBranch, output.Reset)
 		_ = git.Exec("branch", cfg.DevelopBranch, cfg.MainBranch)
+	}
+
+	// Ensure any generated files (like VERSION) are created on the develop
+	// branch. Switch to `develop` so subsequent commits land there.
+	_ = git.Exec("checkout", cfg.DevelopBranch)
+
+	verPath := filepath.Join(cfg.ProjectRoot, "VERSION")
+	if _, err := os.Stat(verPath); os.IsNotExist(err) {
+		initVer := "0.0.1"
+		_ = os.WriteFile(verPath, []byte(initVer+"\n"), 0644)
+		_ = git.Exec("add", "VERSION")
+		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: initial version %s", initVer))
+		output.Infof("  %sCreated %s with version %s.%s", output.Dim, "VERSION", initVer, output.Reset)
 	}
 
 	ok := git.IsGitFlowInitialized()

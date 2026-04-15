@@ -283,8 +283,10 @@ func TestEnsureRulesForIDE_Cursor(t *testing.T) {
 		t.Fatalf("EnsureRulesForIDE: %v", err)
 	}
 
-	if len(created) < 3 {
-		t.Errorf("expected at least 3 files (cursor rule + skill + AGENTS.md), got %d", len(created))
+	// Cursor supports .agents/ so AGENTS.md must NOT be created.
+	// Expected: cursor rule + .agents/skills/gitflow/SKILL.md (2 files)
+	if len(created) < 2 {
+		t.Errorf("expected at least 2 files (cursor rule + skill), got %d", len(created))
 	}
 
 	if !cursorRuleExists(dir) {
@@ -293,8 +295,8 @@ func TestEnsureRulesForIDE_Cursor(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".agents", "skills", "gitflow", "SKILL.md")); err != nil {
 		t.Error("expected project skill to exist")
 	}
-	if !agentsRuleExists(dir) {
-		t.Error("expected AGENTS.md to exist")
+	if agentsRuleExists(dir) {
+		t.Error("AGENTS.md must NOT be created for IDEs that support .agents/")
 	}
 
 	// Idempotent
@@ -316,11 +318,15 @@ func TestEnsureRulesForIDE_Unknown(t *testing.T) {
 		t.Fatalf("EnsureRulesForIDE: %v", err)
 	}
 
+	// Unknown IDE does not support .agents/ so AGENTS.md must be created.
 	if len(created) != 2 {
 		t.Errorf("expected 2 files (skill + AGENTS.md), got %d: %v", len(created), created)
 	}
 	if _, err := os.Stat(filepath.Join(tmpHome, ".agents", "skills", "gitflow", "SKILL.md")); err != nil {
 		t.Error("expected fallback user skill to exist")
+	}
+	if !agentsRuleExists(dir) {
+		t.Error("expected AGENTS.md for unknown IDE (no .agents/ support)")
 	}
 }
 
