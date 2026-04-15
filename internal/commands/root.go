@@ -201,6 +201,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newInitCmd(),
 		newStartCmd(),
 		newFinishCmd(),
+		newFastReleaseCmd(),
 		newSyncCmd(),
 		newSwitchCmd(),
 		newBackmergeCmd(),
