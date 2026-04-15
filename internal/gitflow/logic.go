@@ -31,6 +31,28 @@ type Logic struct {
 	gfInitCache    *bool
 }
 
+// HealthReport is the canonical typed result for repository health checks.
+// Use this model internally and convert to map only at integration boundaries.
+type HealthReport struct {
+	Action   string          `json:"action"`
+	Issues   []string        `json:"issues"`
+	Warnings []string        `json:"warnings"`
+	OK       []string        `json:"ok"`
+	Healthy  bool            `json:"healthy"`
+	IDE      ide.DetectedIDE `json:"ide"`
+}
+
+func (r HealthReport) ToMap() map[string]any {
+	return map[string]any{
+		"action":   r.Action,
+		"issues":   r.Issues,
+		"warnings": r.Warnings,
+		"ok":       r.OK,
+		"healthy":  r.Healthy,
+		"ide":      r.IDE,
+	}
+}
+
 // New creates a Gitflow facade from a project root path.
 // If projectRoot is empty, it auto-detects from the current directory.
 func New(projectRoot string) *Logic {
@@ -154,6 +176,13 @@ func (gf *Logic) Pull() (int, map[string]any) {
 	return code, result
 }
 
+// Push pushes the current local branch to a selected remote target branch.
+func (gf *Logic) Push(target string) (int, map[string]any) {
+	code, result := flow.Push(gf.Config, target)
+	gf.Refresh()
+	return code, result
+}
+
 // Sync merges the parent branch into the current flow branch.
 func (gf *Logic) Sync() (int, map[string]any) {
 	code, result := flow.Sync(gf.Config)
@@ -234,10 +263,11 @@ func (gf *Logic) Switch(target string) (int, map[string]any) {
 	return 0, map[string]any{"action": "switch", "result": "ok", "branch": chosen, "previous": cur}
 }
 
-// Health runs a comprehensive repo health check, returning structured results.
-func (gf *Logic) Health() map[string]any {
+// HealthReport evaluates repository health and returns a typed report.
+func (gf *Logic) HealthReport() HealthReport {
 	cfg := gf.Config
 	var issues, warnings, okItems []string
+	s := gf.Status()
 
 	gitVer := git.ExecQuiet("--version")
 	if gitVer == "" {
@@ -250,6 +280,14 @@ func (gf *Logic) Health() map[string]any {
 		issues = append(issues, "gitflow not initialized (run: gitflow init)")
 	} else {
 		okItems = append(okItems, "gitflow structure: main + develop branches present")
+	}
+
+	if s.Merge.InMerge {
+		if len(s.Merge.ConflictedFiles) > 0 {
+			issues = append(issues, fmt.Sprintf("merge conflict in progress (%d file(s) conflicted)", len(s.Merge.ConflictedFiles)))
+		} else {
+			warnings = append(warnings, "merge operation in progress without listed conflicted files")
+		}
 	}
 
 	allLocal := git.AllLocalBranches()
@@ -288,6 +326,44 @@ func (gf *Logic) Health() map[string]any {
 		}
 	}
 
+	if len(s.Releases) > 1 {
+		issues = append(issues, fmt.Sprintf("multiple open release branches (%d)", len(s.Releases)))
+	}
+	if len(s.Hotfixes) > 1 {
+		warnings = append(warnings, fmt.Sprintf("multiple open hotfix branches (%d)", len(s.Hotfixes)))
+	}
+
+	branchType := git.BranchTypeOf(s.Current)
+	if branchType == "other" {
+		warnings = append(warnings, fmt.Sprintf("current branch '%s' is not a gitflow branch", s.Current))
+	}
+
+	if remoteExists {
+		for _, branch := range []string{cfg.MainBranch, cfg.DevelopBranch} {
+			if !localSet[branch] {
+				continue
+			}
+			unpushed := git.ExecQuiet("rev-list", "--count", cfg.Remote+"/"+branch+".."+branch)
+			n, _ := strconv.Atoi(unpushed)
+			if n > 0 {
+				warnings = append(warnings, fmt.Sprintf("'%s' has %d unpushed commit(s) — fix: gitflow push %s", branch, n, branch))
+			} else {
+				okItems = append(okItems, fmt.Sprintf("'%s' up to date with remote", branch))
+			}
+		}
+
+		if branchType == "feature" || branchType == "bugfix" || branchType == "release" || branchType == "hotfix" {
+			if !strings.Contains(s.Current, "/") {
+				warnings = append(warnings, "flow branch name format looks invalid")
+			} else {
+				localAhead := git.ExecQuiet("rev-list", "--count", cfg.Remote+"/"+s.Current+".."+s.Current)
+				if n, _ := strconv.Atoi(localAhead); n > 0 {
+					warnings = append(warnings, fmt.Sprintf("current branch '%s' has %d unpushed commit(s)", s.Current, n))
+				}
+			}
+		}
+	}
+
 	for _, b := range allLocal {
 		if strings.HasPrefix(b, "feature/") || strings.HasPrefix(b, "bugfix/") ||
 			strings.HasPrefix(b, "release/") || strings.HasPrefix(b, "hotfix/") {
@@ -296,6 +372,16 @@ func (gf *Logic) Health() map[string]any {
 				ageDays := int(time.Since(time.Unix(epoch, 0)).Hours() / 24)
 				if ageDays > 30 {
 					warnings = append(warnings, fmt.Sprintf("stale branch: %s (inactive %d days)", b, ageDays))
+				}
+				if ageDays > 14 {
+					parent := cfg.DevelopBranch
+					if strings.HasPrefix(b, "hotfix/") {
+						parent = cfg.MainBranch
+					}
+					behind := git.ExecQuiet("rev-list", "--count", b+".."+parent)
+					if bn, _ := strconv.Atoi(behind); bn > 20 {
+						warnings = append(warnings, fmt.Sprintf("merge-hell risk: %s is %d commit(s) behind %s (inactive %d days)", b, bn, parent, ageDays))
+					}
 				}
 			}
 		}
@@ -308,14 +394,19 @@ func (gf *Logic) Health() map[string]any {
 
 	okItems = append(okItems, fmt.Sprintf("IDE: %s", gf.IDEDisplay()))
 
-	return map[string]any{
-		"action":   "health",
-		"issues":   issues,
-		"warnings": warnings,
-		"ok":       okItems,
-		"healthy":  len(issues) == 0,
-		"ide":      gf.IDE,
+	return HealthReport{
+		Action:   "health",
+		Issues:   issues,
+		Warnings: warnings,
+		OK:       okItems,
+		Healthy:  len(issues) == 0,
+		IDE:      gf.IDE,
 	}
+}
+
+// Health returns a map representation for compatibility with existing integrations.
+func (gf *Logic) Health() map[string]any {
+	return gf.HealthReport().ToMap()
 }
 
 // Doctor validates prerequisites and returns structured results.

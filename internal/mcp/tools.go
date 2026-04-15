@@ -117,9 +117,9 @@ func (s *Server) registerHealth() {
 		Name:        "health",
 		Description: "Comprehensive repo health check: divergence, stale branches, unpushed commits, remote reachability",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, _ emptyArgs) (*mcp.CallToolResult, any, error) {
-		result := s.gf.Health()
+		report := s.gf.HealthReport()
 		s.record("health", "", "ok", "")
-		return textResult(result), nil, nil
+		return textResult(report.ToMap()), nil, nil
 	})
 }
 
