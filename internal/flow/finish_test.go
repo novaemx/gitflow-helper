@@ -188,12 +188,11 @@ func TestInvariantCheckResult_HasActionRequired(t *testing.T) {
 	// When we manually construct the result map that the invariant check
 	// would produce, it must contain action_required = "backmerge".
 	result := map[string]any{
-		"result":           "error",
-		"action_required":  "backmerge",
-		"error":            "main is 3 commit(s) ahead of develop — backmerge required before release finish",
+		"result":          "error",
+		"action_required": "backmerge",
+		"error":           "main is 3 commit(s) ahead of develop — backmerge required before release finish",
 	}
 	if result["action_required"] != "backmerge" {
 		t.Fatalf("expected action_required=backmerge, got %v", result["action_required"])
 	}
 }
-
