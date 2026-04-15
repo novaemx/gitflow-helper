@@ -176,6 +176,13 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		}
 	case s.Current == cfg.DevelopBranch:
 		lines = append(lines, dashLine{"   Integration branch (develop).", "feature"})
+		if s.Dirty {
+			lines = append(lines, dashLine{"   PROTECTED BRANCH VIOLATION: local changes detected on develop.", "error"})
+			lines = append(lines, dashLine{"   Move these changes to a feature/bugfix branch before continuing.", "dim"})
+			lines = append(lines, dashLine{"   Use the recommended TUI action to move them without losing local work.", "dim"})
+			lines = append(lines, dashLine{"   Recommended: gitflow start feature <name>", "dim"})
+			break
+		}
 		if s.MainAheadOfDevelop > 0 {
 			lines = append(lines, dashLine{"   CRITICAL: backmerge required before any work.", "error"})
 			lines = append(lines, dashLine{"   Run: gitflow backmerge", "dim"})
@@ -189,6 +196,13 @@ func buildDashboardLines(s state.RepoState, cfg config.FlowConfig) []dashLine {
 		}
 	case s.Current == cfg.MainBranch:
 		lines = append(lines, dashLine{"   Production branch (main). Do not commit directly.", "hotfix"})
+		if s.Dirty {
+			lines = append(lines, dashLine{"   PROTECTED BRANCH VIOLATION: local changes detected on main.", "error"})
+			lines = append(lines, dashLine{"   Move these changes to a hotfix branch immediately.", "dim"})
+			lines = append(lines, dashLine{"   Use the recommended TUI action to move them without losing local work.", "dim"})
+			lines = append(lines, dashLine{"   Recommended: gitflow start hotfix <version>", "dim"})
+			break
+		}
 		lines = append(lines, dashLine{"   Switch to develop to start work.", "dim"})
 	default:
 		lines = append(lines, dashLine{fmt.Sprintf("   Branch '%s' is not a standard gitflow branch.", s.Current), "dim"})
