@@ -259,3 +259,25 @@ func TestNewFromEmpty_AutoDetectsRoot(t *testing.T) {
 		t.Error("expected non-empty project root")
 	}
 }
+
+func TestHealthReport_ToMap(t *testing.T) {
+	report := HealthReport{
+		Action:   "health",
+		Issues:   []string{"a"},
+		Warnings: []string{"b"},
+		OK:       []string{"c"},
+		Healthy:  false,
+		IDE:      ide.DetectedIDE{ID: ide.IDEUnknown, DisplayName: "Terminal"},
+	}
+
+	m := report.ToMap()
+	if got, _ := m["action"].(string); got != "health" {
+		t.Fatalf("expected action=health, got %v", m["action"])
+	}
+	if got, _ := m["healthy"].(bool); got {
+		t.Fatalf("expected healthy=false, got %v", m["healthy"])
+	}
+	if got, ok := m["issues"].([]string); !ok || len(got) != 1 || got[0] != "a" {
+		t.Fatalf("unexpected issues map value: %#v", m["issues"])
+	}
+}

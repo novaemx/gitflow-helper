@@ -39,6 +39,42 @@ func hasTagAndLabel(actions []action, tag, needle string) bool {
 	return false
 }
 
+func currentFlowBranchInfo(s state.RepoState, btype string) *state.BranchInfo {
+	var list []state.BranchInfo
+	switch btype {
+	case "feature":
+		list = s.Features
+	case "bugfix":
+		list = s.Bugfixes
+	case "release":
+		list = s.Releases
+	case "hotfix":
+		list = s.Hotfixes
+	default:
+		return nil
+	}
+	for i := range list {
+		if list[i].Name == s.Current {
+			return &list[i]
+		}
+	}
+	return nil
+}
+
+func appendTierWithPriority(dst []action, tier []action) []action {
+	for _, a := range tier {
+		if a.Recommended {
+			dst = append(dst, a)
+		}
+	}
+	for _, a := range tier {
+		if !a.Recommended {
+			dst = append(dst, a)
+		}
+	}
+	return dst
+}
+
 // buildActions builds the action list ordered by priority tiers:
 //
 //	T1 CRITICAL  — backmerge / continue merge / init
@@ -111,20 +147,22 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	if s.Dirty {
 		dirtyNote = " ⚠ commit changes first"
 	}
+	curFlow := currentFlowBranchInfo(s, btype)
 	switch btype {
 	case "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
-		var bi *state.BranchInfo
-		for i := range s.Features {
-			if s.Features[i].ShortName == name {
-				bi = &s.Features[i]
-				break
-			}
-		}
-		hasWork := bi != nil && bi.CommitsAhead > 0 && !s.Dirty
+		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
 		label := fmt.Sprintf("Finish feature '%s'", name)
 		if s.Dirty {
 			label += dirtyNote
+		}
+		if s.HasDefaultRemote {
+			high = append(high, action{
+				Label:       "Push current branch",
+				Tag:         "push",
+				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Command:     "gitflow push",
+			})
 		}
 		high = append(high, action{
 			Label: label, Tag: "finish",
@@ -134,17 +172,18 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	case "bugfix":
 		name := strings.TrimPrefix(s.Current, "bugfix/")
-		var bi *state.BranchInfo
-		for i := range s.Bugfixes {
-			if s.Bugfixes[i].ShortName == name {
-				bi = &s.Bugfixes[i]
-				break
-			}
-		}
-		hasWork := bi != nil && bi.CommitsAhead > 0 && !s.Dirty
+		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
 		label := fmt.Sprintf("Finish bugfix '%s'", name)
 		if s.Dirty {
 			label += dirtyNote
+		}
+		if s.HasDefaultRemote {
+			high = append(high, action{
+				Label:       "Push current branch",
+				Tag:         "push",
+				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Command:     "gitflow push",
+			})
 		}
 		high = append(high, action{
 			Label: label, Tag: "finish",
@@ -158,6 +197,14 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		if s.Dirty {
 			label += dirtyNote
 		}
+		if s.HasDefaultRemote {
+			high = append(high, action{
+				Label:       "Push current branch",
+				Tag:         "push",
+				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Command:     "gitflow push",
+			})
+		}
 		high = append(high, action{
 			Label: label, Tag: "finish",
 			Recommended: !s.Dirty, Command: "gitflow finish",
@@ -168,6 +215,14 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		label := fmt.Sprintf("Finish hotfix v%s", ver)
 		if s.Dirty {
 			label += dirtyNote
+		}
+		if s.HasDefaultRemote {
+			high = append(high, action{
+				Label:       "Push current branch",
+				Tag:         "push",
+				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Command:     "gitflow push",
+			})
 		}
 		high = append(high, action{
 			Label: label, Tag: "finish",
@@ -322,25 +377,14 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		action{Label: "Exit", Tag: "exit"},
 	)
 
-	// Concatenate tiers, recommended first within the combined list
-	all := make([]action, 0, len(critical)+len(high)+len(normal)+len(low))
-	all = append(all, critical...)
-	all = append(all, high...)
-	all = append(all, normal...)
-	all = append(all, low...)
-
-	var rec, rest []action
-	for _, a := range all {
-		if a.Recommended {
-			rec = append(rec, a)
-		} else {
-			rest = append(rest, a)
-		}
-	}
-	var actions []action
-	actions = append(actions, rec...)
-	actions = append(actions, rest...)
-	return actions
+	// Concatenate tiers while preserving gitflow phase priority.
+	// Recommended actions are floated only within each tier.
+	ordered := make([]action, 0, len(critical)+len(high)+len(normal)+len(low))
+	ordered = appendTierWithPriority(ordered, critical)
+	ordered = appendTierWithPriority(ordered, high)
+	ordered = appendTierWithPriority(ordered, normal)
+	ordered = appendTierWithPriority(ordered, low)
+	return ordered
 }
 
 func suggestReleaseVersion(s state.RepoState) string {

@@ -4,7 +4,7 @@ A single static binary that enforces the [git-flow branching model](https://nvie
 
 ## Features
 
-- **14 CLI commands** covering the full gitflow lifecycle: status, pull, start, finish, sync, switch, backmerge, cleanup, health, doctor, log, undo, releasenotes, init
+- **15 CLI commands** covering the full gitflow lifecycle: status, pull, push, start, finish, sync, switch, backmerge, cleanup, health, doctor, log, undo, releasenotes, init
 - **Interactive TUI** with dashboard, action menu, command palette, and help overlay
 - **JSON mode** (`--json`) for seamless integration with AI agents (Cursor, Copilot, Claude Code, etc.)
 - **IDE detection** — automatically generates `.cursor/rules/`, `.github/copilot-instructions.md`, or `AGENTS.md`
@@ -82,6 +82,8 @@ All commands support `--json` for machine-readable output.
 ```bash
 gitflow status                     # repo state dashboard
 gitflow pull                       # safe fetch + fast-forward merge
+gitflow push                       # push current branch (target-aware)
+gitflow push develop               # push current branch to target branch with validation
 gitflow start feature my-feature   # start a feature branch
 gitflow start bugfix fix-name      # start a bugfix branch
 gitflow start release 1.2.0        # start a release
@@ -106,6 +108,7 @@ gitflow setup --ide copilot        # force Copilot instructions only
 
 ```bash
 gitflow --json status
+gitflow --json push feature/add-csv-export
 gitflow --json start feature add-csv-export
 gitflow --json finish
 ```

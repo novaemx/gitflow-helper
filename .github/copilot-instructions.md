@@ -12,9 +12,10 @@
 Perform two continuous audits:
 A) Triage: Identify bugs, security vulnerabilities, and tech debt.
 B) Pruning: Locate and flag legacy code or obsolete guardrails.
+C) Logic: Detect edge cases, race conditions, and flawed business rules.
 
 ### Execution Protocol (Strict TDD)
-1. Write failing tests (Unit/Integration/E2E).
+1. Write failing tests (Unit/Integration/E2E) before the implementation.
 2. Implement MINIMAL fix/change (KISS).
 3. Add regression tests.
 4. Verify Coverage ≥ 80%.
@@ -30,7 +31,7 @@ B) Pruning: Locate and flag legacy code or obsolete guardrails.
 - **Analysis**: Risk/Mitigation notes (High/Med/Low).
 
 ### Response Style
-Concise, technical, English-only. Focus on actionable code over prose.
+Concise, technical, English-only for code, comments, documentation and responses. Focus on actionable code over prose.
 
 ## Skills As Rules (Load Only When Needed)
 
