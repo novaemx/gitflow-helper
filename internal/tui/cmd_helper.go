@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -42,7 +44,72 @@ func BuildExecCmd(cmdStr, projectRoot string) *exec.Cmd {
 		cmd.Dir = projectRoot
 		return cmd
 	}
+	// Try to resolve the executable to an absolute path when possible so
+	// that the child process does not rely solely on the parent's PATH.
+	args[0] = resolveExecutable(args[0], projectRoot)
+
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = projectRoot
 	return cmd
+}
+
+// resolveExecutable attempts to find an absolute path for the given
+// executable name. It first uses exec.LookPath and then falls back to
+// common locations such as the project root, $HOME/bin, and the
+// directory containing the running binary. If no file is found the
+// original name is returned unchanged.
+func resolveExecutable(name, projectRoot string) string {
+	// If the name already contains a path separator, assume it's a path.
+	if strings.ContainsAny(name, string(os.PathSeparator)) {
+		return name
+	}
+
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+
+	var candidates []string
+	// project-local binary
+	if projectRoot != "" {
+		candidates = append(candidates, filepath.Join(projectRoot, name))
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates, filepath.Join(projectRoot, name+".exe"))
+		}
+	}
+
+	// common user bin locations
+	home := os.Getenv("HOME")
+	if home != "" {
+		candidates = append(candidates, filepath.Join(home, "bin", name))
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates, filepath.Join(home, "bin", name+".exe"))
+		}
+	}
+	userprofile := os.Getenv("USERPROFILE")
+	if userprofile != "" {
+		candidates = append(candidates, filepath.Join(userprofile, "bin", name))
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates, filepath.Join(userprofile, "bin", name+".exe"))
+		}
+	}
+
+	// directory of the running executable
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		candidates = append(candidates, filepath.Join(dir, name))
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates, filepath.Join(dir, name+".exe"))
+		}
+	}
+
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+			return c
+		}
+	}
+
+	return name
 }
