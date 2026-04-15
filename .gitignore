@@ -39,3 +39,5 @@ tmp/
 
 gitflow
 .gitflow.json
+tests/*.out
+tests/*.cov

@@ -32,12 +32,13 @@ func needsShell(s string) bool {
 func BuildExecCmd(cmdStr, projectRoot string) *exec.Cmd {
 	args := git.SplitCommand(cmdStr)
 	if len(args) == 0 || needsShell(cmdStr) {
+		shell := "sh"
+		shellArgs := []string{"-c", cmdStr}
 		if runtime.GOOS == "windows" {
-			cmd := exec.Command("powershell", "-NoProfile", "-Command", cmdStr)
-			cmd.Dir = projectRoot
-			return cmd
+			shell = "powershell"
+			shellArgs = []string{"-NoProfile", "-Command", cmdStr}
 		}
-		cmd := exec.Command("sh", "-c", cmdStr)
+		cmd := exec.Command(shell, shellArgs...)
 		cmd.Dir = projectRoot
 		return cmd
 	}

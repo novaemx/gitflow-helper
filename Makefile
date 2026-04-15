@@ -10,6 +10,7 @@ WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
 LINUX_ARCHIVE   := $(DIST)/$(BINARY)-$(VERSION)-linux-amd64.tar.gz
 DARWIN_ARCHIVE  := $(DIST)/$(BINARY)-$(VERSION)-darwin-universal.tar.gz
 CHECKSUMS_FILE  := $(DIST)/checksums.txt
+COVER_DIR := test
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
@@ -84,10 +85,25 @@ clean:
 	rm -rf $(DIST) $(BINARY) $(BINARY).exe
 	@# Remove common test/coverage/debug and packaging temp artifacts across the repo.
 	find . -type f \( -name "*.out" -o -name "*.test" -o -name "*.prof" -o -name "cover.out" -o -name "cover.html" -o -name "__debug_bin*" -o -name "*.bak" -o -name "*.tmp" -o -name ".DS_Store" \) -not -path "./.git/*" -delete
+	@# Remove coverage artifacts generated into $(COVER_DIR)
+	@mkdir -p $(COVER_DIR) 2>/dev/null || true
+	@rm -f $(COVER_DIR)/*.cov $(COVER_DIR)/*.out $(COVER_DIR)/cover.* 2>/dev/null || true
 
 ## test: run all tests
 test:
 	go test ./... -v
+
+## cover: run all tests and write a coverage profile into $(COVER_DIR)/coverage.out
+cover:
+	@mkdir -p $(COVER_DIR)
+	go test ./... -covermode=atomic -coverprofile=$(COVER_DIR)/coverage.out
+
+## cover-package: run tests for a single package and write profile into $(COVER_DIR)/<pkg>.cov
+## Usage: make cover-package PKG=./internal/commands
+cover-package:
+	@mkdir -p $(COVER_DIR)
+	@test -n "$(PKG)" || (echo "PKG is required. Example: make cover-package PKG=./internal/commands" && exit 1)
+	go test $(PKG) -v -covermode=atomic -coverprofile=$(COVER_DIR)/$(notdir $(PKG)).cov
 
 ## vet: run go vet
 vet:
