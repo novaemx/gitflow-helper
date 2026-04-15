@@ -112,7 +112,7 @@ func RunBumpCommand(cfg config.FlowConfig, part string) {
 	} else if part != "patch" {
 		cmd = fmt.Sprintf("%s --%s", cmd, part)
 	}
-	_ = git.Run(cmd)
+	_ = git.Exec(git.SplitCommand(cmd)...)
 }
 
 func RunBuildBumpCommand(cfg config.FlowConfig) {
@@ -124,5 +124,5 @@ func RunBuildBumpCommand(cfg config.FlowConfig) {
 		plat = "win"
 	}
 	cmd := strings.ReplaceAll(cfg.BuildBumpCommand, "{platform}", plat)
-	_ = git.Run(cmd)
+	_ = git.Exec(git.SplitCommand(cmd)...)
 }

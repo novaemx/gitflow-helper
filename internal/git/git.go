@@ -15,31 +15,12 @@ var ProjectRoot string
 // Exec runs git with explicit arguments (no shell interpretation).
 // This is the safe replacement for Run() that prevents shell injection.
 func Exec(args ...string) error {
-	output.Infof("  %s→ git %s%s", output.Dim, strings.Join(args, " "), output.Reset)
-	cmd := exec.Command("git", args...)
-	cmd.Dir = ProjectRoot
-	cmd.Stdout = output.Writer()
-	cmd.Stderr = output.Writer()
-	return cmd.Run()
+	return DefaultClient().Exec(args...)
 }
 
 // ExecResult runs git with explicit arguments and captures output.
 func ExecResult(args ...string) (int, string, string) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = ProjectRoot
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	code := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			code = exitErr.ExitCode()
-		} else {
-			code = 1
-		}
-	}
-	return code, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String())
+	return DefaultClient().ExecResult(args...)
 }
 
 // ExecQuiet runs git with explicit arguments and returns only stdout.
@@ -160,6 +141,14 @@ func splitCommand(s string) []string {
 		clean = append(clean, a)
 	}
 	return clean
+}
+
+// SplitCommand is an exported wrapper around splitCommand.
+// Use this when callers need to convert a single command string into
+// args suitable for exec.Command without invoking a shell. This helps
+// migrate callers away from legacy Run()/RunResult() wrappers.
+func SplitCommand(s string) []string {
+	return splitCommand(s)
 }
 
 // --- Convenience functions (use safe Exec internally) ---

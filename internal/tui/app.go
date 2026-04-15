@@ -515,8 +515,7 @@ func (m model) runCommandAsync(a action) tea.Cmd {
 			Source: "cli",
 		})
 
-		cmd := exec.Command("sh", "-c", cmdStr)
-		cmd.Dir = projectRoot
+		cmd := BuildExecCmd(cmdStr, projectRoot)
 		var buf bytes.Buffer
 		cmd.Stdout = &buf
 		cmd.Stderr = &buf

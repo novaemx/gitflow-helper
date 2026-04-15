@@ -237,6 +237,16 @@ func (gf *Logic) IntegrationMode() string {
 	return mode
 }
 
+// ResetChecks clears cached git checks (availability, repo detection, init)
+// so subsequent calls will re-evaluate the git environment. Useful when the
+// working directory mutates during execution (for example, after running
+// `git init` in-place).
+func (gf *Logic) ResetChecks() {
+	gf.gitAvailCache = nil
+	gf.isgitRepoCache = nil
+	gf.gfInitCache = nil
+}
+
 func (gf *Logic) SetIntegrationMode(mode string) error {
 	normalized := config.NormalizeIntegrationMode(mode)
 	if normalized == "" {
