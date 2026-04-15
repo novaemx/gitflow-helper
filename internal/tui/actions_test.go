@@ -85,3 +85,28 @@ func TestBuildActions_RecommendsPushForUnpublishedFlowBranch(t *testing.T) {
 		t.Fatalf("expected push to be recommended when flow branch has no remote")
 	}
 }
+
+func TestBuildActions_ShowsPushOnDevelop(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            cfg.DevelopBranch,
+		HasDefaultRemote:   true,
+		GitFlowInitialized: true,
+		Features:           []state.BranchInfo{},
+		Bugfixes:           []state.BranchInfo{},
+		Releases:           []state.BranchInfo{},
+		Hotfixes:           []state.BranchInfo{},
+		DevelopOnlyFiles:   []string{},
+		MainOnlyFiles:      []string{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	push, ok := actionByTag(actions, "push")
+	if !ok {
+		t.Fatal("expected push action on develop branch")
+	}
+	if push.Command != "gitflow push" {
+		t.Fatalf("expected push command 'gitflow push', got %q", push.Command)
+	}
+}

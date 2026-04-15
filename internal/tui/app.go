@@ -191,8 +191,8 @@ func repoFingerprint(root string) string {
 		return ""
 	}
 
+	// Fast metadata-based signals for refs/index transitions.
 	parts := []string{fmt.Sprintf("gitdir:%s", gitDir)}
-
 	headPath := filepath.Join(gitDir, "HEAD")
 	headData, _ := os.ReadFile(headPath)
 	head := strings.TrimSpace(string(headData))
@@ -212,11 +212,29 @@ func repoFingerprint(root string) string {
 		parts = append(parts, rel+"="+statPart(filepath.Join(gitDir, filepath.FromSlash(rel))))
 	}
 
+	// Snapshot dynamic state so TUI reacts to file changes, branch updates,
+	// and ref movement even when mtimes are coarse on some filesystems.
+	gitSnapshot := func(args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	parts = append(parts,
+		"status="+gitSnapshot("status", "--porcelain=v2", "--branch"),
+		"refs="+gitSnapshot("for-each-ref", "--format=%(refname:short):%(objectname)", "refs/heads"),
+		"stash="+gitSnapshot("stash", "list"),
+	)
+
 	return strings.Join(parts, "|")
 }
 
 func (m model) Init() tea.Cmd {
 	m.lastGitFingerprint = repoFingerprint(m.gf.Config.ProjectRoot)
+	m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
 	return tea.Batch(
 		tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return activityTickMsg{} }),
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg { return watchTickMsg{} }),
@@ -258,7 +276,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case activityTickMsg:
-		m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 10)
+		m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
 		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 			return activityTickMsg{}
 		})
@@ -482,12 +500,33 @@ func (m model) runCommandAsync(a action) tea.Cmd {
 	label := a.Label
 	projectRoot := m.gf.Config.ProjectRoot
 	return func() tea.Msg {
+		_ = mcpserver.AppendActivityLog(projectRoot, mcpserver.ActivityEntry{
+			Tool:   label,
+			Args:   cmdStr,
+			Result: "started",
+			Source: "cli",
+		})
+
 		cmd := exec.Command("sh", "-c", cmdStr)
 		cmd.Dir = projectRoot
 		var buf bytes.Buffer
 		cmd.Stdout = &buf
 		cmd.Stderr = &buf
 		err := cmd.Run()
+		result := "ok"
+		errMsg := ""
+		if err != nil {
+			result = "error"
+			errMsg = err.Error()
+		}
+		_ = mcpserver.AppendActivityLog(projectRoot, mcpserver.ActivityEntry{
+			Tool:   label,
+			Args:   cmdStr,
+			Result: result,
+			Error:  errMsg,
+			Source: "cli",
+		})
+
 		return cmdDoneMsg{
 			title:  label,
 			output: buf.String(),
@@ -525,19 +564,27 @@ func (m model) renderBase() string {
 	sections = append(sections, m.renderTitleBar())
 	sections = append(sections, "")
 
-	dashContent := m.renderDashboard()
-	activityContent := m.renderIDEActivity()
-	actionContent := m.renderActions()
-
 	contentHeight := m.height - 4
-	content := dashContent
-	if activityContent != "" {
-		content += "\n" + activityContent
+	rightW := 0
+	if m.width >= 100 {
+		rightW = 40
+		if rightW > m.width/2 {
+			rightW = m.width / 2
+		}
 	}
-	content += "\n" + actionContent
-	lines := strings.Split(content, "\n")
+	leftW := m.width
+	if rightW > 0 {
+		leftW = m.width - rightW - 1
+	}
+	if leftW < 40 {
+		leftW = 40
+	}
 
-	dashLineCount := len(m.dashLines) + 2
+	dashContent := m.renderDashboardForWidth(leftW)
+	actionContent := m.renderActionsForWidth(leftW)
+	leftLines := strings.Split(dashContent+"\n"+actionContent, "\n")
+
+	dashLineCount := len(strings.Split(dashContent, "\n"))
 	selectedRow := dashLineCount + m.selected + 2
 	if selectedRow-m.scroll >= contentHeight {
 		m.scroll = selectedRow - contentHeight + 1
@@ -549,21 +596,45 @@ func (m model) renderBase() string {
 		m.scroll = 0
 	}
 
-	end := m.scroll + contentHeight
-	if end > len(lines) {
-		end = len(lines)
+	leftEnd := m.scroll + contentHeight
+	if leftEnd > len(leftLines) {
+		leftEnd = len(leftLines)
 	}
-	start := m.scroll
-	if start > len(lines) {
-		start = len(lines)
+	leftStart := m.scroll
+	if leftStart > len(leftLines) {
+		leftStart = len(leftLines)
 	}
-	visible := lines[start:end]
+	visibleLeft := leftLines[leftStart:leftEnd]
+	for len(visibleLeft) < contentHeight {
+		visibleLeft = append(visibleLeft, "")
+	}
 
-	for len(visible) < contentHeight {
-		visible = append(visible, "")
+	if rightW == 0 {
+		sections = append(sections, strings.Join(visibleLeft, "\n"))
+		sections = append(sections, m.renderStatusBar())
+		return strings.Join(sections, "\n")
 	}
 
-	sections = append(sections, strings.Join(visible, "\n"))
+	rightPanel := m.renderActivityPanel(rightW)
+	rightLines := strings.Split(rightPanel, "\n")
+	if len(rightLines) > contentHeight {
+		rightLines = rightLines[:contentHeight]
+	}
+	for len(rightLines) < contentHeight {
+		rightLines = append(rightLines, "")
+	}
+
+	rows := make([]string, 0, contentHeight)
+	for i := 0; i < contentHeight; i++ {
+		leftLine := visibleLeft[i]
+		lw := lipgloss.Width(leftLine)
+		if lw < leftW {
+			leftLine += strings.Repeat(" ", leftW-lw)
+		}
+		rows = append(rows, leftLine+" "+rightLines[i])
+	}
+
+	sections = append(sections, strings.Join(rows, "\n"))
 	sections = append(sections, m.renderStatusBar())
 
 	return strings.Join(sections, "\n")
@@ -633,9 +704,9 @@ func (m model) renderTitleBar() string {
 	return line1 + "\n" + line2
 }
 
-func (m model) renderDashboard() string {
+func (m model) renderDashboardForWidth(width int) string {
 	var lines []string
-	dividerWidth := m.width - 2
+	dividerWidth := width - 2
 	if dividerWidth < 8 {
 		dividerWidth = 8
 	}
@@ -669,22 +740,31 @@ func (m model) renderDashboard() string {
 		if text == dashboardDividerToken {
 			text = divider
 		}
-		if len(text) > m.width-2 {
-			text = text[:m.width-2]
+		if len(text) > width-2 {
+			text = text[:width-2]
 		}
 		lines = append(lines, " "+s.Render(text))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func (m model) renderIDEActivity() string {
-	if len(m.mcpActivity) == 0 {
-		return ""
+func (m model) renderDashboard() string {
+	return m.renderDashboardForWidth(m.width)
+}
+
+func (m model) renderActivityPanel(width int) string {
+	if width < 24 {
+		width = 24
 	}
 
 	var lines []string
+	lines = append(lines, boldStyle.Render("Agent Activity"))
+	lines = append(lines, dimStyle.Render("MCP + CLI"))
 	lines = append(lines, "")
-	lines = append(lines, " "+sectionStyle.Render("IDE Activity (MCP):"))
+
+	if len(m.mcpActivity) == 0 {
+		lines = append(lines, dimStyle.Render("No activity yet."))
+	}
 
 	for _, entry := range m.mcpActivity {
 		ts := entry.Timestamp
@@ -695,23 +775,33 @@ func (m model) renderIDEActivity() string {
 		if entry.Error != "" || entry.Result == "error" {
 			icon = errorStyle.Render("✗")
 		}
+		source := entry.Source
+		if source == "" {
+			source = "mcp"
+		}
 
-		detail := entry.Tool
+		detail := "[" + source + "] " + entry.Tool
 		if entry.Args != "" {
 			detail += " " + entry.Args
 		}
 
-		line := fmt.Sprintf("   %s %s %s", icon, dimStyle.Render(ts), detail)
-		if len(line) > m.width-4 {
-			line = line[:m.width-4]
+		line := fmt.Sprintf("%s %s %s", icon, dimStyle.Render(ts), detail)
+		if len(line) > width-4 {
+			line = line[:width-4]
 		}
-		lines = append(lines, " "+line)
+		lines = append(lines, line)
 	}
 
-	return strings.Join(lines, "\n")
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("8")).
+		Padding(0, 1).
+		Width(width)
+
+	return panel.Render(strings.Join(lines, "\n"))
 }
 
-func (m model) renderActions() string {
+func (m model) renderActionsForWidth(width int) string {
 	var lines []string
 	lines = append(lines, "")
 
@@ -737,11 +827,11 @@ func (m model) renderActions() string {
 		}
 
 		label := a.Label
-		if len(label) > m.width-8 {
-			label = label[:m.width-8]
+		if len(label) > width-8 {
+			label = label[:width-8]
 		}
 		if i == m.selected {
-			line := selectedStyle.Width(m.width - 2).Render(" ▸ " + label)
+			line := selectedStyle.Width(width - 2).Render(" ▸ " + label)
 			lines = append(lines, " "+line)
 		} else if a.Recommended {
 			lines = append(lines, "   "+recommendedStyle.Render("▹ "+label))
@@ -750,6 +840,10 @@ func (m model) renderActions() string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (m model) renderActions() string {
+	return m.renderActionsForWidth(m.width)
 }
 
 func (m model) renderStatusBar() string {

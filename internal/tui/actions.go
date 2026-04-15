@@ -238,6 +238,11 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	} else {
 		normal = append(normal, action{Label: fmt.Sprintf("Pull disabled (no '%s' remote configured)", cfg.Remote), Tag: "pull"})
 	}
+	if s.HasDefaultRemote && (btype == "base" || btype == "other") {
+		normal = append(normal, action{Label: "Push current branch", Tag: "push", Command: "gitflow push"})
+	} else if btype == "base" || btype == "other" {
+		normal = append(normal, action{Label: fmt.Sprintf("Push disabled (no '%s' remote configured)", cfg.Remote), Tag: "push"})
+	}
 	hasReleasableDiff := s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0
 
 	if s.DevelopAheadOfMain > 0 {
