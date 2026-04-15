@@ -1,11 +1,12 @@
-# Release 0.5.19
+# Release 0.5.20
 
-**Date:** 2026-04-13
+**Date:** 2026-04-14
 
 ## What's New
 
+- Merge feature 'improve-skill-guidelines' into develop
+- Enhance Copilot instructions and add agent workflow guidelines
 - Merge feature 'fix-tui-spinner-running-state' into develop
-- Merge feature 'make-clean-remove-artifacts' into develop
 
 ## Bug Fixes
 
