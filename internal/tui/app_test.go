@@ -360,6 +360,32 @@ func TestOutputAnimation_RequiresMinFrames(t *testing.T) {
 	}
 }
 
+// TestActivityPanel_AnimatesVisiblyOnNarrowTerminal verifies that the activity
+// panel animates with a non-zero width even when the terminal is narrower than
+// 100 columns.  Previous bug: normalW was 0 when width < 100.
+func TestActivityPanel_AnimatesVisiblyOnNarrowTerminal(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:       s,
+		mode:          viewDashboard,
+		activityPanel: activityNormal,
+		activityAnim:  0.5, // mid-animation
+		width:         80,
+		height:        24,
+	}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+	m.dashLines = []dashLine{}
+	m.actions = []action{}
+
+	base := m.renderBase()
+	// The rendered output must contain "Agent Activity" from the panel.
+	// If normalW was 0, rightW would be 0 and the panel would be invisible.
+	if !strings.Contains(base, "Agent Activity") {
+		t.Fatal("activity panel not visible at width=80 with anim=0.5; normalW is likely 0")
+	}
+}
+
 func TestOutputOverlayClose_AnimatesThenReturnsDashboard(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
