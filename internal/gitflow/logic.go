@@ -14,6 +14,7 @@ import (
 	"github.com/novaemx/gitflow-helper/internal/flow"
 	"github.com/novaemx/gitflow-helper/internal/git"
 	"github.com/novaemx/gitflow-helper/internal/ide"
+	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/novaemx/gitflow-helper/internal/state"
 )
 
@@ -154,9 +155,10 @@ func (gf *Logic) Init() (bool, string) {
 					if relErr != nil {
 						rel = absPath
 					}
-					_ = git.Exec("add", rel)
+					_ = git.ExecSilent("add", rel)
 				}
-				_ = git.Exec("commit", "-m", "chore: add gitflow agent rules")
+				_ = git.ExecSilent("commit", "-m", "chore: add gitflow agent rules")
+				output.Infof("  %s✓ agent rules%s — %s", output.Green, output.Reset, gf.IDE.DisplayName)
 			}
 		}
 		gf.Refresh()

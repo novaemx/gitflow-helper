@@ -148,13 +148,13 @@ func NewRootCmd(version string) *cobra.Command {
 					os.Exit(1)
 				}
 				// Interactive path: attempt to initialize a git repo in-place.
-				output.Infof("  %sNot inside a git repository.%s", output.Yellow, output.Reset)
-				output.Infof("  Attempting auto-initialize: running %sgit init%s...", output.Bold, output.Reset)
-				if err := git.Exec("init"); err != nil {
-					output.Infof("  %sFailed to run 'git init': %v%s", output.Red, err, output.Reset)
+				output.Infof("  %s✦ Initializing new git repository...%s", output.Cyan, output.Reset)
+				if err := git.ExecSilent("init"); err != nil {
+					output.Infof("  %s✗ git init failed: %v%s", output.Red, err, output.Reset)
 					output.Infof("  Run %sgit init%s first, then %sgitflow init%s.", output.Bold, output.Reset, output.Bold, output.Reset)
 					os.Exit(1)
 				}
+				output.Infof("  %s✓ empty repository created%s", output.Green, output.Reset)
 				// Reset cached checks so the new git repo is detected by subsequent
 				// evaluations (IsGitRepo / IsGitFlowInitialized).
 				GF.ResetChecks()
@@ -162,12 +162,13 @@ func NewRootCmd(version string) *cobra.Command {
 			deferIsRepo()
 
 			// Auto-initialize gitflow structure if running a command that needs it
+			freshInit := false
 			if name != "doctor" && name != "health" && name != "setup" {
 				deferInitCheck := debug.Start("root.PersistentPreRun.IsGitFlowInitialized")
 				if !GF.IsGitFlowInitialized() {
 					deferInitCheck()
 					if !output.IsJSONMode() {
-						output.Infof("  %sGitflow structure not detected. Auto-initializing...%s", output.Yellow, output.Reset)
+						output.Infof("  %s✦ Setting up gitflow structure...%s", output.Cyan, output.Reset)
 					}
 					deferInit := debug.Start("root.PersistentPreRun.GF.Init")
 					ok, msg := GF.Init()
@@ -181,6 +182,7 @@ func NewRootCmd(version string) *cobra.Command {
 						}
 						os.Exit(1)
 					}
+					freshInit = true
 				} else {
 					deferInitCheck()
 				}
@@ -194,6 +196,20 @@ func NewRootCmd(version string) *cobra.Command {
 			}
 
 			ensureIntegrationModeConfigured(cmd)
+
+			// After fresh init, commit .gitflow.json on develop so the working
+			// tree is completely clean before the user starts working.
+			if freshInit && git.CurrentBranch() == GF.Config.DevelopBranch {
+				lines := git.ExecLines("status", "--porcelain", ".gitflow.json")
+				if len(lines) > 0 {
+					_ = git.ExecSilent("add", ".gitflow.json")
+					_ = git.ExecSilent("commit", "-m", "chore: configure gitflow integration mode")
+					output.Infof("  %s✓ .gitflow.json%s — integration mode committed", output.Green, output.Reset)
+				}
+				if !output.IsJSONMode() {
+					output.Infof("  %s✦ Repository ready — working branch: %s%s%s", output.Cyan, output.Bold, GF.Config.DevelopBranch, output.Reset)
+				}
+			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonFlag {

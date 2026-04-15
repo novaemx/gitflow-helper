@@ -250,48 +250,62 @@ func InitGitFlow(cfg config.FlowConfig) (bool, string) {
 		localSet[b] = true
 	}
 
+	// ── Step 1: ensure at least one commit exists on main ───────────────────
 	code, _, _ := git.ExecResult("rev-parse", "HEAD")
 	if code != 0 {
-		output.Infof("  %sCreating initial commit...%s", output.Dim, output.Reset)
-		_ = git.Exec("checkout", "-b", cfg.MainBranch)
-		_ = git.Exec("commit", "--allow-empty", "-m", "chore: initial commit")
+		// Brand-new empty repo — create main and the root commit silently.
+		_ = git.ExecSilent("checkout", "-b", cfg.MainBranch)
+		if err := git.ExecSilent("commit", "--allow-empty", "-m", "chore: initial commit"); err != nil {
+			output.Infof("  %s✗ Failed to create initial commit on %s%s", output.Red, cfg.MainBranch, output.Reset)
+			return false, "error"
+		}
 		localSet[cfg.MainBranch] = true
+		output.Infof("  %s✓ %s%s — initial commit", output.Green, cfg.MainBranch, output.Reset)
 	}
 
+	// ── Step 2: ensure main branch exists with the right name ───────────────
 	if !localSet[cfg.MainBranch] {
 		cur := git.CurrentBranch()
 		if cur == "master" && cfg.MainBranch == "main" {
-			_ = git.Exec("branch", "-m", "master", "main")
+			_ = git.ExecSilent("branch", "-m", "master", "main")
 		} else {
-			_ = git.Exec("branch", cfg.MainBranch)
+			_ = git.ExecSilent("branch", cfg.MainBranch)
 		}
+		output.Infof("  %s✓ %s%s — renamed/created", output.Green, cfg.MainBranch, output.Reset)
 	}
 
+	// ── Step 3: create develop from main ────────────────────────────────────
 	if !localSet[cfg.DevelopBranch] {
-		output.Infof("  %sCreating %s branch from %s...%s", output.Dim, cfg.DevelopBranch, cfg.MainBranch, output.Reset)
-		_ = git.Exec("branch", cfg.DevelopBranch, cfg.MainBranch)
+		if err := git.ExecSilent("branch", cfg.DevelopBranch, cfg.MainBranch); err != nil {
+			output.Infof("  %s✗ Failed to create %s branch%s", output.Red, cfg.DevelopBranch, output.Reset)
+			return false, "error"
+		}
+		output.Infof("  %s✓ %s%s — created from %s", output.Green, cfg.DevelopBranch, output.Reset, cfg.MainBranch)
 	}
 
-	// Ensure any generated files (like VERSION) are created on the develop
-	// branch. Switch to `develop` so subsequent commits land there.
-	_ = git.Exec("checkout", cfg.DevelopBranch)
+	// ── Step 4: switch to develop — all further changes land here ───────────
+	if err := git.ExecSilent("checkout", cfg.DevelopBranch); err != nil {
+		output.Infof("  %s✗ Failed to switch to %s%s", output.Red, cfg.DevelopBranch, output.Reset)
+		return false, "error"
+	}
+	output.Infof("  %s✓ switched to %s%s", output.Green, cfg.DevelopBranch, output.Reset)
 
+	// ── Step 5: create VERSION file if absent ───────────────────────────────
 	verPath := filepath.Join(cfg.ProjectRoot, "VERSION")
 	if _, err := os.Stat(verPath); os.IsNotExist(err) {
 		initVer := "0.0.1"
-		_ = os.WriteFile(verPath, []byte(initVer+"\n"), 0644)
-		_ = git.Exec("add", "VERSION")
-		_ = git.Exec("commit", "-m", fmt.Sprintf("chore: initial version %s", initVer))
-		output.Infof("  %sCreated %s with version %s.%s", output.Dim, "VERSION", initVer, output.Reset)
+		if writeErr := os.WriteFile(verPath, []byte(initVer+"\n"), 0644); writeErr == nil {
+			_ = git.ExecSilent("add", "VERSION")
+			_ = git.ExecSilent("commit", "-m", fmt.Sprintf("chore: initial version %s", initVer))
+			output.Infof("  %s✓ VERSION%s — %s", output.Green, output.Reset, initVer)
+		}
 	}
 
-	ok := git.IsGitFlowInitialized()
-	if ok {
-		output.Infof("  %sGitflow structure initialized (main + develop).%s", output.Green, output.Reset)
-		return true, "ok"
+	if !git.IsGitFlowInitialized() {
+		output.Infof("  %s✗ Gitflow initialization failed%s", output.Red, output.Reset)
+		return false, "error"
 	}
-	output.Infof("  %sGitflow initialization failed.%s", output.Red, output.Reset)
-	return false, "error"
+	return true, "ok"
 }
 
 func EnsureGitFlowReady(cfg config.FlowConfig) (bool, string) {
