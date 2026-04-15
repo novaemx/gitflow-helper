@@ -59,6 +59,9 @@ type model struct {
 	// IDE activity from MCP server
 	mcpActivity []mcpserver.ActivityEntry
 
+	// Activity panel visibility
+	showActivity bool
+
 	// Git state watch
 	lastGitFingerprint string
 }
@@ -76,7 +79,7 @@ type cmdDoneMsg struct {
 func Run(gf *gitflow.Logic) error {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{gf: gf, mode: viewDashboard, spinner: s}
+	m := model{gf: gf, mode: viewDashboard, spinner: s, showActivity: true}
 	m.refresh(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -375,6 +378,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.paletteQuery = ""
 	case key.Matches(msg, key.NewBinding(key.WithKeys("?"))):
 		m.mode = viewHelp
+	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+		m.showActivity = !m.showActivity
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 		m.refresh(false)
 	}
@@ -562,11 +567,10 @@ func (m model) View() string {
 func (m model) renderBase() string {
 	var sections []string
 	sections = append(sections, m.renderTitleBar())
-	sections = append(sections, "")
 
-	contentHeight := m.height - 4
+	contentHeight := m.height - 3
 	rightW := 0
-	if m.width >= 100 {
+	if m.showActivity && m.width >= 100 {
 		rightW = 40
 		if rightW > m.width/2 {
 			rightW = m.width / 2
@@ -834,7 +838,7 @@ func (m model) renderActivityPanel(width, height int) string {
 		BorderForeground(lipgloss.Color("8")).
 		Padding(0, 1).
 		Width(width).
-		Height(height)
+		Height(height - 2)
 
 	return panel.Render(strings.Join(lines, "\n"))
 }
@@ -874,7 +878,7 @@ func (m model) renderActionsForWidth(width int) string {
 		} else if a.Recommended {
 			lines = append(lines, "   "+recommendedStyle.Render("▹ "+label))
 		} else {
-			lines = append(lines, "   "+label)
+			lines = append(lines, "   "+dimStyle.Render("▹ ")+label)
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -892,7 +896,7 @@ func (m model) renderStatusBar() string {
 	case m.mode == viewOutput:
 		hint = " [j/k] scroll  [q/Esc/Enter] close"
 	default:
-		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [q] quit"
+		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [a] activity  [q] quit"
 	}
 	if len(hint) > m.width {
 		hint = hint[:m.width]
@@ -1071,6 +1075,7 @@ func (m model) renderHelpOverlay(base string) string {
 		"  ────────────────",
 		"  /            Search / filter actions",
 		"  r            Refresh dashboard",
+		"  a            Toggle activity panel",
 		"  ?            Toggle this help",
 		"  q / Ctrl+C   Quit",
 		"",

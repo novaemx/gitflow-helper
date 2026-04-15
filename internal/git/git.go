@@ -293,3 +293,18 @@ func RemoteExists(name string) bool {
 	}
 	return false
 }
+
+// BranchCommitSubjects returns the commit message subjects (first line) for
+// commits reachable from branchName but not from parentBranch, excluding merge
+// commits. These are the work-commits that will land in the parent on finish.
+func BranchCommitSubjects(parentBranch, branchName string) []string {
+	return ExecLines("log", parentBranch+".."+branchName, "--no-merges", "--format=%s")
+}
+
+// BranchMergeCommitSubjects returns merge-commit subjects for commits
+// reachable from branchName but not from parentBranch.
+// A non-zero result means the branch has sync merges that could be rebased away
+// for a cleaner graph before finishing.
+func BranchMergeCommitSubjects(parentBranch, branchName string) []string {
+	return ExecLines("log", parentBranch+".."+branchName, "--merges", "--format=%s")
+}
