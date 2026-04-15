@@ -29,6 +29,16 @@ else
   HOST_OS := windows
 endif
 
+# On Windows the binary needs a .exe suffix
+ifeq ($(HOST_OS),windows)
+	EXE_SUFFIX := .exe
+else
+	EXE_SUFFIX :=
+endif
+
+# Full binary name including platform suffix when needed
+BINARY_FULL := $(BINARY)$(EXE_SUFFIX)
+
 # ── Install directory detection ──────────────────────────────
 # Automatically selects a user-writable directory already in PATH.
 # No sudo/root/admin required. Override: make install INSTALL_DIR=/your/path
@@ -57,7 +67,7 @@ endif
 
 ## build: compile for current platform
 build:
-	$(BUILD) -o $(BINARY) ./cmd/gitflow
+	$(BUILD) -o $(BINARY_FULL) ./cmd/gitflow
 
 ## build-all: cross-compile all targets
 build-all: clean
@@ -209,10 +219,12 @@ release-snapshot:
 install: build
 	@echo "→ Installing $(BINARY) to $(INSTALL_DIR) ($(HOST_OS)/$(HOST_ARCH))"
 	@mkdir -p $(INSTALL_DIR) 2>/dev/null || { echo "Cannot create $(INSTALL_DIR). Try: sudo make install"; exit 1; }
-	@install -m 755 $(BINARY) $(INSTALL_DIR)/$(BINARY) 2>/dev/null \
+	@install -m 755 $(BINARY_FULL) $(INSTALL_DIR)/$(BINARY_FULL) 2>/dev/null \
 		|| { echo "Permission denied on $(INSTALL_DIR). Try: sudo make install"; exit 1; }
-	@echo "Installed: $(INSTALL_DIR)/$(BINARY) v$(VERSION)"
-	@echo "Verify:    $(BINARY) --version"
+	@# Also ensure a local copy exists in the project root with the OS suffix
+	@cp -f $(BINARY_FULL) . 2>/dev/null || true
+	@echo "Installed: $(INSTALL_DIR)/$(BINARY_FULL) v$(VERSION)"
+	@echo "Verify:    $(BINARY_FULL) --version"
 
 ## uninstall: remove gitflow binary from INSTALL_DIR
 uninstall:
