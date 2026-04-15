@@ -53,3 +53,47 @@ func TestEnsureEmbeddedSkill_UserFallback(t *testing.T) {
 		t.Fatalf("expected %s, got %s", expected, path)
 	}
 }
+
+// TestEnsureEmbeddedSkill_SkipsInDevRepo verifies that ensureEmbeddedSkill
+// does NOT overwrite .agents/skills/gitflow/SKILL.md when the project root
+// contains the source asset (internal/ide/assets/gitflow_skill.md), meaning
+// we are inside the gitflow-helper development repository.
+func TestEnsureEmbeddedSkill_SkipsInDevRepo(t *testing.T) {
+	dir := t.TempDir()
+
+	// Simulate the dev repo by creating the source asset marker.
+	marker := filepath.Join(dir, "internal", "ide", "assets", "gitflow_skill.md")
+	if err := os.MkdirAll(filepath.Dir(marker), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("dev asset"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-create a custom SKILL.md with different content.
+	skillDir := filepath.Join(dir, ".agents", "skills", "gitflow")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	custom := "custom dev content\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(custom), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := ensureEmbeddedSkill(dir, IDECursor)
+	if err != nil {
+		t.Fatalf("ensureEmbeddedSkill in dev repo: %v", err)
+	}
+	if path != "" {
+		t.Fatalf("expected no write in dev repo, got %s", path)
+	}
+
+	// Verify the file was NOT overwritten.
+	data, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != custom {
+		t.Fatalf("expected custom content preserved, got %q", string(data))
+	}
+}

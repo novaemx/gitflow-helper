@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +71,11 @@ type model struct {
 
 	// Activity panel state (0=hidden, 1=normal right panel, 2=expanded full-width)
 	activityPanel activityPanelState
+	activityAnim  float64
+
+	// Output overlay animation state.
+	outputAnim    float64
+	outputClosing bool
 
 	// Git state watch
 	lastGitFingerprint string
@@ -78,6 +84,7 @@ type model struct {
 type refreshMsg struct{}
 type activityTickMsg struct{}
 type watchTickMsg struct{}
+type uiAnimTickMsg struct{}
 
 type cmdDoneMsg struct {
 	title  string
@@ -88,7 +95,7 @@ type cmdDoneMsg struct {
 func Run(gf *gitflow.Logic) error {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{gf: gf, mode: viewDashboard, spinner: s, activityPanel: activityNormal}
+	m := model{gf: gf, mode: viewDashboard, spinner: s, activityPanel: activityNormal, activityAnim: float64(activityNormal)}
 	m.refresh(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -254,6 +261,39 @@ func (m model) Init() tea.Cmd {
 	)
 }
 
+func animateToward(current, target, step float64) float64 {
+	if current < target {
+		return math.Min(current+step, target)
+	}
+	if current > target {
+		return math.Max(current-step, target)
+	}
+	return current
+}
+
+func (m model) hasPendingAnimations() bool {
+	const eps = 0.001
+	if math.Abs(m.activityAnim-float64(m.activityPanel)) > eps {
+		return true
+	}
+	if m.mode == viewOutput || m.outputClosing {
+		if math.Abs(m.outputAnim-1.0) > eps && !m.outputClosing {
+			return true
+		}
+		if m.outputClosing && m.outputAnim > eps {
+			return true
+		}
+	}
+	return false
+}
+
+func (m model) animationTickCmd() tea.Cmd {
+	if !m.hasPendingAnimations() {
+		return nil
+	}
+	return tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg { return uiAnimTickMsg{} })
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -272,8 +312,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = false
 		m.runningTitle = ""
 		m.mode = viewOutput
+		m.outputClosing = false
+		m.outputAnim = 0
 		m.refresh(false)
-		return m, nil
+		return m, m.animationTickCmd()
 
 	case spinner.TickMsg:
 		if !m.running {
@@ -302,6 +344,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 			return watchTickMsg{}
 		})
+
+	case uiAnimTickMsg:
+		m.activityAnim = animateToward(m.activityAnim, float64(m.activityPanel), 0.06)
+		targetOutput := 0.0
+		if m.mode == viewOutput && !m.outputClosing {
+			targetOutput = 1.0
+		}
+		m.outputAnim = animateToward(m.outputAnim, targetOutput, 0.06)
+		if m.outputClosing && m.outputAnim <= 0.001 {
+			m.outputAnim = 0
+			m.outputClosing = false
+			m.mode = viewDashboard
+		}
+		return m, m.animationTickCmd()
 
 	case tea.KeyMsg:
 		switch m.mode {
@@ -398,6 +454,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case activityExpanded:
 			m.activityPanel = activityHidden
 		}
+		return m, m.animationTickCmd()
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 		m.refresh(false)
 	}
@@ -411,7 +468,8 @@ func (m model) handleOutputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("q", "esc", "enter"))):
-		m.mode = viewDashboard
+		m.outputClosing = true
+		return m, m.animationTickCmd()
 	case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
 		if m.outputScroll < maxScroll {
 			m.outputScroll++
@@ -587,21 +645,45 @@ func (m model) renderBase() string {
 
 	contentHeight := m.height - 3
 
-	// Expanded mode: render activity panel as full-width primary content
-	if m.activityPanel == activityExpanded {
-		panel := m.renderActivityPanel(m.width-2, contentHeight)
+	normalW := 0
+	if m.width >= 100 {
+		normalW = 40
+		if normalW > m.width/2 {
+			normalW = m.width / 2
+		}
+	}
+	fullW := m.width - 2
+	if fullW < 24 {
+		fullW = 24
+	}
+
+	anim := m.activityAnim
+	rightW := 0
+	switch {
+	case anim <= 0.01:
+		rightW = 0
+	case anim <= 1.0:
+		rightW = int(math.Round(float64(normalW) * anim))
+	case normalW > 0:
+		t := anim - 1.0
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		rightW = int(math.Round(float64(normalW) + (float64(fullW-normalW) * t)))
+	default:
+		rightW = fullW
+	}
+
+	if rightW >= m.width-3 {
+		panel := m.renderActivityPanel(rightW, contentHeight)
 		sections = append(sections, panel)
 		sections = append(sections, m.renderStatusBar())
 		return strings.Join(sections, "\n")
 	}
 
-	rightW := 0
-	if m.activityPanel == activityNormal && m.width >= 100 {
-		rightW = 40
-		if rightW > m.width/2 {
-			rightW = m.width / 2
-		}
-	}
 	leftW := m.width
 	if rightW > 0 {
 		leftW = m.width - rightW - 1
@@ -979,13 +1061,39 @@ func classifyOutputLine(line string) (string, string) {
 }
 
 func (m model) renderOutputOverlay(base string) string {
-	boxW := m.width - 4
-	if boxW < 40 {
-		boxW = m.width - 2
+	factor := m.outputAnim
+	if factor < 0.01 {
+		return base
 	}
-	boxH := m.height - 4
-	if boxH < 8 {
-		boxH = m.height - 2
+	if factor > 1 {
+		factor = 1
+	}
+
+	targetW := m.width - 4
+	if targetW < 40 {
+		targetW = m.width - 2
+	}
+	targetH := m.height - 4
+	if targetH < 8 {
+		targetH = m.height - 2
+	}
+
+	minW := 28
+	if minW > targetW {
+		minW = targetW
+	}
+	minH := 6
+	if minH > targetH {
+		minH = targetH
+	}
+
+	boxW := int(math.Round(float64(minW) + float64(targetW-minW)*factor))
+	boxH := int(math.Round(float64(minH) + float64(targetH-minH)*factor))
+	if boxW < minW {
+		boxW = minW
+	}
+	if boxH < minH {
+		boxH = minH
 	}
 
 	visibleLines := boxH - 5

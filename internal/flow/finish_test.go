@@ -120,6 +120,27 @@ func TestNonAtomicCommitWarnings_EmptyInput(t *testing.T) {
 	}
 }
 
+func TestShouldAutoAtomicizeFinish_FeatureAndBugfixInLocalMerge(t *testing.T) {
+	if !shouldAutoAtomicizeFinish("feature", config.IntegrationModeLocalMerge) {
+		t.Fatal("expected feature to auto-atomicize in local merge mode")
+	}
+	if !shouldAutoAtomicizeFinish("bugfix", config.IntegrationModeLocalMerge) {
+		t.Fatal("expected bugfix to auto-atomicize in local merge mode")
+	}
+}
+
+func TestShouldAutoAtomicizeFinish_DisabledForPRAndReleaseHotfix(t *testing.T) {
+	if shouldAutoAtomicizeFinish("feature", config.IntegrationModePullRequest) {
+		t.Fatal("expected feature PR mode to skip auto-atomicize")
+	}
+	if shouldAutoAtomicizeFinish("release", config.IntegrationModeLocalMerge) {
+		t.Fatal("expected release to skip auto-atomicize")
+	}
+	if shouldAutoAtomicizeFinish("hotfix", config.IntegrationModeLocalMerge) {
+		t.Fatal("expected hotfix to skip auto-atomicize")
+	}
+}
+
 // ── rebaseOnParent ─────────────────────────────────────────────────────────
 
 func TestRebaseOnParent_AbortOnFailure(t *testing.T) {

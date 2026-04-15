@@ -22,48 +22,18 @@ Project compatibility note:
 - `bugfix/*` is treated as a project alias for non-production fixes from `develop`
 - this alias does not change nvie merge targets (`develop`)
 
-## HARD STOP — branch check (runs before ANYTHING else)
-
-Before reading a single file, writing a single line, or calling any tool that could modify state:
+## Mandatory pre-flight (before any code change)
 
 ```bash
 gitflow --json status
 ```
 
-Then execute this decision tree — **top to bottom, no skipping**:
+Evaluate in this order:
 
-```
-① git_flow_initialized == false?
-   YES → gitflow --json init   THEN restart this checklist
-   NO  → continue
-
-② merge.in_merge == true?
-   YES → STOP. Report conflicted_files to user. Do not proceed.
-   NO  → continue
-
-③ main_ahead_of_develop > 0?
-   YES → gitflow --json backmerge   THEN continue
-   NO  → continue
-
-④ current branch == "main" OR "develop"?
-   YES → CREATE FLOW BRANCH NOW (see branch routing table below)
-         DO NOT edit any file before this step completes.
-   NO  → you are on a valid flow branch, proceed with the task
-```
-
-> **Violation examples** (these are bugs, not shortcuts):
-> - Editing source files while on `develop`, then committing → ❌ WRONG
-> - Creating a file "just this once" directly on `main` → ❌ WRONG
-> - Committing VERSION, AGENTS.md, or any generated file on `develop` → ❌ WRONG
->
-> There are **zero exceptions**. Even single-line typo fixes require a flow branch.
-
-## Mandatory pre-flight sequence
-
-1. if `git_flow_initialized=false` → `gitflow --json init`
-2. if `merge.in_merge=true` → STOP and report
-3. if `main_ahead_of_develop>0` → `gitflow --json backmerge`
-4. if current branch is `main` or `develop` → create flow branch BEFORE any edit
+1. if `git_flow_initialized=false` -> `gitflow --json init`
+2. if `merge.in_merge=true` -> STOP and report
+3. if `main_ahead_of_develop>0` -> `gitflow --json backmerge`
+4. if current branch is `main` or `develop` and task modifies code -> create flow branch first
 
 Never edit code directly on `main` or `develop`.
 
@@ -126,26 +96,7 @@ gitflow --json finish
 
 ## Guardrails
 
-- **no direct commits to `main` or `develop` — zero exceptions, no edge cases**
+- no direct commits to `main` or `develop`
 - keep `develop` superset of `main`
 - always use structured `--json` output for agents
 - exit codes: `0` success, `1` error, `2` conflict-needs-human
-
-## Recovery — if you already committed on develop/main by mistake
-
-```bash
-# 1. create the flow branch from current HEAD
-gitflow --json start feature <slug>
-# (gitflow auto-stashes dirty state and switches branch)
-
-# 2. if commits already landed on develop, cherry-pick them:
-git log develop --oneline -5   # find the wrong SHA(s)
-git cherry-pick <sha>
-
-# 3. revert the wrong commit(s) from develop:
-git checkout develop
-git revert <sha> --no-edit
-git checkout feature/<slug>
-```
-
-Report the violation to the user and explain what happened.
