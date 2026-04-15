@@ -1,21 +1,31 @@
 # Agent Instructions
 
-## Gitflow Enforcement
+## Gitflow Enforcement — MANDATORY, NO EXCEPTIONS
 
-**Before modifying ANY code, run the gitflow pre-flight check.**
+**Step 0 — before reading, writing, or running ANYTHING:**
 
 ```bash
 gitflow --json status
 ```
+
+If `current` == `"main"` or `"develop"` → **do not proceed**. Create a flow branch first:
+
+```bash
+gitflow --json start feature <slug-from-task>
+```
+
+`gitflow start` auto-stashes any dirty state and switches branches atomically.
 
 ### Pre-flight sequence
 
 1. Check `git_flow_initialized` → if false, run `gitflow --json init`
 2. Check `merge.in_merge` → if true, STOP and report to user
 3. Check `main_ahead_of_develop` → if > 0, run `gitflow --json backmerge`
-4. Infer task type automatically and create/switch to flow branch before edits
-5. NEVER modify code on main or develop directly — use flow branches
+4. Check `current` → if `main` or `develop`: run `gitflow --json start feature <slug>` BEFORE any edit
+5. NEVER commit files on main or develop directly — use flow branches
 6. When done: `gitflow --json finish`
+
+> **Violation** = any commit landing on `main` or `develop` that was not produced by `gitflow finish`.
 
 ### Branch routing
 
@@ -40,3 +50,17 @@ gitflow --json start feature|bugfix|release|hotfix <name>
 ```
 
 Exit codes: 0=success, 1=error, 2=conflict-needs-human
+
+### Recovery — if you already committed on develop/main by mistake
+
+```bash
+# 1. create the flow branch (auto-stash picks up dirty state)
+gitflow --json start feature <slug>
+# 2. cherry-pick wrong commits from develop if already committed:
+git cherry-pick <sha>
+# 3. revert those commits from develop
+git checkout develop && git revert <sha> --no-edit
+git checkout feature/<slug>
+```
+
+Report the violation to the user.
