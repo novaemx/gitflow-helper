@@ -37,5 +37,4 @@ tmp/
 # Log files
 *.log
 
-.agents/*
 gitflow
