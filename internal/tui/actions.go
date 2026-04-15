@@ -75,6 +75,31 @@ func appendTierWithPriority(dst []action, tier []action) []action {
 	return dst
 }
 
+func ensureRecommendedAction(actions []action) []action {
+	for _, a := range actions {
+		if a.Recommended {
+			return actions
+		}
+	}
+	for i := range actions {
+		if actions[i].Tag == "exit" {
+			continue
+		}
+		if actions[i].Command != "" || actions[i].NeedsInput {
+			actions[i].Recommended = true
+			return actions
+		}
+	}
+	if len(actions) > 0 {
+		actions[0].Recommended = true
+	}
+	return actions
+}
+
+func isProtectedBaseBranchDirty(s state.RepoState, cfg config.FlowConfig) bool {
+	return s.Dirty && (s.Current == cfg.DevelopBranch || s.Current == cfg.MainBranch)
+}
+
 // buildActions builds the action list ordered by priority tiers:
 //
 //	T1 CRITICAL  — backmerge / continue merge / init
@@ -142,17 +167,50 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		})
 	}
 
+	if isProtectedBaseBranchDirty(s, cfg) {
+		if s.Current == cfg.DevelopBranch {
+			critical = append(critical, action{
+				Label:       "Move current changes to a feature branch",
+				Tag:         "start",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Feature name:",
+				Command:     "gitflow start feature %s",
+			})
+			critical = append(critical, action{
+				Label:       "Move current changes to a bugfix branch",
+				Tag:         "start",
+				NeedsInput:  true,
+				InputPrompt: "Bugfix name:",
+				Command:     "gitflow start bugfix %s",
+			})
+		} else if s.Current == cfg.MainBranch {
+			critical = append(critical, action{
+				Label:       "Move current changes to a hotfix branch",
+				Tag:         "hotfix",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Hotfix version:",
+				Command:     "gitflow start hotfix %s",
+			})
+		}
+	}
+
 	// T2 HIGH: finish current flow branch / sync with parent
 	dirtyNote := ""
 	if s.Dirty {
 		dirtyNote = " ⚠ commit changes first"
 	}
 	curFlow := currentFlowBranchInfo(s, btype)
+	prMode := cfg.IntegrationMode == config.IntegrationModePullRequest
 	switch btype {
 	case "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
 		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
 		label := fmt.Sprintf("Finish feature '%s'", name)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for feature '%s'", name)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -174,6 +232,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		name := strings.TrimPrefix(s.Current, "bugfix/")
 		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
 		label := fmt.Sprintf("Finish bugfix '%s'", name)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for bugfix '%s'", name)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -194,6 +255,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	case "release":
 		ver := strings.TrimPrefix(strings.TrimPrefix(s.Current, "release/v"), "release/")
 		label := fmt.Sprintf("Finish release v%s", ver)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for release v%s", ver)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -213,6 +277,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	case "hotfix":
 		ver := strings.TrimPrefix(strings.TrimPrefix(s.Current, "hotfix/v"), "hotfix/")
 		label := fmt.Sprintf("Finish hotfix v%s", ver)
+		if prMode {
+			label = fmt.Sprintf("Prepare PR for hotfix v%s", ver)
+		}
 		if s.Dirty {
 			label += dirtyNote
 		}
@@ -238,6 +305,11 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	} else {
 		normal = append(normal, action{Label: fmt.Sprintf("Pull disabled (no '%s' remote configured)", cfg.Remote), Tag: "pull"})
 	}
+	if s.HasDefaultRemote && (btype == "base" || btype == "other") {
+		normal = append(normal, action{Label: "Push current branch", Tag: "push", Command: "gitflow push"})
+	} else if btype == "base" || btype == "other" {
+		normal = append(normal, action{Label: fmt.Sprintf("Push disabled (no '%s' remote configured)", cfg.Remote), Tag: "push"})
+	}
 	hasReleasableDiff := s.DevelopAheadOfMain > 0 && len(s.DevelopOnlyFiles) > 0
 
 	if s.DevelopAheadOfMain > 0 {
@@ -250,6 +322,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	switch {
 	case btype == "base" && s.Current == cfg.DevelopBranch:
+		if isProtectedBaseBranchDirty(s, cfg) {
+			break
+		}
 		if len(s.Releases) > 0 {
 			var candidate *state.BranchInfo
 			for i := range s.Releases {
@@ -287,6 +362,9 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 
 	case btype == "base" && s.Current == cfg.MainBranch:
+		if isProtectedBaseBranchDirty(s, cfg) {
+			break
+		}
 		normal = append(normal, action{
 			Label: "Start a hotfix (urgent)", Tag: "hotfix",
 			Command: "gitflow start hotfix auto",
@@ -384,7 +462,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	ordered = appendTierWithPriority(ordered, high)
 	ordered = appendTierWithPriority(ordered, normal)
 	ordered = appendTierWithPriority(ordered, low)
-	return ordered
+	return ensureRecommendedAction(ordered)
 }
 
 func suggestReleaseVersion(s state.RepoState) string {

@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/flow"
 )
 
 // Each tool follows the pattern: define args struct, register with mcp.AddTool,
@@ -222,15 +224,30 @@ func (s *Server) registerStart() {
 // ── finish ──────────────────────────────────────────────────
 
 type finishArgs struct {
-	Name string `json:"name" jsonschema:"optional branch name (defaults to current branch)"`
+	Name   string `json:"name" jsonschema:"optional branch name (defaults to current branch)"`
+	Squash bool   `json:"squash" jsonschema:"squash all branch commits into one commit on develop"`
+	Rebase bool   `json:"rebase" jsonschema:"rebase branch onto develop before the final merge"`
 }
 
 func (s *Server) registerFinish() {
 	mcp.AddTool(s.mcp, &mcp.Tool{
 		Name:        "finish",
-		Description: "Finish current flow branch with pre-merge safety check (auto-syncs if behind parent)",
+		Description: "Finish current flow branch with pre-merge safety check. Supports rebase-first and squash strategies.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args finishArgs) (*mcp.CallToolResult, any, error) {
-		code, result := s.gf.SmartFinish(args.Name)
+		var code int
+		var result map[string]any
+
+		if args.Squash || args.Rebase {
+			opts := flow.FinishOptions{
+				Rebase:       args.Rebase,
+				Squash:       args.Squash,
+				DeleteRemote: true,
+			}
+			code, result = s.gf.Finish(args.Name, opts)
+		} else {
+			code, result = s.gf.SmartFinish(args.Name)
+		}
+
 		status := "ok"
 		errMsg := ""
 		if code != 0 {
@@ -244,10 +261,42 @@ func (s *Server) registerFinish() {
 	})
 }
 
+// ── fast-release ─────────────────────────────────────────────
+
+type fastReleaseArgs struct {
+	Name string `json:"name" jsonschema:"feature or bugfix branch name (with or without prefix)"`
+}
+
+func (s *Server) registerFastRelease() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "fast-release",
+		Description: "Merge a feature/bugfix branch directly to main (skip the release/ phase). Tags the release with the current version.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args fastReleaseArgs) (*mcp.CallToolResult, any, error) {
+		if args.Name == "" {
+			return errResult("name is required")
+		}
+		code, result := s.gf.FastRelease(args.Name)
+		status := "ok"
+		errMsg := ""
+		if code != 0 {
+			status = "error"
+			if e, ok := result["error"]; ok {
+				errMsg, _ = e.(string)
+			}
+		}
+		s.record("fast-release", args.Name, status, errMsg)
+		return textResult(result), nil, nil
+	})
+}
+
 // ── switch ──────────────────────────────────────────────────
 
 type switchArgs struct {
 	Branch string `json:"branch" jsonschema:"target branch name or short name (e.g. 'develop' or 'my-feature')"`
+}
+
+type modeArgs struct {
+	Mode string `json:"mode" jsonschema:"optional mode: local-merge|pull-request|toggle"`
 }
 
 func (s *Server) registerSwitch() {
@@ -267,6 +316,56 @@ func (s *Server) registerSwitch() {
 			status = "error"
 		}
 		s.record("switch", args.Branch, status, "")
+		return textResult(result), nil, nil
+	})
+}
+
+// ── mode ───────────────────────────────────────────────────
+
+func (s *Server) registerMode() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "mode",
+		Description: "Get or set integration mode: local-merge or pull-request (use toggle to switch)",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args modeArgs) (*mcp.CallToolResult, any, error) {
+		if args.Mode == "" {
+			mode := s.gf.IntegrationMode()
+			result := map[string]any{
+				"action":              "mode",
+				"result":              "ok",
+				"integration_mode":    mode,
+				"integration_display": config.IntegrationModeDisplay(mode),
+			}
+			s.record("mode", "get", "ok", "")
+			return textResult(result), nil, nil
+		}
+
+		next := args.Mode
+		if next == "toggle" {
+			if s.gf.IntegrationMode() == config.IntegrationModePullRequest {
+				next = config.IntegrationModeLocalMerge
+			} else {
+				next = config.IntegrationModePullRequest
+			}
+		}
+
+		normalized := config.NormalizeIntegrationMode(next)
+		if normalized == "" {
+			s.record("mode", args.Mode, "error", "invalid mode")
+			return errResult("invalid mode; use local-merge|pull-request|toggle")
+		}
+
+		if err := s.gf.SetIntegrationMode(normalized); err != nil {
+			s.record("mode", args.Mode, "error", err.Error())
+			return errResult(err.Error())
+		}
+
+		result := map[string]any{
+			"action":              "mode",
+			"result":              "ok",
+			"integration_mode":    normalized,
+			"integration_display": config.IntegrationModeDisplay(normalized),
+		}
+		s.record("mode", normalized, "ok", "")
 		return textResult(result), nil, nil
 	})
 }

@@ -162,9 +162,17 @@ func (gf *Logic) Start(branchType, name string) (int, map[string]any) {
 	return code, result
 }
 
+// FastRelease merges a feature/bugfix branch directly to main, bypassing the
+// release/ staging phase. See flow.FastRelease for full semantics.
+func (gf *Logic) FastRelease(featureName string) (int, map[string]any) {
+	code, result := flow.FastRelease(gf.Config, featureName)
+	gf.Refresh()
+	return code, result
+}
+
 // Finish completes the current (or named) flow branch.
-func (gf *Logic) Finish(name string) (int, map[string]any) {
-	code, result := flow.FinishCurrent(gf.Config, name)
+func (gf *Logic) Finish(name string, opts ...flow.FinishOptions) (int, map[string]any) {
+	code, result := flow.FinishCurrent(gf.Config, name, opts...)
 	gf.Refresh()
 	return code, result
 }
@@ -219,6 +227,27 @@ func (gf *Logic) ListSwitchable() []string {
 // IDEDisplay returns the human-readable IDE name for TUI display.
 func (gf *Logic) IDEDisplay() string {
 	return gf.IDE.DisplayName
+}
+
+func (gf *Logic) IntegrationMode() string {
+	mode := config.NormalizeIntegrationMode(gf.Config.IntegrationMode)
+	if mode == "" {
+		mode = config.IntegrationModeLocalMerge
+	}
+	return mode
+}
+
+func (gf *Logic) SetIntegrationMode(mode string) error {
+	normalized := config.NormalizeIntegrationMode(mode)
+	if normalized == "" {
+		normalized = config.IntegrationModeLocalMerge
+	}
+	if err := config.SetIntegrationMode(gf.Config.ProjectRoot, normalized); err != nil {
+		return err
+	}
+	gf.Config.IntegrationMode = normalized
+	gf.Config.ModeConfigured = true
+	return nil
 }
 
 // EnsureRules checks whether IDE-specific gitflow instruction files exist
@@ -337,6 +366,9 @@ func (gf *Logic) HealthReport() HealthReport {
 	if branchType == "other" {
 		warnings = append(warnings, fmt.Sprintf("current branch '%s' is not a gitflow branch", s.Current))
 	}
+	if s.Dirty && (s.Current == cfg.DevelopBranch || s.Current == cfg.MainBranch) {
+		issues = append(issues, fmt.Sprintf("protected base branch '%s' has uncommitted changes", s.Current))
+	}
 
 	if remoteExists {
 		for _, branch := range []string{cfg.MainBranch, cfg.DevelopBranch} {
@@ -389,7 +421,9 @@ func (gf *Logic) HealthReport() HealthReport {
 
 	dirtyCount := len(git.ExecLines("status", "--porcelain"))
 	if dirtyCount > 0 {
-		warnings = append(warnings, fmt.Sprintf("%d uncommitted file(s)", dirtyCount))
+		if !(s.Current == cfg.DevelopBranch || s.Current == cfg.MainBranch) {
+			warnings = append(warnings, fmt.Sprintf("%d uncommitted file(s)", dirtyCount))
+		}
 	}
 
 	okItems = append(okItems, fmt.Sprintf("IDE: %s", gf.IDEDisplay()))

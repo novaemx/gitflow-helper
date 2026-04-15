@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
@@ -59,6 +60,9 @@ type model struct {
 	// IDE activity from MCP server
 	mcpActivity []mcpserver.ActivityEntry
 
+	// Activity panel visibility
+	showActivity bool
+
 	// Git state watch
 	lastGitFingerprint string
 }
@@ -76,7 +80,7 @@ type cmdDoneMsg struct {
 func Run(gf *gitflow.Logic) error {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{gf: gf, mode: viewDashboard, spinner: s}
+	m := model{gf: gf, mode: viewDashboard, spinner: s, showActivity: true}
 	m.refresh(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -191,8 +195,8 @@ func repoFingerprint(root string) string {
 		return ""
 	}
 
+	// Fast metadata-based signals for refs/index transitions.
 	parts := []string{fmt.Sprintf("gitdir:%s", gitDir)}
-
 	headPath := filepath.Join(gitDir, "HEAD")
 	headData, _ := os.ReadFile(headPath)
 	head := strings.TrimSpace(string(headData))
@@ -212,11 +216,29 @@ func repoFingerprint(root string) string {
 		parts = append(parts, rel+"="+statPart(filepath.Join(gitDir, filepath.FromSlash(rel))))
 	}
 
+	// Snapshot dynamic state so TUI reacts to file changes, branch updates,
+	// and ref movement even when mtimes are coarse on some filesystems.
+	gitSnapshot := func(args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	parts = append(parts,
+		"status="+gitSnapshot("status", "--porcelain=v2", "--branch"),
+		"refs="+gitSnapshot("for-each-ref", "--format=%(refname:short):%(objectname)", "refs/heads"),
+		"stash="+gitSnapshot("stash", "list"),
+	)
+
 	return strings.Join(parts, "|")
 }
 
 func (m model) Init() tea.Cmd {
 	m.lastGitFingerprint = repoFingerprint(m.gf.Config.ProjectRoot)
+	m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
 	return tea.Batch(
 		tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return activityTickMsg{} }),
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg { return watchTickMsg{} }),
@@ -258,7 +280,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case activityTickMsg:
-		m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 10)
+		m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
 		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 			return activityTickMsg{}
 		})
@@ -327,6 +349,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scroll = 0
 	case key.Matches(msg, key.NewBinding(key.WithKeys("G", "end"))):
 		m.selected = len(m.actions) - 1
+	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+m", "m"))):
+		return m.startCommand(action{Label: "Toggle integration mode", Command: "gitflow mode toggle"})
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		if m.selected < len(m.actions) {
 			a := m.actions[m.selected]
@@ -357,6 +381,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.paletteQuery = ""
 	case key.Matches(msg, key.NewBinding(key.WithKeys("?"))):
 		m.mode = viewHelp
+	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
+		m.showActivity = !m.showActivity
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 		m.refresh(false)
 	}
@@ -482,12 +508,33 @@ func (m model) runCommandAsync(a action) tea.Cmd {
 	label := a.Label
 	projectRoot := m.gf.Config.ProjectRoot
 	return func() tea.Msg {
+		_ = mcpserver.AppendActivityLog(projectRoot, mcpserver.ActivityEntry{
+			Tool:   label,
+			Args:   cmdStr,
+			Result: "started",
+			Source: "cli",
+		})
+
 		cmd := exec.Command("sh", "-c", cmdStr)
 		cmd.Dir = projectRoot
 		var buf bytes.Buffer
 		cmd.Stdout = &buf
 		cmd.Stderr = &buf
 		err := cmd.Run()
+		result := "ok"
+		errMsg := ""
+		if err != nil {
+			result = "error"
+			errMsg = err.Error()
+		}
+		_ = mcpserver.AppendActivityLog(projectRoot, mcpserver.ActivityEntry{
+			Tool:   label,
+			Args:   cmdStr,
+			Result: result,
+			Error:  errMsg,
+			Source: "cli",
+		})
+
 		return cmdDoneMsg{
 			title:  label,
 			output: buf.String(),
@@ -523,21 +570,28 @@ func (m model) View() string {
 func (m model) renderBase() string {
 	var sections []string
 	sections = append(sections, m.renderTitleBar())
-	sections = append(sections, "")
 
-	dashContent := m.renderDashboard()
-	activityContent := m.renderIDEActivity()
-	actionContent := m.renderActions()
-
-	contentHeight := m.height - 4
-	content := dashContent
-	if activityContent != "" {
-		content += "\n" + activityContent
+	contentHeight := m.height - 3
+	rightW := 0
+	if m.showActivity && m.width >= 100 {
+		rightW = 40
+		if rightW > m.width/2 {
+			rightW = m.width / 2
+		}
 	}
-	content += "\n" + actionContent
-	lines := strings.Split(content, "\n")
+	leftW := m.width
+	if rightW > 0 {
+		leftW = m.width - rightW - 1
+	}
+	if leftW < 40 {
+		leftW = 40
+	}
 
-	dashLineCount := len(m.dashLines) + 2
+	dashContent := m.renderDashboardForWidth(leftW)
+	actionContent := m.renderActionsForWidth(leftW)
+	leftLines := strings.Split(dashContent+"\n"+actionContent, "\n")
+
+	dashLineCount := len(strings.Split(dashContent, "\n"))
 	selectedRow := dashLineCount + m.selected + 2
 	if selectedRow-m.scroll >= contentHeight {
 		m.scroll = selectedRow - contentHeight + 1
@@ -549,21 +603,45 @@ func (m model) renderBase() string {
 		m.scroll = 0
 	}
 
-	end := m.scroll + contentHeight
-	if end > len(lines) {
-		end = len(lines)
+	leftEnd := m.scroll + contentHeight
+	if leftEnd > len(leftLines) {
+		leftEnd = len(leftLines)
 	}
-	start := m.scroll
-	if start > len(lines) {
-		start = len(lines)
+	leftStart := m.scroll
+	if leftStart > len(leftLines) {
+		leftStart = len(leftLines)
 	}
-	visible := lines[start:end]
+	visibleLeft := leftLines[leftStart:leftEnd]
+	for len(visibleLeft) < contentHeight {
+		visibleLeft = append(visibleLeft, "")
+	}
 
-	for len(visible) < contentHeight {
-		visible = append(visible, "")
+	if rightW == 0 {
+		sections = append(sections, strings.Join(visibleLeft, "\n"))
+		sections = append(sections, m.renderStatusBar())
+		return strings.Join(sections, "\n")
 	}
 
-	sections = append(sections, strings.Join(visible, "\n"))
+	rightPanel := m.renderActivityPanel(rightW, contentHeight)
+	rightLines := strings.Split(rightPanel, "\n")
+	if len(rightLines) > contentHeight {
+		rightLines = rightLines[:contentHeight]
+	}
+	for len(rightLines) < contentHeight {
+		rightLines = append(rightLines, "")
+	}
+
+	rows := make([]string, 0, contentHeight)
+	for i := 0; i < contentHeight; i++ {
+		leftLine := visibleLeft[i]
+		lw := lipgloss.Width(leftLine)
+		if lw < leftW {
+			leftLine += strings.Repeat(" ", leftW-lw)
+		}
+		rows = append(rows, leftLine+" "+rightLines[i])
+	}
+
+	sections = append(sections, strings.Join(rows, "\n"))
 	sections = append(sections, m.renderStatusBar())
 
 	return strings.Join(sections, "\n")
@@ -613,6 +691,8 @@ func (m model) renderTitleBar() string {
 	}
 
 	segments := []string{" " + pname, "│", branchLabel}
+	modeLabel := config.IntegrationModeDisplay(m.gf.Config.IntegrationMode)
+	segments = append(segments, "│", "mode: "+modeLabel)
 	if s.Version != "0.0.0" {
 		segments = append(segments, "│", "v"+s.Version)
 	}
@@ -633,9 +713,9 @@ func (m model) renderTitleBar() string {
 	return line1 + "\n" + line2
 }
 
-func (m model) renderDashboard() string {
+func (m model) renderDashboardForWidth(width int) string {
 	var lines []string
-	dividerWidth := m.width - 2
+	dividerWidth := width - 2
 	if dividerWidth < 8 {
 		dividerWidth = 8
 	}
@@ -669,24 +749,44 @@ func (m model) renderDashboard() string {
 		if text == dashboardDividerToken {
 			text = divider
 		}
-		if len(text) > m.width-2 {
-			text = text[:m.width-2]
+		if len(text) > width-2 {
+			text = text[:width-2]
 		}
 		lines = append(lines, " "+s.Render(text))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func (m model) renderIDEActivity() string {
-	if len(m.mcpActivity) == 0 {
-		return ""
+func (m model) renderDashboard() string {
+	return m.renderDashboardForWidth(m.width)
+}
+
+func (m model) renderActivityPanel(width, height int) string {
+	if width < 24 {
+		width = 24
+	}
+	if height < 5 {
+		height = 5
 	}
 
 	var lines []string
+	lines = append(lines, boldStyle.Render("Agent Activity"))
 	lines = append(lines, "")
-	lines = append(lines, " "+sectionStyle.Render("IDE Activity (MCP):"))
 
-	for _, entry := range m.mcpActivity {
+	entries := m.mcpActivity
+	maxEntries := height - 4
+	if maxEntries < 1 {
+		maxEntries = 1
+	}
+	if len(entries) > maxEntries {
+		entries = entries[len(entries)-maxEntries:]
+	}
+
+	if len(entries) == 0 {
+		lines = append(lines, dimStyle.Render("No activity yet."))
+	}
+
+	for _, entry := range entries {
 		ts := entry.Timestamp
 		if len(ts) > 19 {
 			ts = ts[11:19]
@@ -695,23 +795,60 @@ func (m model) renderIDEActivity() string {
 		if entry.Error != "" || entry.Result == "error" {
 			icon = errorStyle.Render("✗")
 		}
+		source := entry.Source
+		if source == "" {
+			source = "mcp"
+		}
 
 		detail := entry.Tool
 		if entry.Args != "" {
 			detail += " " + entry.Args
 		}
-
-		line := fmt.Sprintf("   %s %s %s", icon, dimStyle.Render(ts), detail)
-		if len(line) > m.width-4 {
-			line = line[:m.width-4]
+		detail = strings.TrimSpace(detail)
+		if detail == "" {
+			detail = "(no details)"
 		}
-		lines = append(lines, " "+line)
+
+		plainPrefix := ts + " [" + source + "] "
+		plainLine := plainPrefix + detail
+		lineWidth := width - 4
+		if lineWidth < 8 {
+			lineWidth = 8
+		}
+		if lipgloss.Width(plainLine) > lineWidth {
+			plainLine = lipgloss.NewStyle().MaxWidth(lineWidth).Render(plainLine)
+		}
+
+		parts := strings.SplitN(plainLine, " ", 3)
+		rendered := plainLine
+		if len(parts) >= 3 {
+			rendered = lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				icon,
+				" ",
+				dimStyle.Render(parts[0]),
+				" ",
+				parts[1],
+				" ",
+				parts[2],
+			)
+		} else {
+			rendered = lipgloss.JoinHorizontal(lipgloss.Top, icon, " ", plainLine)
+		}
+		lines = append(lines, rendered)
 	}
 
-	return strings.Join(lines, "\n")
+	panel := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("8")).
+		Padding(0, 1).
+		Width(width).
+		Height(height - 2)
+
+	return panel.Render(strings.Join(lines, "\n"))
 }
 
-func (m model) renderActions() string {
+func (m model) renderActionsForWidth(width int) string {
 	var lines []string
 	lines = append(lines, "")
 
@@ -737,19 +874,23 @@ func (m model) renderActions() string {
 		}
 
 		label := a.Label
-		if len(label) > m.width-8 {
-			label = label[:m.width-8]
+		if len(label) > width-8 {
+			label = label[:width-8]
 		}
 		if i == m.selected {
-			line := selectedStyle.Width(m.width - 2).Render(" ▸ " + label)
+			line := selectedStyle.Width(width - 2).Render(" ▸ " + label)
 			lines = append(lines, " "+line)
 		} else if a.Recommended {
 			lines = append(lines, "   "+recommendedStyle.Render("▹ "+label))
 		} else {
-			lines = append(lines, "   "+label)
+			lines = append(lines, "   "+dimStyle.Render("▹ ")+label)
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (m model) renderActions() string {
+	return m.renderActionsForWidth(m.width)
 }
 
 func (m model) renderStatusBar() string {
@@ -760,7 +901,7 @@ func (m model) renderStatusBar() string {
 	case m.mode == viewOutput:
 		hint = " [j/k] scroll  [q/Esc/Enter] close"
 	default:
-		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [q] quit"
+		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  [a] activity  [Ctrl+M/m] mode  [q] quit"
 	}
 	if len(hint) > m.width {
 		hint = hint[:m.width]
@@ -939,6 +1080,8 @@ func (m model) renderHelpOverlay(base string) string {
 		"  ────────────────",
 		"  /            Search / filter actions",
 		"  r            Refresh dashboard",
+		"  a            Toggle activity panel",
+		"  Ctrl+M / m   Toggle integration mode",
 		"  ?            Toggle this help",
 		"  q / Ctrl+C   Quit",
 		"",

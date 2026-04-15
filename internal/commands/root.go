@@ -1,12 +1,16 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
+	gfconfig "github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
+	"github.com/novaemx/gitflow-helper/internal/mcp"
 	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -15,6 +19,86 @@ var (
 	jsonFlag bool
 	GF       *gitflow.Logic
 )
+
+func logCLIActivity(cmd *cobra.Command, args []string) {
+	if GF == nil || GF.Config.ProjectRoot == "" {
+		return
+	}
+	tool := cmd.Name()
+	if tool == "" {
+		tool = "gitflow"
+	}
+	if cmd.Parent() == nil && len(args) == 0 {
+		tool = "interactive-tui"
+	}
+	entry := mcp.ActivityEntry{
+		Tool:   tool,
+		Args:   strings.Join(args, " "),
+		Result: "started",
+		Source: "cli",
+	}
+	_ = mcp.AppendActivityLog(GF.Config.ProjectRoot, entry)
+}
+
+func isInteractiveTTY() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+func chooseIntegrationMode(defaultMode string) string {
+	if defaultMode == "" {
+		defaultMode = gfconfig.IntegrationModeLocalMerge
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("\nSelect integration mode [1=local merge, 2=pull request] (default 1): ")
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return defaultMode
+		}
+		answer := strings.TrimSpace(strings.ToLower(line))
+		switch answer {
+		case "", "1", "local", "local-merge":
+			return gfconfig.IntegrationModeLocalMerge
+		case "2", "pr", "pull-request", "pull request":
+			return gfconfig.IntegrationModePullRequest
+		default:
+			fmt.Println("Invalid option. Enter 1 or 2.")
+		}
+	}
+}
+
+func ensureIntegrationModeConfigured(cmd *cobra.Command) {
+	if GF == nil || GF.Config.ModeConfigured {
+		return
+	}
+	if output.IsJSONMode() {
+		_ = gfconfig.SetIntegrationMode(GF.Config.ProjectRoot, GF.Config.IntegrationMode)
+		GF.Config.ModeConfigured = true
+		return
+	}
+
+	mode := GF.Config.IntegrationMode
+	if isInteractiveTTY() && cmd.Name() != "mode" {
+		mode = chooseIntegrationMode(mode)
+	}
+
+	normalized := gfconfig.NormalizeIntegrationMode(mode)
+	if normalized == "" {
+		normalized = gfconfig.IntegrationModeLocalMerge
+	}
+	_ = gfconfig.SetIntegrationMode(GF.Config.ProjectRoot, normalized)
+	GF.Config.IntegrationMode = normalized
+	GF.Config.ModeConfigured = true
+
+	if cmd.Name() != "mode" {
+		output.Infof("  %sIntegration mode:%s %s", output.Dim, output.Reset, gfconfig.IntegrationModeDisplay(normalized))
+	}
+}
 
 func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
@@ -37,6 +121,8 @@ func NewRootCmd(version string) *cobra.Command {
 			if name == "help" || name == "completion" {
 				return
 			}
+
+			logCLIActivity(cmd, args)
 
 			deferGitAvail := debug.Start("root.PersistentPreRun.IsGitAvailable")
 			if !GF.IsGitAvailable() {
@@ -94,6 +180,8 @@ func NewRootCmd(version string) *cobra.Command {
 				_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode())
 				deferEnsure()
 			}
+
+			ensureIntegrationModeConfigured(cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonFlag {
@@ -113,6 +201,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newInitCmd(),
 		newStartCmd(),
 		newFinishCmd(),
+		newFastReleaseCmd(),
 		newSyncCmd(),
 		newSwitchCmd(),
 		newBackmergeCmd(),
@@ -122,6 +211,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newLogCmd(),
 		newUndoCmd(),
 		newReleaseNotesCmd(),
+		newModeCmd(),
 		newSetupCmd(),
 		newServeCmd(),
 	)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -19,6 +18,7 @@ type ActivityEntry struct {
 	Args      string `json:"args,omitempty"`
 	Result    string `json:"result"`
 	Error     string `json:"error,omitempty"`
+	Source    string `json:"source,omitempty"`
 	Timestamp string `json:"timestamp,omitempty"`
 }
 
@@ -66,6 +66,7 @@ func (s *Server) record(tool, args, result, errMsg string) {
 		Args:      args,
 		Result:    result,
 		Error:     errMsg,
+		Source:    "mcp",
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -84,19 +85,7 @@ func ActivityLogPath(projectRoot string) string {
 }
 
 func (s *Server) writeActivityLog(entry ActivityEntry) {
-	logPath := ActivityLogPath(s.gf.Config.ProjectRoot)
-	line, err := json.Marshal(entry)
-	if err != nil {
-		return
-	}
-	line = append(line, '\n')
-
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	f.Write(line)
+	_ = AppendActivityLog(s.gf.Config.ProjectRoot, entry)
 }
 
 func jsonText(v any) string {
@@ -135,5 +124,7 @@ func (s *Server) registerTools() {
 	s.registerReleaseNotes()
 	s.registerStart()
 	s.registerFinish()
+	s.registerFastRelease()
 	s.registerSwitch()
+	s.registerMode()
 }

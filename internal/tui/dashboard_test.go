@@ -88,3 +88,61 @@ func TestBuildDashboardLines_OpenReleaseShowsHowToProceed(t *testing.T) {
 		t.Fatalf("expected actionable release next step")
 	}
 }
+
+func TestBuildDashboardLines_DirtyDevelopShowsProtectedBranchViolation(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            cfg.DevelopBranch,
+		Dirty:              true,
+		UncommittedCount:   2,
+		DevelopAheadOfMain: 0,
+		MainAheadOfDevelop: 0,
+		DevelopOnlyFiles:   []string{},
+		MainOnlyFiles:      []string{},
+		Features:           []state.BranchInfo{},
+		Bugfixes:           []state.BranchInfo{},
+		Releases:           []state.BranchInfo{},
+		Hotfixes:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	lines := buildDashboardLines(s, cfg)
+	if !containsLine(lines, "PROTECTED BRANCH VIOLATION: local changes detected on develop") {
+		t.Fatalf("expected protected branch violation warning")
+	}
+	if !containsLine(lines, "Recommended: gitflow start feature <name>") {
+		t.Fatalf("expected remediation guidance")
+	}
+	if !containsLine(lines, "Use the recommended TUI action to move them without losing local work") {
+		t.Fatalf("expected TUI remediation guidance")
+	}
+}
+
+func TestBuildDashboardLines_DirtyMainShowsTUIHotfixGuidance(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            cfg.MainBranch,
+		Dirty:              true,
+		UncommittedCount:   1,
+		DevelopAheadOfMain: 0,
+		MainAheadOfDevelop: 0,
+		DevelopOnlyFiles:   []string{},
+		MainOnlyFiles:      []string{},
+		Features:           []state.BranchInfo{},
+		Bugfixes:           []state.BranchInfo{},
+		Releases:           []state.BranchInfo{},
+		Hotfixes:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	lines := buildDashboardLines(s, cfg)
+	if !containsLine(lines, "PROTECTED BRANCH VIOLATION: local changes detected on main") {
+		t.Fatalf("expected protected branch violation warning on main")
+	}
+	if !containsLine(lines, "Use the recommended TUI action to move them without losing local work") {
+		t.Fatalf("expected TUI remediation guidance on main")
+	}
+	if !containsLine(lines, "Recommended: gitflow start hotfix <version>") {
+		t.Fatalf("expected hotfix remediation guidance")
+	}
+}
