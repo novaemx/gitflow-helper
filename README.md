@@ -125,6 +125,23 @@ Run `gitflow setup` once per project. It auto-detects your IDE and creates:
 
 These files instruct the AI agent to run `gitflow --json status` before modifying any code, and the embedded skill is auto-updated if its content changes in newer gitflow binaries.
 
+### What AGENTS.md Is For
+
+`AGENTS.md` is a repository-level instruction file for AI coding agents. It defines mandatory workflow rules (for example, gitflow pre-flight checks, branch routing, and safety constraints) that the agent should follow before making code changes.
+
+`gitflow setup` generates `AGENTS.md` when an IDE/agent does not use a dedicated rules format as its primary instruction source, or when a generic fallback instruction file is needed.
+
+### IDEs/Agents That Use AGENTS.md
+
+In this project, `AGENTS.md` is primarily used (or used as fallback) by these environments:
+
+- Zed
+- Neovim-based agent setups
+- JetBrains-based agent setups
+- Unknown or generic agent-compatible IDEs
+
+For Cursor and VS Code Copilot, the primary files are `.cursor/rules/gitflow-preflight.mdc` and `.github/copilot-instructions.md` respectively, while `AGENTS.md` remains the compatibility fallback for other tools.
+
 ### Copilot-Specific Notes
 
 To ensure the embedded gitflow skill works in Copilot end-to-end:
