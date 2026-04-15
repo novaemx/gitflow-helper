@@ -12,6 +12,11 @@ import (
 )
 
 var execResultFinish = git.ExecResult
+var remoteExistsFinish = git.RemoteExists
+var remoteBranchExistsFinish = func(remote, branch string) bool {
+	code, _, _ := execResultFinish("ls-remote", "--exit-code", "--heads", remote, branch)
+	return code == 0
+}
 
 func mergedBranchDeleteWarning(branchName string, err error) string {
 	return fmt.Sprintf("Warning: merged branch %s not deleted automatically (%v). You can remove manually with git branch -d %s.", branchName, err, branchName)
@@ -190,10 +195,13 @@ func finishFeatureOrBugfix(cfg config.FlowConfig, btype, name string, opts Finis
 // tryDeleteRemote pushes a remote branch deletion when opts.DeleteRemote is true
 // and the remote is reachable. Errors are logged as warnings but never fatal.
 func tryDeleteRemote(cfg config.FlowConfig, branchName string, deleteRemote bool) {
-	if !deleteRemote || cfg.Remote == "" || !git.RemoteExists(cfg.Remote) {
+	if !deleteRemote || cfg.Remote == "" || !remoteExistsFinish(cfg.Remote) {
 		return
 	}
-	code, _, _ := git.ExecResult("push", cfg.Remote, "--delete", branchName)
+	if !remoteBranchExistsFinish(cfg.Remote, branchName) {
+		return
+	}
+	code, _, _ := execResultFinish("push", cfg.Remote, "--delete", branchName)
 	if code == 0 {
 		output.Infof("  %s✓ Remote branch %s/%s deleted.%s", output.Green, cfg.Remote, branchName, output.Reset)
 	} else {

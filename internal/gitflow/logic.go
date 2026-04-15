@@ -138,6 +138,9 @@ func (gf *Logic) Status() state.RepoState {
 }
 
 // Init sets up the main/develop branch structure using raw git commands.
+// For a fresh repository (not already initialized) it also provisions IDE
+// agent-rule files and commits them on the develop branch so the working tree
+// is clean and all generated files are version-controlled from the start.
 func (gf *Logic) Init() (bool, string) {
 	ok, msg := flow.InitGitFlow(gf.Config)
 	if ok {
