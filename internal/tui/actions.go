@@ -100,6 +100,16 @@ func isProtectedBaseBranchDirty(s state.RepoState, cfg config.FlowConfig) bool {
 	return s.Dirty && (s.Current == cfg.DevelopBranch || s.Current == cfg.MainBranch)
 }
 
+func recommendPushForCurrentBranch(s state.RepoState, hasRemote bool) bool {
+	if s.Dirty || !s.HasDefaultRemote {
+		return false
+	}
+	if strings.TrimSpace(s.DefaultRemoteBranch) != "" && s.Current == s.DefaultRemoteBranch {
+		return true
+	}
+	return !hasRemote
+}
+
 // buildActions builds the action list ordered by priority tiers:
 //
 //	T1 CRITICAL  — backmerge / continue merge / init
@@ -218,7 +228,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			high = append(high, action{
 				Label:       "Push current branch",
 				Tag:         "push",
-				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Recommended: curFlow != nil && recommendPushForCurrentBranch(s, curFlow.HasRemote),
 				Command:     "gitflow push",
 			})
 		}
@@ -242,7 +252,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			high = append(high, action{
 				Label:       "Push current branch",
 				Tag:         "push",
-				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Recommended: curFlow != nil && recommendPushForCurrentBranch(s, curFlow.HasRemote),
 				Command:     "gitflow push",
 			})
 		}
@@ -265,7 +275,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			high = append(high, action{
 				Label:       "Push current branch",
 				Tag:         "push",
-				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Recommended: curFlow != nil && recommendPushForCurrentBranch(s, curFlow.HasRemote),
 				Command:     "gitflow push",
 			})
 		}
@@ -287,7 +297,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			high = append(high, action{
 				Label:       "Push current branch",
 				Tag:         "push",
-				Recommended: curFlow != nil && !curFlow.HasRemote && !s.Dirty,
+				Recommended: curFlow != nil && recommendPushForCurrentBranch(s, curFlow.HasRemote),
 				Command:     "gitflow push",
 			})
 		}
@@ -306,7 +316,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		normal = append(normal, action{Label: fmt.Sprintf("Pull disabled (no '%s' remote configured)", cfg.Remote), Tag: "pull"})
 	}
 	if s.HasDefaultRemote && (btype == "base" || btype == "other") {
-		normal = append(normal, action{Label: "Push current branch", Tag: "push", Command: "gitflow push"})
+		normal = append(normal, action{Label: "Push current branch", Tag: "push", Recommended: recommendPushForCurrentBranch(s, false), Command: "gitflow push"})
 	} else if btype == "base" || btype == "other" {
 		normal = append(normal, action{Label: fmt.Sprintf("Push disabled (no '%s' remote configured)", cfg.Remote), Tag: "push"})
 	}

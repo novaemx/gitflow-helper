@@ -678,14 +678,14 @@ func (m model) renderBase() string {
 
 	normalW := 0
 	if m.width >= 100 {
-		normalW = 40
+		normalW = 44
 		if normalW > m.width/2 {
 			normalW = m.width / 2
 		}
 	} else if m.width >= 60 {
-		normalW = 30
+		normalW = 33
 	} else {
-		normalW = 24
+		normalW = 27
 	}
 	fullW := m.width - 2
 	if fullW < 24 {
@@ -1349,6 +1349,12 @@ func placeOverlay(base, overlay string, w, h int) string {
 
 	for len(baseLines) < h {
 		baseLines = append(baseLines, "")
+	}
+	for i, line := range baseLines {
+		lw := lipgloss.Width(line)
+		if lw < w {
+			baseLines[i] = line + strings.Repeat(" ", w-lw)
+		}
 	}
 
 	boxH := len(overlayLines)

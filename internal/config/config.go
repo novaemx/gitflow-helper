@@ -10,7 +10,16 @@ import (
 const (
 	IntegrationModeLocalMerge  = "local-merge"
 	IntegrationModePullRequest = "pull-request"
+	projectConfigDirName       = ".gitflow"
+	projectConfigFileName      = "config.json"
+	legacyConfigFileName       = ".gitflow.json"
+	legacyAIConfigFileName     = "ai-integration.json"
 )
+
+type AIIntegrationChoice struct {
+	Enabled bool   `json:"enabled"`
+	Version string `json:"version,omitempty"`
+}
 
 type FlowConfig struct {
 	Remote           string `json:"remote"`
@@ -72,47 +81,62 @@ func readString(m map[string]any, key string) (string, bool) {
 	return s, true
 }
 
-func FindProjectRoot() string {
-	candidates := []string{}
-	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, cwd)
-	}
-	if exe, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Dir(filepath.Dir(exe)))
-	}
-	for _, start := range candidates {
-		p := start
-		for {
-			if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
-				return p
-			}
-			parent := filepath.Dir(p)
-			if parent == p {
-				break
-			}
-			p = parent
-		}
-	}
-	cwd, _ := os.Getwd()
-	return cwd
+func ProjectConfigPath(root string) string {
+	return filepath.Join(root, projectConfigDirName, projectConfigFileName)
 }
 
-func LoadConfig(root string) FlowConfig {
-	cfg := DefaultConfig()
-	cfg.ProjectRoot = root
+func legacyConfigPath(root string) string {
+	return filepath.Join(root, legacyConfigFileName)
+}
 
-	data, err := os.ReadFile(filepath.Join(root, ".gitflow.json"))
+func legacyAIIntegrationPath(root string) string {
+	return filepath.Join(root, projectConfigDirName, legacyAIConfigFileName)
+}
+
+func readJSONMap(path string) (map[string]any, bool, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		cfg.VersionFile = detectVersionFile(root)
-		return cfg
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
 	}
-
-	var override map[string]any
-	if err := json.Unmarshal(data, &override); err != nil {
-		cfg.VersionFile = detectVersionFile(root)
-		return cfg
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return nil, true, err
 	}
+	if decoded == nil {
+		decoded = map[string]any{}
+	}
+	return decoded, true, nil
+}
 
+func loadProjectConfigMap(root string) (map[string]any, bool, error) {
+	if decoded, ok, err := readJSONMap(ProjectConfigPath(root)); err != nil || ok {
+		return decoded, ok, err
+	}
+	return readJSONMap(legacyConfigPath(root))
+}
+
+func writeProjectConfigMap(root string, decoded map[string]any) error {
+	path := ProjectConfigPath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(decoded, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return err
+	}
+	_ = os.Remove(legacyConfigPath(root))
+	_ = os.Remove(legacyAIIntegrationPath(root))
+	return nil
+}
+
+func applyFlowOverrides(cfg *FlowConfig, override map[string]any) {
 	if v, ok := readString(override, "remote"); ok {
 		cfg.Remote = v
 	}
@@ -144,6 +168,105 @@ func LoadConfig(root string) FlowConfig {
 	if v, ok := readString(override, "tag_prefix"); ok {
 		cfg.TagPrefix = v
 	}
+}
+
+func normalizeAIChoice(value any) (*AIIntegrationChoice, bool) {
+	choiceMap, ok := value.(map[string]any)
+	if !ok || choiceMap == nil {
+		return nil, false
+	}
+	choice := &AIIntegrationChoice{}
+	if enabled, ok := choiceMap["enabled"].(bool); ok {
+		choice.Enabled = enabled
+	}
+	if version, ok := readString(choiceMap, "version"); ok {
+		choice.Version = version
+	}
+	return choice, true
+}
+
+func LoadAIIntegrationChoice(root string) (AIIntegrationChoice, bool, error) {
+	if decoded, _, err := loadProjectConfigMap(root); err != nil {
+		return AIIntegrationChoice{}, false, err
+	} else if decoded != nil {
+		if choice, ok := normalizeAIChoice(decoded["ai_integration"]); ok {
+			return *choice, true, nil
+		}
+	}
+
+	data, err := os.ReadFile(legacyAIIntegrationPath(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return AIIntegrationChoice{}, false, nil
+		}
+		return AIIntegrationChoice{}, false, err
+	}
+
+	var choice AIIntegrationChoice
+	if err := json.Unmarshal(data, &choice); err != nil {
+		return AIIntegrationChoice{}, false, err
+	}
+	return choice, true, nil
+}
+
+func SaveAIIntegrationChoice(root string, choice AIIntegrationChoice) error {
+	decoded, _, err := loadProjectConfigMap(root)
+	if err != nil {
+		return err
+	}
+	if decoded == nil {
+		decoded = map[string]any{}
+	}
+	aiSection := map[string]any{
+		"enabled": choice.Enabled,
+	}
+	if strings.TrimSpace(choice.Version) != "" {
+		aiSection["version"] = choice.Version
+	}
+	decoded["ai_integration"] = aiSection
+	return writeProjectConfigMap(root, decoded)
+}
+
+func FindProjectRoot() string {
+	candidates := []string{}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, cwd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Dir(filepath.Dir(exe)))
+	}
+	for _, start := range candidates {
+		p := start
+		for {
+			if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
+				return p
+			}
+			parent := filepath.Dir(p)
+			if parent == p {
+				break
+			}
+			p = parent
+		}
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
+func LoadConfig(root string) FlowConfig {
+	cfg := DefaultConfig()
+	cfg.ProjectRoot = root
+
+	override, _, err := loadProjectConfigMap(root)
+	if err != nil {
+		cfg.VersionFile = detectVersionFile(root)
+		return cfg
+	}
+	if override == nil {
+		cfg.VersionFile = detectVersionFile(root)
+		return cfg
+	}
+
+	applyFlowOverrides(&cfg, override)
 
 	if cfg.VersionFile == "" {
 		cfg.VersionFile = detectVersionFile(root)
@@ -157,19 +280,15 @@ func SetIntegrationMode(root, mode string) error {
 		normalized = IntegrationModeLocalMerge
 	}
 
-	path := filepath.Join(root, ".gitflow.json")
-	override := map[string]any{}
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, &override)
-	}
-	override["integration_mode"] = normalized
-
-	data, err := json.MarshalIndent(override, "", "  ")
+	override, _, err := loadProjectConfigMap(root)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	if override == nil {
+		override = map[string]any{}
+	}
+	override["integration_mode"] = normalized
+	return writeProjectConfigMap(root, override)
 }
 
 var versionFileCandidates = []string{

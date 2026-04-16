@@ -1,13 +1,9 @@
-# Release 0.5.28
+# Release 0.5.29
 
 **Date:** 2026-04-16
 
 ## What's New
 
+- Squash(feature): project-config-unify-health-fixes
 - Squash(feature): tui-selector-agent-activity
-- Merge feature 'fix-consent-per-project' into develop
-
-## Bug Fixes
-
-- Per-project consent storage
 

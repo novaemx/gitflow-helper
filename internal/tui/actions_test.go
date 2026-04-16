@@ -111,6 +111,32 @@ func TestBuildActions_ShowsPushOnDevelop(t *testing.T) {
 	}
 }
 
+func TestBuildActions_RecommendsPushOnRemoteDefaultBranch(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:             cfg.MainBranch,
+		HasDefaultRemote:    true,
+		DefaultRemoteBranch: cfg.MainBranch,
+		GitFlowInitialized:  true,
+		Features:            []state.BranchInfo{},
+		Bugfixes:            []state.BranchInfo{},
+		Releases:            []state.BranchInfo{},
+		Hotfixes:            []state.BranchInfo{},
+		DevelopOnlyFiles:    []string{},
+		MainOnlyFiles:       []string{},
+		Merge:               state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	push, ok := actionByTag(actions, "push")
+	if !ok {
+		t.Fatal("expected push action on default remote branch")
+	}
+	if !push.Recommended {
+		t.Fatal("expected push to be recommended on the remote default branch")
+	}
+}
+
 func TestBuildActions_DirtyDevelopPrioritizesMoveToFeatureBranch(t *testing.T) {
 	cfg := config.DefaultConfig()
 	s := state.RepoState{

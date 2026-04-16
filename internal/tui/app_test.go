@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
@@ -466,6 +467,21 @@ func TestOutputOverlayClose_AnimatesThenReturnsDashboard(t *testing.T) {
 	}
 	if cur.outputAnim != 0 {
 		t.Fatalf("expected output animation to end at 0, got %.2f", cur.outputAnim)
+	}
+}
+
+func TestPlaceOverlay_PadsBaseRowsToViewportWidth(t *testing.T) {
+	base := "short\nbase"
+	overlay := "BOX"
+	rendered := placeOverlay(base, overlay, 12, 4)
+	lines := strings.Split(rendered, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 rows, got %d", len(lines))
+	}
+	for i, line := range lines {
+		if got := lipgloss.Width(line); got != 12 {
+			t.Fatalf("expected row %d to be padded to width 12, got %d (%q)", i, got, line)
+		}
 	}
 }
 
