@@ -8,15 +8,14 @@ import (
 	"testing"
 )
 
-func writeTestConsent(t *testing.T, home string, enabled bool, ideID string) {
+func writeTestConsent(t *testing.T, projectDir string, enabled bool) {
 	t.Helper()
-	p := filepath.Join(home, ".gitflow", "ai-integration.json")
+	p := filepath.Join(projectDir, ".gitflow", "ai-integration.json")
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		t.Fatalf("mkdir consent dir: %v", err)
 	}
 	payload := map[string]any{
 		"enabled": enabled,
-		"ide_id":  ideID,
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -27,9 +26,9 @@ func writeTestConsent(t *testing.T, home string, enabled bool, ideID string) {
 	}
 }
 
-func readConsentEnabled(t *testing.T, home string) bool {
+func readConsentEnabled(t *testing.T, projectDir string) bool {
 	t.Helper()
-	p := filepath.Join(home, ".gitflow", "ai-integration.json")
+	p := filepath.Join(projectDir, ".gitflow", "ai-integration.json")
 	b, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("read consent: %v", err)
@@ -46,7 +45,6 @@ func readConsentEnabled(t *testing.T, home string) bool {
 func TestEnsureRulesWithAIConsent_FirstRunAccepts(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
@@ -62,15 +60,14 @@ func TestEnsureRulesWithAIConsent_FirstRunAccepts(t *testing.T) {
 	if len(created) < 3 {
 		t.Fatalf("expected created files, got %d", len(created))
 	}
-	if !readConsentEnabled(t, home) {
-		t.Fatal("expected consent enabled=true")
+	if !readConsentEnabled(t, dir) {
+		t.Fatal("expected consent enabled=true stored in project dir")
 	}
 }
 
 func TestEnsureRulesWithAIConsent_FirstRunDeclines(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
@@ -86,8 +83,8 @@ func TestEnsureRulesWithAIConsent_FirstRunDeclines(t *testing.T) {
 	if len(created) != 0 {
 		t.Fatalf("expected no files when declined, got %d", len(created))
 	}
-	if readConsentEnabled(t, home) {
-		t.Fatal("expected consent enabled=false")
+	if readConsentEnabled(t, dir) {
+		t.Fatal("expected consent enabled=false stored in project dir")
 	}
 	if cursorRuleExists(dir) {
 		t.Fatal("expected no cursor rule when declined")
@@ -97,11 +94,10 @@ func TestEnsureRulesWithAIConsent_FirstRunDeclines(t *testing.T) {
 func TestEnsureRulesWithAIConsent_UsesExistingEnabledChoice(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-	writeTestConsent(t, home, true, IDECursor)
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
+	writeTestConsent(t, dir, true)
 
 	prevAsk := askAIIntegrationFunc
 	called := false
@@ -111,13 +107,13 @@ func TestEnsureRulesWithAIConsent_UsesExistingEnabledChoice(t *testing.T) {
 	}
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	// Pass empty version to bypass version check for this legacy-consent test
+	// Pass empty version to bypass version check — simulates already-provisioned state.
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
 	if called {
-		t.Fatal("did not expect prompt when choice already exists")
+		t.Fatal("did not expect prompt when choice already exists in project")
 	}
 	if len(created) < 3 {
 		t.Fatalf("expected files from enabled existing choice, got %d", len(created))
@@ -127,11 +123,10 @@ func TestEnsureRulesWithAIConsent_UsesExistingEnabledChoice(t *testing.T) {
 func TestEnsureRulesWithAIConsent_UsesExistingDeclinedChoice(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-	writeTestConsent(t, home, false, IDECursor)
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
+	writeTestConsent(t, dir, false)
 
 	prevAsk := askAIIntegrationFunc
 	called := false
@@ -146,7 +141,7 @@ func TestEnsureRulesWithAIConsent_UsesExistingDeclinedChoice(t *testing.T) {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
 	}
 	if called {
-		t.Fatal("did not expect prompt when choice already exists")
+		t.Fatal("did not expect prompt when choice already exists in project")
 	}
 	if len(created) != 0 {
 		t.Fatalf("expected no files for declined existing choice, got %d", len(created))
@@ -156,7 +151,6 @@ func TestEnsureRulesWithAIConsent_UsesExistingDeclinedChoice(t *testing.T) {
 func TestEnsureRulesWithAIConsent_NonInteractiveSkipsWithoutPriorConsent(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
@@ -215,12 +209,12 @@ func TestAskAIIntegration_ParseAnswers(t *testing.T) {
 func TestEnsureRulesWithAIConsent_InvalidStoredChoiceFails(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	consentPath := filepath.Join(home, ".gitflow", "ai-integration.json")
+	// Write invalid JSON to the project-scoped consent path.
+	consentPath := filepath.Join(dir, ".gitflow", "ai-integration.json")
 	if err := os.MkdirAll(filepath.Dir(consentPath), 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -237,18 +231,16 @@ func TestEnsureRulesWithAIConsent_InvalidStoredChoiceFails(t *testing.T) {
 func TestEnsureRulesWithAIConsent_SkipsWhenVersionMatches(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	// Pre-create consent with version "1.0.0"
-	p := filepath.Join(home, ".gitflow", "ai-integration.json")
+	// Pre-create project-scoped consent with version "1.0.0"
+	p := filepath.Join(dir, ".gitflow", "ai-integration.json")
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		t.Fatal(err)
 	}
-	data := []byte(`{"enabled":true,"ide_id":"cursor","version":"1.0.0"}`)
-	if err := os.WriteFile(p, data, 0644); err != nil {
+	if err := os.WriteFile(p, []byte(`{"enabled":true,"version":"1.0.0"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -264,18 +256,16 @@ func TestEnsureRulesWithAIConsent_SkipsWhenVersionMatches(t *testing.T) {
 func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	// Pre-create consent with old version
-	p := filepath.Join(home, ".gitflow", "ai-integration.json")
+	// Pre-create project-scoped consent with old version
+	p := filepath.Join(dir, ".gitflow", "ai-integration.json")
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		t.Fatal(err)
 	}
-	data := []byte(`{"enabled":true,"ide_id":"cursor","version":"0.9.0"}`)
-	if err := os.WriteFile(p, data, 0644); err != nil {
+	if err := os.WriteFile(p, []byte(`{"enabled":true,"version":"0.9.0"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,7 +277,7 @@ func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
 		t.Fatalf("expected files to be provisioned on version upgrade, got %d", len(created))
 	}
 
-	// Verify stored version was updated
+	// Verify stored version was updated in project consent file.
 	raw, _ := os.ReadFile(p)
 	var choice aiIntegrationChoice
 	_ = json.Unmarshal(raw, &choice)
@@ -296,10 +286,46 @@ func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
 	}
 }
 
+// TestEnsureRulesWithAIConsent_DifferentProjectsAskedSeparately verifies that
+// consent stored in project A does not suppress the prompt in project B.
+func TestEnsureRulesWithAIConsent_DifferentProjectsAskedSeparately(t *testing.T) {
+	home := t.TempDir()
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+
+	askCount := 0
+	prevAsk := askAIIntegrationFunc
+	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+		askCount++
+		return true, nil
+	}
+	defer func() { askAIIntegrationFunc = prevAsk }()
+
+	_, err := EnsureRulesWithAIConsent(dirA, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("project A: %v", err)
+	}
+	if askCount != 1 {
+		t.Fatalf("expected 1 prompt for project A, got %d", askCount)
+	}
+
+	// Project B has no consent file — must ask independently.
+	_, err = EnsureRulesWithAIConsent(dirB, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("project B: %v", err)
+	}
+	if askCount != 2 {
+		t.Fatalf("expected 2 prompts (one per project), got %d", askCount)
+	}
+}
+
 func TestEnsureRulesWithAIConsent_NonInteractiveSkipsFirstRun(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
-
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
@@ -311,7 +337,6 @@ func TestEnsureRulesWithAIConsent_NonInteractiveSkipsFirstRun(t *testing.T) {
 	}
 	defer func() { askAIIntegrationFunc = prevAsk }()
 
-	// Non-interactive first run should NOT provision (no consent file exists)
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, false, "1.0.0")
 	if err != nil {
 		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
