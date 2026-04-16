@@ -2,17 +2,14 @@ package ide
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
+
+	"github.com/novaemx/gitflow-helper/internal/config"
 )
 
-type aiIntegrationChoice struct {
-	Enabled bool   `json:"enabled"`
-	Version string `json:"version,omitempty"`
-}
+type aiIntegrationChoice = config.AIIntegrationChoice
 
 var askAIIntegrationFunc = askAIIntegration
 var readAIAnswerFunc = func() (string, error) {
@@ -21,35 +18,15 @@ var readAIAnswerFunc = func() (string, error) {
 }
 
 func aiIntegrationChoicePath(projectRoot string) string {
-	return filepath.Join(projectRoot, ".gitflow", "ai-integration.json")
+	return config.ProjectConfigPath(projectRoot)
 }
 
 func loadAIIntegrationChoice(projectRoot string) (choice aiIntegrationChoice, exists bool, err error) {
-	path := aiIntegrationChoicePath(projectRoot)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return aiIntegrationChoice{}, false, nil
-		}
-		return aiIntegrationChoice{}, false, err
-	}
-	if err := json.Unmarshal(data, &choice); err != nil {
-		return aiIntegrationChoice{}, false, err
-	}
-	return choice, true, nil
+	return config.LoadAIIntegrationChoice(projectRoot)
 }
 
 func saveAIIntegrationChoice(projectRoot string, choice aiIntegrationChoice) error {
-	path := aiIntegrationChoicePath(projectRoot)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(choice, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	return config.SaveAIIntegrationChoice(projectRoot, choice)
 }
 
 func askAIIntegration(detected DetectedIDE) (bool, error) {
@@ -71,7 +48,7 @@ func askAIIntegration(detected DetectedIDE) (bool, error) {
 // EnsureRulesWithAIConsent installs IDE-specific instructions and embedded
 // skill only when user consent for AI integration is enabled.
 //
-// Consent is persisted at {projectRoot}/.gitflow/ai-integration.json (per project).
+// Consent is persisted at {projectRoot}/.gitflow/config.json (per project).
 // In non-interactive mode (agents / --json) this function does NOT auto-enable;
 // it skips provisioning when no prior consent exists, preserving explicit
 // user opt-in.
@@ -96,7 +73,7 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 			return nil, err
 		}
 		// Save consent WITHOUT version so the provisioning path below runs
-		// on this first invocation.  The version is stamped after provisioning.
+		// on this first invocation. The version is stamped after provisioning.
 		choice = aiIntegrationChoice{Enabled: enabled}
 		if err := saveAIIntegrationChoice(projectRoot, choice); err != nil {
 			return nil, err

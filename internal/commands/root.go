@@ -191,7 +191,7 @@ func NewRootCmd(version string) *cobra.Command {
 			// Auto-provision IDE rules when missing (silent, idempotent)
 			if freshInit && git.CurrentBranch() == GF.Config.DevelopBranch {
 				// --- Fresh repo: ask consent FIRST, then provision, then commit ---
-				// 1. Ask integration mode (writes .gitflow.json)
+				// 1. Ask integration mode (writes .gitflow/config.json)
 				ensureIntegrationModeConfigured(cmd)
 
 				// 2. Ask AI consent and provision IDE rules
@@ -204,7 +204,7 @@ func NewRootCmd(version string) *cobra.Command {
 					}
 				}
 
-				// 3. Commit all workspace files (ide rules + .gitflow.json) on develop
+				// 3. Commit all workspace files (ide rules + .gitflow/config.json) on develop
 				staged := git.ExecLines("status", "--porcelain")
 				if len(staged) > 0 {
 					_ = git.ExecSilent("add", ".")

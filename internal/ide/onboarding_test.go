@@ -1,45 +1,31 @@
 package ide
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/novaemx/gitflow-helper/internal/config"
 )
 
 func writeTestConsent(t *testing.T, projectDir string, enabled bool) {
 	t.Helper()
-	p := filepath.Join(projectDir, ".gitflow", "ai-integration.json")
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		t.Fatalf("mkdir consent dir: %v", err)
-	}
-	payload := map[string]any{
-		"enabled": enabled,
-	}
-	b, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("marshal consent: %v", err)
-	}
-	if err := os.WriteFile(p, b, 0644); err != nil {
-		t.Fatalf("write consent: %v", err)
+	if err := config.SaveAIIntegrationChoice(projectDir, config.AIIntegrationChoice{Enabled: enabled}); err != nil {
+		t.Fatalf("save consent: %v", err)
 	}
 }
 
 func readConsentEnabled(t *testing.T, projectDir string) bool {
 	t.Helper()
-	p := filepath.Join(projectDir, ".gitflow", "ai-integration.json")
-	b, err := os.ReadFile(p)
+	choice, exists, err := config.LoadAIIntegrationChoice(projectDir)
 	if err != nil {
 		t.Fatalf("read consent: %v", err)
 	}
-	var payload struct {
-		Enabled bool `json:"enabled"`
+	if !exists {
+		t.Fatal("expected consent to exist")
 	}
-	if err := json.Unmarshal(b, &payload); err != nil {
-		t.Fatalf("unmarshal consent: %v", err)
-	}
-	return payload.Enabled
+	return choice.Enabled
 }
 
 func TestEnsureRulesWithAIConsent_FirstRunAccepts(t *testing.T) {
@@ -213,8 +199,8 @@ func TestEnsureRulesWithAIConsent_InvalidStoredChoiceFails(t *testing.T) {
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	// Write invalid JSON to the project-scoped consent path.
-	consentPath := filepath.Join(dir, ".gitflow", "ai-integration.json")
+	// Write invalid JSON to the project-scoped unified config path.
+	consentPath := config.ProjectConfigPath(dir)
 	if err := os.MkdirAll(filepath.Dir(consentPath), 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -236,11 +222,11 @@ func TestEnsureRulesWithAIConsent_SkipsWhenVersionMatches(t *testing.T) {
 	defer func() { UserHomeDirFunc = prevHome }()
 
 	// Pre-create project-scoped consent with version "1.0.0"
-	p := filepath.Join(dir, ".gitflow", "ai-integration.json")
+	p := config.ProjectConfigPath(dir)
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(`{"enabled":true,"version":"1.0.0"}`), 0644); err != nil {
+	if err := os.WriteFile(p, []byte(`{"ai_integration":{"enabled":true,"version":"1.0.0"}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -261,11 +247,11 @@ func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
 	defer func() { UserHomeDirFunc = prevHome }()
 
 	// Pre-create project-scoped consent with old version
-	p := filepath.Join(dir, ".gitflow", "ai-integration.json")
+	p := config.ProjectConfigPath(dir)
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(`{"enabled":true,"version":"0.9.0"}`), 0644); err != nil {
+	if err := os.WriteFile(p, []byte(`{"ai_integration":{"enabled":true,"version":"0.9.0"}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -277,10 +263,14 @@ func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
 		t.Fatalf("expected files to be provisioned on version upgrade, got %d", len(created))
 	}
 
-	// Verify stored version was updated in project consent file.
-	raw, _ := os.ReadFile(p)
-	var choice aiIntegrationChoice
-	_ = json.Unmarshal(raw, &choice)
+	// Verify stored version was updated in the unified project config file.
+	choice, exists, err := config.LoadAIIntegrationChoice(dir)
+	if err != nil {
+		t.Fatalf("LoadAIIntegrationChoice: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected ai integration choice to exist after reprovision")
+	}
 	if choice.Version != "1.0.0" {
 		t.Fatalf("expected version updated to 1.0.0, got %q", choice.Version)
 	}

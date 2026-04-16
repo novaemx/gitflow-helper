@@ -169,17 +169,22 @@ If the embedded skill content changes in a newer binary, `gitflow setup` updates
 
 ## Configuration
 
-Create a `.gitflow.json` in your project root for custom settings:
+Create a `.gitflow/config.json` in your project root for custom settings:
 
 ```json
 {
   "remote": "origin",
   "main_branch": "main",
   "develop_branch": "develop",
+  "integration_mode": "local-merge",
   "version_file": "package.json",
   "version_pattern": "\"version\"\\s*:\\s*\"([^\"]+)\"",
   "tag_prefix": "v",
-  "bump_command": "npm version {part} --no-git-tag-version"
+  "bump_command": "npm version {part} --no-git-tag-version",
+  "ai_integration": {
+    "enabled": true,
+    "version": "0.5.28"
+  }
 }
 ```
 

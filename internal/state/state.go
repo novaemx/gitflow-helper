@@ -28,26 +28,27 @@ type MergeState struct {
 }
 
 type RepoState struct {
-	Current            string       `json:"current"`
-	Version            string       `json:"version"`
-	LastTag            string       `json:"last_tag"`
-	Dirty              bool         `json:"dirty"`
-	UncommittedCount   int          `json:"uncommitted_count"`
-	Remotes            []string     `json:"remotes"`
-	HasDefaultRemote   bool         `json:"has_default_remote"`
-	Features           []BranchInfo `json:"features"`
-	Bugfixes           []BranchInfo `json:"bugfixes"`
-	Releases           []BranchInfo `json:"releases"`
-	Hotfixes           []BranchInfo `json:"hotfixes"`
-	HasDevelop         bool         `json:"has_develop"`
-	HasMain            bool         `json:"has_main"`
-	DevelopAheadOfMain int          `json:"develop_ahead_of_main"`
-	MainAheadOfDevelop int          `json:"main_ahead_of_develop"`
-	DevelopOnlyFiles   []string     `json:"develop_only_files"`
-	MainOnlyFiles      []string     `json:"main_only_files"`
-	Merge              MergeState   `json:"merge"`
-	GitFlowInitialized bool         `json:"git_flow_initialized"`
-	ProjectRoot        string       `json:"project_root"`
+	Current             string       `json:"current"`
+	Version             string       `json:"version"`
+	LastTag             string       `json:"last_tag"`
+	Dirty               bool         `json:"dirty"`
+	UncommittedCount    int          `json:"uncommitted_count"`
+	Remotes             []string     `json:"remotes"`
+	HasDefaultRemote    bool         `json:"has_default_remote"`
+	DefaultRemoteBranch string       `json:"default_remote_branch"`
+	Features            []BranchInfo `json:"features"`
+	Bugfixes            []BranchInfo `json:"bugfixes"`
+	Releases            []BranchInfo `json:"releases"`
+	Hotfixes            []BranchInfo `json:"hotfixes"`
+	HasDevelop          bool         `json:"has_develop"`
+	HasMain             bool         `json:"has_main"`
+	DevelopAheadOfMain  int          `json:"develop_ahead_of_main"`
+	MainAheadOfDevelop  int          `json:"main_ahead_of_develop"`
+	DevelopOnlyFiles    []string     `json:"develop_only_files"`
+	MainOnlyFiles       []string     `json:"main_only_files"`
+	Merge               MergeState   `json:"merge"`
+	GitFlowInitialized  bool         `json:"git_flow_initialized"`
+	ProjectRoot         string       `json:"project_root"`
 }
 
 func DetectMergeState(cfg config.FlowConfig) MergeState {
@@ -86,6 +87,31 @@ func DetectMergeState(cfg config.FlowConfig) MergeState {
 	return ms
 }
 
+func defaultRemoteBranch(remote string) string {
+	remote = strings.TrimSpace(remote)
+	if remote == "" {
+		return ""
+	}
+	ref := git.ExecQuiet("symbolic-ref", "--quiet", "refs/remotes/"+remote+"/HEAD")
+	ref = strings.TrimSpace(ref)
+	const prefix = "refs/remotes/"
+	if strings.HasPrefix(ref, prefix) {
+		trimmed := strings.TrimPrefix(ref, prefix)
+		parts := strings.SplitN(trimmed, "/", 2)
+		if len(parts) == 2 {
+			return parts[1]
+		}
+	}
+
+	for _, line := range git.ExecLines("remote", "show", remote) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "HEAD branch:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
+		}
+	}
+	return ""
+}
+
 func DetectState(cfg config.FlowConfig) RepoState {
 	s := RepoState{
 		ProjectRoot: cfg.ProjectRoot,
@@ -105,6 +131,9 @@ func DetectState(cfg config.FlowConfig) RepoState {
 			s.HasDefaultRemote = true
 			break
 		}
+	}
+	if s.HasDefaultRemote {
+		s.DefaultRemoteBranch = defaultRemoteBranch(cfg.Remote)
 	}
 
 	allLocal := git.ExecLines("branch", "--format=%(refname:short)")
