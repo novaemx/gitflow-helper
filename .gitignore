@@ -37,6 +37,7 @@ tmp/
 *.log
 
 
-.gitflow.json
+.gitflow/*
+.gitflow*
 tests/*.out
 tests/*.cov
