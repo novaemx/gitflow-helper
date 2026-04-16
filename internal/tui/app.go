@@ -337,9 +337,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.runningTitle = ""
 		m.mode = viewOutput
 		m.outputClosing = false
-		m.outputAnim = 0
+		m.outputAnim = 1 // snap open — no grow animation to prevent ghost-box artifacts
 		m.refresh(false)
-		return m, m.animationTickCmd()
+		return m, nil
 
 	case spinner.TickMsg:
 		if !m.running {
@@ -1131,6 +1131,9 @@ func (m model) renderOutputOverlay(base string) string {
 	}
 
 	visibleLines := boxH - 5
+	// Reserve 2 lines for scroll indicator (blank + position text)
+	// so the rendered box never exceeds targetH.
+	visibleLines -= 2
 	if visibleLines < 1 {
 		visibleLines = 1
 	}
@@ -1234,7 +1237,8 @@ func (m model) renderOutputOverlay(base string) string {
 		Width(boxW)
 
 	box := boxStyle.Render(strings.Join(contentLines, "\n"))
-	return placeOverlay(base, box, m.width, m.height)
+	clearedBase := blankBaseContent(base, m.width, m.height)
+	return placeOverlay(clearedBase, box, m.width, m.height)
 }
 
 func (m model) renderHelpOverlay(base string) string {
@@ -1313,6 +1317,7 @@ func (m model) renderPaletteOverlay(base string) string {
 	content := strings.Join(lines, "\n")
 	box := boxStyle.Render(content)
 
+	base = blankBaseContent(base, m.width, m.height)
 	return placeOverlay(base, box, m.width, m.height)
 }
 
@@ -1340,7 +1345,19 @@ func (m model) renderInputOverlay(base string) string {
 		Width(boxWidth)
 
 	box := boxStyle.Render(strings.Join(lines, "\n"))
+	base = blankBaseContent(base, m.width, m.height)
 	return placeOverlay(base, box, m.width, m.height)
+}
+
+// blankBaseContent clears the content area (rows 1..h-2) of the base so that
+// dashboard text does not show through around overlay boxes.
+func blankBaseContent(base string, w, h int) string {
+	lines := strings.Split(base, "\n")
+	blank := strings.Repeat(" ", w)
+	for i := 1; i < len(lines) && i < h-1; i++ {
+		lines[i] = blank
+	}
+	return strings.Join(lines, "\n")
 }
 
 func placeOverlay(base, overlay string, w, h int) string {
