@@ -1,9 +1,13 @@
-# Release 0.5.30
+# Release 0.5.31
 
 **Date:** 2026-04-16
 
 ## What's New
 
+- Merge feature 'fix-health-overlay-ui' into develop
 - Squash(feature): fix-backmerge-ai-prompt-and-health-improvements
-- Squash(feature): project-config-unify-health-fixes
+
+## Bug Fixes
+
+- Eliminate overlay ghost-box artifacts
 
