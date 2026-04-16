@@ -1,14 +1,15 @@
-# Release 0.5.26
+# Release 0.5.27
 
-**Date:** 2026-04-15
+**Date:** 2026-04-16
 
 ## What's New
 
+- Merge feature 'fix-consent-per-project' into develop
 - Merge feature 'fix-consent-idempotent-animation' into develop
-- Squash(feature): auto-atomic-finish-animations
 
 ## Bug Fixes
 
+- Per-project consent storage
 - Activity panel visible at any terminal width
 - Version-aware consent + idempotent provisioning
 
