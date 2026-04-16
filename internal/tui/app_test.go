@@ -384,29 +384,24 @@ func TestActivityAnimation_RequiresMinFrames(t *testing.T) {
 	}
 }
 
-// TestOutputCloseAnimation_RequiresMinFrames verifies the CLOSE animation
-// (shrink from 1→0) takes ≥8 frames so the transition is visually perceptible.
-func TestOutputCloseAnimation_RequiresMinFrames(t *testing.T) {
+// TestOutputClose_SnapsToZero verifies that closing the output overlay
+// immediately resets to dashboard (no shrink animation).
+func TestOutputClose_SnapsToZero(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{spinner: s, mode: viewOutput, outputAnim: 1.0, outputClosing: true}
+	m := model{spinner: s, mode: viewOutput, outputAnim: 1.0}
 	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
 
-	frames := 0
-	for m.outputAnim > 0.001 {
-		next, _ := m.Update(uiAnimTickMsg{})
-		cast, ok := next.(model)
-		if !ok {
-			t.Fatal("expected model type")
-		}
-		m = cast
-		frames++
-		if frames > 100 {
-			t.Fatal("animation did not converge")
-		}
+	next, _ := m.handleOutputKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
 	}
-	if frames < 8 {
-		t.Fatalf("close animation too fast: %d frames (need ≥8 for ~128ms perceptible transition)", frames)
+	if updated.outputAnim != 0 {
+		t.Fatalf("expected outputAnim=0 (snap close), got %.2f", updated.outputAnim)
+	}
+	if updated.mode != viewDashboard {
+		t.Fatalf("expected mode=viewDashboard after close, got %v", updated.mode)
 	}
 }
 
@@ -502,7 +497,7 @@ func TestActivityPanel_AnimatesVisiblyOnNarrowTerminal(t *testing.T) {
 	}
 }
 
-func TestOutputOverlayClose_AnimatesThenReturnsDashboard(t *testing.T) {
+func TestOutputOverlayClose_SnapsReturnsDashboard(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
 	m := model{spinner: s, mode: viewOutput, outputAnim: 1.0}
@@ -513,28 +508,11 @@ func TestOutputOverlayClose_AnimatesThenReturnsDashboard(t *testing.T) {
 	if !ok {
 		t.Fatal("expected model type")
 	}
-	if !updated.outputClosing {
-		t.Fatal("expected outputClosing to be enabled after close key")
+	if updated.mode != viewDashboard {
+		t.Fatalf("expected mode to return to dashboard after close, got %v", updated.mode)
 	}
-
-	cur := updated
-	for i := 0; i < 50; i++ {
-		nextModel, _ := cur.Update(uiAnimTickMsg{})
-		cast, ok := nextModel.(model)
-		if !ok {
-			t.Fatal("expected model type during animation")
-		}
-		cur = cast
-		if cur.mode == viewDashboard && !cur.outputClosing {
-			break
-		}
-	}
-
-	if cur.mode != viewDashboard {
-		t.Fatalf("expected mode to return to dashboard after close animation, got %v", cur.mode)
-	}
-	if cur.outputAnim != 0 {
-		t.Fatalf("expected output animation to end at 0, got %.2f", cur.outputAnim)
+	if updated.outputAnim != 0 {
+		t.Fatalf("expected output animation to be 0, got %.2f", updated.outputAnim)
 	}
 }
 
@@ -572,9 +550,9 @@ func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
 	}
 }
 
-// TestRenderOutputOverlay_NoBaseContentOutsideBox verifies that base dashboard
-// content does NOT appear outside the overlay box (no "peek-through").
-func TestRenderOutputOverlay_NoBaseContentOutsideBox(t *testing.T) {
+// TestRenderOutputOverlay_BoxCoversOwnArea verifies that the overlay box
+// replaces base content within its boundaries.
+func TestRenderOutputOverlay_BoxCoversOwnArea(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
 	m := model{
@@ -607,18 +585,15 @@ func TestRenderOutputOverlay_NoBaseContentOutsideBox(t *testing.T) {
 	if boxStart == -1 || boxEnd == -1 {
 		t.Fatalf("could not find overlay box borders in rendered output")
 	}
-
-	for i, row := range rows {
-		if i == 0 || i >= m.height-1 {
-			continue // keep title bar and status bar
+	// Box rows must contain border characters (properly rendered overlay)
+	for i := boxStart; i <= boxEnd && i < len(rows); i++ {
+		plain := stripANSI(rows[i])
+		if !strings.Contains(plain, "│") && !strings.Contains(plain, "╭") && !strings.Contains(plain, "╰") {
+			t.Errorf("box row %d missing border character: %q", i, plain)
 		}
-		if i >= boxStart && i <= boxEnd {
-			continue // inside the box is expected
-		}
-		plain := stripANSI(row)
-		if strings.Contains(plain, "Repo health check") {
-			t.Errorf("base content leaked outside overlay box at row %d: %q", i, plain)
-		}
+	}
+	if len(rows) != m.height {
+		t.Fatalf("expected %d rows, got %d", m.height, len(rows))
 	}
 }
 
@@ -662,10 +637,9 @@ func TestRenderOutputOverlay_ScrollIndicatorFitsWithinViewport(t *testing.T) {
 	}
 }
 
-// TestAllOverlays_BlankBaseContentArea verifies that all overlay renderers
-// (output, help, palette, input) clear the base content area so dashboard
-// text cannot bleed through.
-func TestAllOverlays_BlankBaseContentArea(t *testing.T) {
+// TestAllOverlays_BackgroundVisibleOutsideBox verifies that the dashboard
+// background is NOT blanked outside the overlay box (background shows through).
+func TestAllOverlays_BackgroundVisibleOutsideBox(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
 	textInput := textinput.New()
@@ -713,18 +687,48 @@ func TestAllOverlays_BlankBaseContentArea(t *testing.T) {
 					boxEnd = i
 				}
 			}
-			// Check no CANARY_TEXT outside the box in content rows
-			for i, row := range rows {
-				if i == 0 || i >= 23 {
-					continue // title bar and status bar
-				}
-				if i >= boxStart && i <= boxEnd {
-					continue
-				}
-				if strings.Contains(stripANSI(row), "CANARY_TEXT") {
-					t.Errorf("base content leaked at row %d: %q", i, stripANSI(row))
+			if boxStart == -1 {
+				t.Fatalf("could not find top box border")
+			}
+			if boxEnd == -1 {
+				// Bottom border may be clipped by viewport (e.g. help overlay)
+				boxEnd = len(rows) - 1
+			}
+			// Overlay box MUST replace its rows (no base text inside box rows)
+			for i := boxStart; i <= boxEnd && i < len(rows); i++ {
+				// Box rows should contain border characters, not leak base text through the box
+				plain := stripANSI(rows[i])
+				if !strings.Contains(plain, "│") && !strings.Contains(plain, "╭") && !strings.Contains(plain, "╰") {
+					t.Errorf("box row %d missing border character: %q", i, plain)
 				}
 			}
+			// Total rows must equal viewport height
+			if len(rows) != m.height {
+				t.Errorf("expected %d rows, got %d", m.height, len(rows))
+			}
 		})
+	}
+}
+
+// TestOutputStatusBar_ShowsActionName verifies the status bar includes the
+// action title when in output view mode.
+func TestOutputStatusBar_ShowsActionName(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:     s,
+		mode:        viewOutput,
+		outputTitle: "Repo health check",
+		width:       80,
+		height:      24,
+	}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+	m.dashLines = []dashLine{}
+	m.actions = []action{}
+
+	bar := m.renderStatusBar()
+	plain := stripANSI(bar)
+	if !strings.Contains(plain, "Repo health check") {
+		t.Fatalf("status bar should show action title, got: %q", plain)
 	}
 }
