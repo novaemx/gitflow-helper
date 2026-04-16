@@ -35,9 +35,9 @@ func TestEnsureRulesWithAIConsent_FirstRunAccepts(t *testing.T) {
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	prevAsk := askAIIntegrationFunc
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return true, nil }
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return true, nil }
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
@@ -58,9 +58,9 @@ func TestEnsureRulesWithAIConsent_FirstRunDeclines(t *testing.T) {
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	prevAsk := askAIIntegrationFunc
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return false, nil }
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return false, nil }
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
@@ -85,13 +85,13 @@ func TestEnsureRulesWithAIConsent_UsesExistingEnabledChoice(t *testing.T) {
 	defer func() { UserHomeDirFunc = prevHome }()
 	writeTestConsent(t, dir, true)
 
-	prevAsk := askAIIntegrationFunc
+	prevAsk := AskAIIntegrationFunc
 	called := false
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
 		called = true
 		return false, nil
 	}
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	// Pass empty version to bypass version check — simulates already-provisioned state.
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "")
@@ -114,13 +114,13 @@ func TestEnsureRulesWithAIConsent_UsesExistingDeclinedChoice(t *testing.T) {
 	defer func() { UserHomeDirFunc = prevHome }()
 	writeTestConsent(t, dir, false)
 
-	prevAsk := askAIIntegrationFunc
+	prevAsk := AskAIIntegrationFunc
 	called := false
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
 		called = true
 		return true, nil
 	}
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
@@ -141,12 +141,12 @@ func TestEnsureRulesWithAIConsent_NonInteractiveSkipsWithoutPriorConsent(t *test
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	prevAsk := askAIIntegrationFunc
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
 		t.Fatal("did not expect prompt in non-interactive mode")
 		return false, nil
 	}
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, false, "1.0.0")
 	if err != nil {
@@ -288,12 +288,12 @@ func TestEnsureRulesWithAIConsent_DifferentProjectsAskedSeparately(t *testing.T)
 	dirB := t.TempDir()
 
 	askCount := 0
-	prevAsk := askAIIntegrationFunc
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
 		askCount++
 		return true, nil
 	}
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	_, err := EnsureRulesWithAIConsent(dirA, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
 	if err != nil {
@@ -320,12 +320,12 @@ func TestEnsureRulesWithAIConsent_NonInteractiveSkipsFirstRun(t *testing.T) {
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
 
-	prevAsk := askAIIntegrationFunc
-	askAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
 		t.Fatal("should not prompt in non-interactive mode")
 		return false, nil
 	}
-	defer func() { askAIIntegrationFunc = prevAsk }()
+	defer func() { AskAIIntegrationFunc = prevAsk }()
 
 	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, false, "1.0.0")
 	if err != nil {

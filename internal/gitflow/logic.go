@@ -2,6 +2,8 @@ package gitflow
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -404,6 +406,59 @@ func (gf *Logic) HealthReport() HealthReport {
 				localAhead := git.ExecQuiet("rev-list", "--count", cfg.Remote+"/"+s.Current+".."+s.Current)
 				if n, _ := strconv.Atoi(localAhead); n > 0 {
 					warnings = append(warnings, fmt.Sprintf("current branch '%s' has %d unpushed commit(s)", s.Current, n))
+				}
+			}
+		}
+
+		// Broken upstream tracking: branches whose tracked remote was deleted.
+		refLines := git.ExecLines("for-each-ref", "--format=%(refname:short) %(upstream:track)", "refs/heads/")
+		for _, line := range refLines {
+			parts := strings.Fields(line)
+			if len(parts) < 2 {
+				continue
+			}
+			branch := parts[0]
+			tracking := strings.Join(parts[1:], " ")
+			if strings.Contains(tracking, "[gone]") {
+				warnings = append(warnings, fmt.Sprintf("branch '%s' has a deleted upstream — fix: git branch --unset-upstream %s", branch, branch))
+			}
+		}
+
+		// Flow branches with no remote tracking at all.
+		for _, b := range allLocal {
+			if !strings.HasPrefix(b, "feature/") && !strings.HasPrefix(b, "bugfix/") &&
+				!strings.HasPrefix(b, "release/") && !strings.HasPrefix(b, "hotfix/") {
+				continue
+			}
+			code, _, _ := git.ExecResult("rev-parse", "--verify", "refs/remotes/"+cfg.Remote+"/"+b)
+			if code != 0 {
+				warnings = append(warnings, fmt.Sprintf("flow branch '%s' has no remote tracking — consider: git push -u %s %s", b, cfg.Remote, b))
+			}
+		}
+	}
+
+	// PR mode sanity: pull-request mode requires a reachable remote.
+	if cfg.IntegrationMode == config.IntegrationModePullRequest && !remoteExists {
+		issues = append(issues, fmt.Sprintf("integration mode is 'pull-request' but remote '%s' is not configured — fix: git remote add %s <url>", cfg.Remote, cfg.Remote))
+	}
+
+	// Develop release-readiness: many unreleased commits on develop.
+	if localSet[cfg.DevelopBranch] && localSet[cfg.MainBranch] {
+		devAhead := git.ExecQuiet("rev-list", "--count", cfg.MainBranch+".."+cfg.DevelopBranch)
+		if n, _ := strconv.Atoi(devAhead); n >= 10 {
+			warnings = append(warnings, fmt.Sprintf("develop is %d commit(s) ahead of main — consider preparing a release", n))
+		}
+	}
+
+	// VERSION file consistency: open release branch name must match VERSION file.
+	versionFile := filepath.Join(cfg.ProjectRoot, "VERSION")
+	if data, err := os.ReadFile(versionFile); err == nil {
+		fileVer := strings.TrimSpace(string(data))
+		for _, b := range allLocal {
+			if strings.HasPrefix(b, "release/") {
+				branchVer := strings.TrimPrefix(b, "release/")
+				if branchVer != fileVer && strings.TrimPrefix(branchVer, "v") != strings.TrimPrefix(fileVer, "v") {
+					warnings = append(warnings, fmt.Sprintf("release branch '%s' version doesn't match VERSION file (%s)", b, fileVer))
 				}
 			}
 		}
