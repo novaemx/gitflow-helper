@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -382,16 +384,16 @@ func TestActivityAnimation_RequiresMinFrames(t *testing.T) {
 	}
 }
 
-// TestOutputAnimation_RequiresMinFrames verifies output overlay animation
-// takes ≥8 frames to open fully.
-func TestOutputAnimation_RequiresMinFrames(t *testing.T) {
+// TestOutputCloseAnimation_RequiresMinFrames verifies the CLOSE animation
+// (shrink from 1→0) takes ≥8 frames so the transition is visually perceptible.
+func TestOutputCloseAnimation_RequiresMinFrames(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
-	m := model{spinner: s, mode: viewOutput, outputAnim: 0, outputClosing: false}
+	m := model{spinner: s, mode: viewOutput, outputAnim: 1.0, outputClosing: true}
 	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
 
 	frames := 0
-	for m.outputAnim < 1.0-0.001 {
+	for m.outputAnim > 0.001 {
 		next, _ := m.Update(uiAnimTickMsg{})
 		cast, ok := next.(model)
 		if !ok {
@@ -404,7 +406,73 @@ func TestOutputAnimation_RequiresMinFrames(t *testing.T) {
 		}
 	}
 	if frames < 8 {
-		t.Fatalf("output animation too fast: %d frames (need ≥8 for ~128ms perceptible transition)", frames)
+		t.Fatalf("close animation too fast: %d frames (need ≥8 for ~128ms perceptible transition)", frames)
+	}
+}
+
+// TestCmdDoneMsg_SnapsOverlayOpen verifies that the overlay opens at full size
+// immediately (no grow animation) to prevent ghost-box artifacts.
+func TestCmdDoneMsg_SnapsOverlayOpen(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, running: true, runningTitle: "health"}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.Update(cmdDoneMsg{title: "Repo health check", output: "ok\n"})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated.outputAnim != 1.0 {
+		t.Fatalf("expected outputAnim=1.0 (snap open), got %.2f", updated.outputAnim)
+	}
+	if updated.mode != viewOutput {
+		t.Fatalf("expected mode=viewOutput, got %v", updated.mode)
+	}
+}
+
+// TestRenderOutputOverlay_BoxHeightNeverExceedsTarget verifies that the rendered
+// box (including scroll indicator) never exceeds the target box height.
+func TestRenderOutputOverlay_BoxHeightNeverExceedsTarget(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	lines := make([]string, 50)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i)
+	}
+	m := model{
+		spinner:     s,
+		mode:        viewOutput,
+		outputAnim:  1.0,
+		outputTitle: "Test",
+		outputLines: lines,
+		width:       80,
+		height:      24,
+	}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	blank := strings.Repeat(strings.Repeat(" ", 80)+"\n", 23) + strings.Repeat(" ", 80)
+	result := m.renderOutputOverlay(blank)
+	rows := strings.Split(result, "\n")
+
+	// Count actual box rows (lines with border characters).
+	boxStart, boxEnd := -1, -1
+	for i, row := range rows {
+		plain := stripANSI(row)
+		if strings.Contains(plain, "╭") && boxStart == -1 {
+			boxStart = i
+		}
+		if strings.Contains(plain, "╰") {
+			boxEnd = i
+		}
+	}
+	if boxStart == -1 || boxEnd == -1 {
+		t.Fatalf("could not find box borders")
+	}
+	actualBoxH := boxEnd - boxStart + 1
+	targetH := m.height - 4
+	if actualBoxH > targetH {
+		t.Fatalf("box height %d exceeds target %d (scroll indicator overflow)", actualBoxH, targetH)
 	}
 }
 
@@ -501,5 +569,162 @@ func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
 	}
 	if updated.runningTitle != "Toggle integration mode" {
 		t.Fatalf("expected mode toggle title, got %q", updated.runningTitle)
+	}
+}
+
+// TestRenderOutputOverlay_NoBaseContentOutsideBox verifies that base dashboard
+// content does NOT appear outside the overlay box (no "peek-through").
+func TestRenderOutputOverlay_NoBaseContentOutsideBox(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:     s,
+		mode:        viewOutput,
+		outputAnim:  1.0,
+		outputTitle: "Repo health check",
+		outputLines: []string{"✓ all good"},
+		width:       80,
+		height:      24,
+	}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+	m.dashLines = []dashLine{{text: "Repo health check", style: "ok"}}
+	m.actions = []action{{Tag: "health", Label: "Repo health check"}}
+
+	base := m.renderBase()
+	result := m.renderOutputOverlay(base)
+	rows := strings.Split(result, "\n")
+
+	boxStart, boxEnd := -1, -1
+	for i, row := range rows {
+		plain := stripANSI(row)
+		if strings.Contains(plain, "╭") && boxStart == -1 {
+			boxStart = i
+		}
+		if strings.Contains(plain, "╰") {
+			boxEnd = i
+		}
+	}
+	if boxStart == -1 || boxEnd == -1 {
+		t.Fatalf("could not find overlay box borders in rendered output")
+	}
+
+	for i, row := range rows {
+		if i == 0 || i >= m.height-1 {
+			continue // keep title bar and status bar
+		}
+		if i >= boxStart && i <= boxEnd {
+			continue // inside the box is expected
+		}
+		plain := stripANSI(row)
+		if strings.Contains(plain, "Repo health check") {
+			t.Errorf("base content leaked outside overlay box at row %d: %q", i, plain)
+		}
+	}
+}
+
+// TestRenderOutputOverlay_ScrollIndicatorFitsWithinViewport verifies that when
+// output triggers a scroll indicator the rendered box does not overflow the viewport.
+func TestRenderOutputOverlay_ScrollIndicatorFitsWithinViewport(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	lines := make([]string, 40)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("output line %d", i+1)
+	}
+	m := model{
+		spinner:     s,
+		mode:        viewOutput,
+		outputAnim:  1.0,
+		outputTitle: "Health check",
+		outputLines: lines,
+		width:       80,
+		height:      24,
+	}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	base := strings.Repeat(strings.Repeat(" ", 80)+"\n", 23) + strings.Repeat(" ", 80)
+	result := m.renderOutputOverlay(base)
+	rows := strings.Split(result, "\n")
+
+	if len(rows) > m.height {
+		t.Fatalf("overlay overflows viewport: got %d rows, viewport height is %d", len(rows), m.height)
+	}
+
+	found := false
+	for _, row := range rows {
+		if strings.Contains(stripANSI(row), "↕") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected scroll indicator '↕' in output, but it was missing")
+	}
+}
+
+// TestAllOverlays_BlankBaseContentArea verifies that all overlay renderers
+// (output, help, palette, input) clear the base content area so dashboard
+// text cannot bleed through.
+func TestAllOverlays_BlankBaseContentArea(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	textInput := textinput.New()
+	textInput.SetValue("")
+	m := model{
+		spinner:     s,
+		width:       80,
+		height:      24,
+		outputAnim:  1.0,
+		outputTitle: "Test",
+		outputLines: []string{"ok"},
+		inputPrompt: "Name:",
+		inputField:  textInput,
+	}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+	m.dashLines = []dashLine{{text: "CANARY_TEXT", style: "ok"}}
+	m.actions = []action{{Tag: "test", Label: "CANARY_TEXT action"}}
+
+	base := m.renderBase()
+	if !strings.Contains(stripANSI(base), "CANARY_TEXT") {
+		t.Fatal("base must contain CANARY_TEXT for this test to be meaningful")
+	}
+
+	tests := []struct {
+		name   string
+		render func() string
+	}{
+		{"output", func() string { return m.renderOutputOverlay(base) }},
+		{"help", func() string { return m.renderHelpOverlay(base) }},
+		{"palette", func() string { return m.renderPaletteOverlay(base) }},
+		{"input", func() string { return m.renderInputOverlay(base) }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.render()
+			rows := strings.Split(result, "\n")
+			// Find box boundaries
+			boxStart, boxEnd := -1, -1
+			for i, row := range rows {
+				plain := stripANSI(row)
+				if strings.Contains(plain, "╭") && boxStart == -1 {
+					boxStart = i
+				}
+				if strings.Contains(plain, "╰") {
+					boxEnd = i
+				}
+			}
+			// Check no CANARY_TEXT outside the box in content rows
+			for i, row := range rows {
+				if i == 0 || i >= 23 {
+					continue // title bar and status bar
+				}
+				if i >= boxStart && i <= boxEnd {
+					continue
+				}
+				if strings.Contains(stripANSI(row), "CANARY_TEXT") {
+					t.Errorf("base content leaked at row %d: %q", i, stripANSI(row))
+				}
+			}
+		})
 	}
 }
