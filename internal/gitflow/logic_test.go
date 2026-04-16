@@ -1,6 +1,7 @@
 package gitflow
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -306,5 +307,240 @@ func TestHealthReport_DirtyDevelopIsIssue(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected protected branch dirty issue, got %+v", report.Issues)
+	}
+}
+
+func TestHealthReport_PRModeWithoutRemote(t *testing.T) {
+	dir := setupTestRepo(t)
+	cfg := config.FlowConfig{
+		ProjectRoot:     dir,
+		MainBranch:      "main",
+		DevelopBranch:   "develop",
+		Remote:          "origin",
+		TagPrefix:       "v",
+		IntegrationMode: config.IntegrationModePullRequest,
+	}
+	gf := NewFromConfig(cfg)
+	report := gf.HealthReport()
+	found := false
+	for _, issue := range report.Issues {
+		if strings.Contains(issue, "pull-request") && strings.Contains(issue, "remote") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected PR mode without remote issue, got issues=%v warnings=%v", report.Issues, report.Warnings)
+	}
+}
+
+func TestHealthReport_DevelopAheadOfMainWarning(t *testing.T) {
+	dir := setupTestRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+	run("git", "checkout", "develop")
+	// Add 10 commits on develop
+	for i := 0; i < 10; i++ {
+		fname := filepath.Join(dir, fmt.Sprintf("file%d.txt", i))
+		if err := os.WriteFile(fname, []byte("content\n"), 0644); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		run("git", "add", fname)
+		run("git", "commit", "-m", fmt.Sprintf("commit %d", i))
+	}
+
+	gf := New(dir)
+	report := gf.HealthReport()
+	found := false
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "develop is") && strings.Contains(w, "ahead of main") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected develop-ahead-of-main warning, got warnings=%v", report.Warnings)
+	}
+}
+
+func TestHealthReport_VersionFileMismatch(t *testing.T) {
+	dir := setupTestRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+	// Create a release branch on develop
+	run("git", "checkout", "develop")
+	run("git", "checkout", "-b", "release/1.2.3")
+
+	// Write a VERSION file that doesn't match the branch
+	if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte("9.9.9\n"), 0644); err != nil {
+		t.Fatalf("write VERSION: %v", err)
+	}
+
+	gf := New(dir)
+	report := gf.HealthReport()
+	found := false
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "release/1.2.3") && strings.Contains(w, "VERSION") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected VERSION mismatch warning, got warnings=%v", report.Warnings)
+	}
+}
+
+func TestHealthReport_VersionFileMatchesReleaseBranch(t *testing.T) {
+	dir := setupTestRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+	run("git", "checkout", "develop")
+	run("git", "checkout", "-b", "release/2.0.0")
+	if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte("2.0.0\n"), 0644); err != nil {
+		t.Fatalf("write VERSION: %v", err)
+	}
+
+	gf := New(dir)
+	report := gf.HealthReport()
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "release/2.0.0") && strings.Contains(w, "VERSION") {
+			t.Fatalf("unexpected VERSION mismatch warning when versions match: %s", w)
+		}
+	}
+}
+
+func TestHealthReport_BrokenUpstreamTracking(t *testing.T) {
+	// Set up a bare remote so we can simulate a deleted upstream.
+	remoteDir := t.TempDir()
+	localDir := t.TempDir()
+
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// Init bare remote
+	run(remoteDir, "git", "init", "--bare", "-b", "main")
+
+	// Clone into local
+	run(localDir, "git", "clone", remoteDir, ".")
+	run(localDir, "git", "commit", "--allow-empty", "-m", "init")
+	run(localDir, "git", "push", "origin", "main")
+	run(localDir, "git", "branch", "develop")
+	run(localDir, "git", "push", "origin", "develop")
+
+	// Create and push a feature branch
+	run(localDir, "git", "checkout", "-b", "feature/gone-branch")
+	run(localDir, "git", "push", "-u", "origin", "feature/gone-branch")
+
+	// Delete the remote branch (simulates "gone" upstream)
+	run(localDir, "git", "push", "origin", "--delete", "feature/gone-branch")
+	run(localDir, "git", "fetch", "--prune", "origin")
+
+	gf := New(localDir)
+	report := gf.HealthReport()
+	found := false
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "feature/gone-branch") && strings.Contains(w, "deleted upstream") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected deleted upstream warning, got warnings=%v", report.Warnings)
+	}
+}
+
+func TestHealthReport_FlowBranchWithoutRemoteTracking(t *testing.T) {
+	remoteDir := t.TempDir()
+	localDir := t.TempDir()
+
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	run(remoteDir, "git", "init", "--bare", "-b", "main")
+	run(localDir, "git", "clone", remoteDir, ".")
+	run(localDir, "git", "commit", "--allow-empty", "-m", "init")
+	run(localDir, "git", "push", "origin", "main")
+	run(localDir, "git", "branch", "develop")
+	run(localDir, "git", "push", "origin", "develop")
+
+	// Create a local feature branch but do NOT push it
+	run(localDir, "git", "checkout", "-b", "feature/local-only")
+
+	gf := New(localDir)
+	report := gf.HealthReport()
+	found := false
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "feature/local-only") && strings.Contains(w, "no remote tracking") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected no-remote-tracking warning, got warnings=%v", report.Warnings)
 	}
 }

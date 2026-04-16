@@ -216,11 +216,12 @@ func NewRootCmd(version string) *cobra.Command {
 					output.Infof("  %s✦ Repository ready — working branch: %s%s%s", output.Cyan, output.Bold, GF.Config.DevelopBranch, output.Reset)
 				}
 			} else {
-				// Not a fresh init — idempotent consent check (silent if already answered)
+				// Not a fresh init — idempotent rule update (silent: consent is never
+				// solicited here; only freshInit or explicit 'setup' may ask for it).
 				ensureIntegrationModeConfigured(cmd)
 				if name != "doctor" && name != "health" {
 					deferEnsure := debug.Start("root.PersistentPreRun.GF.EnsureRules")
-					_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, !output.IsJSONMode(), version)
+					_, _ = ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, GF.IDE, false, version)
 					deferEnsure()
 				}
 			}

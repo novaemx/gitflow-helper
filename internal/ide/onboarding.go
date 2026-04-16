@@ -11,7 +11,7 @@ import (
 
 type aiIntegrationChoice = config.AIIntegrationChoice
 
-var askAIIntegrationFunc = askAIIntegration
+var AskAIIntegrationFunc = askAIIntegration
 var readAIAnswerFunc = func() (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	return reader.ReadString('\n')
@@ -68,7 +68,7 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 			// explicit user consent from a prior interactive session.
 			return []string{}, nil
 		}
-		enabled, err := askAIIntegrationFunc(detected)
+		enabled, err := AskAIIntegrationFunc(detected)
 		if err != nil {
 			return nil, err
 		}
