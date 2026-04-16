@@ -70,8 +70,9 @@ type model struct {
 	mcpActivity []mcpserver.ActivityEntry
 
 	// Activity panel state (0=hidden, 1=normal right panel, 2=expanded full-width)
-	activityPanel activityPanelState
-	activityAnim  float64
+	activityPanel        activityPanelState
+	activityAnim         float64
+	activityNormalCloses bool
 
 	// Output overlay animation state.
 	outputAnim    float64
@@ -139,6 +140,29 @@ func selectionIndexForRefresh(actions []action, prev *action) int {
 		}
 	}
 	return defaultSelection(actions)
+}
+
+func lastRecommendedActionIndex(actions []action) int {
+	lastRec := -1
+	for i, a := range actions {
+		if a.Recommended {
+			lastRec = i
+		}
+	}
+	return lastRec
+}
+
+func actionSelectionRow(actions []action, selected int) int {
+	if selected < 0 {
+		selected = 0
+	}
+
+	row := 2 + selected
+	lastRec := lastRecommendedActionIndex(actions)
+	if lastRec >= 0 && selected > lastRec {
+		row += 2
+	}
+	return row
 }
 
 func (m *model) refresh(preserveSelection bool) {
@@ -449,10 +473,17 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.activityPanel {
 		case activityHidden:
 			m.activityPanel = activityNormal
+			m.activityNormalCloses = false
 		case activityNormal:
-			m.activityPanel = activityExpanded
+			if m.activityNormalCloses {
+				m.activityPanel = activityHidden
+				m.activityNormalCloses = false
+			} else {
+				m.activityPanel = activityExpanded
+			}
 		case activityExpanded:
-			m.activityPanel = activityHidden
+			m.activityPanel = activityNormal
+			m.activityNormalCloses = true
 		}
 		return m, m.animationTickCmd()
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
@@ -701,7 +732,7 @@ func (m model) renderBase() string {
 	leftLines := strings.Split(dashContent+"\n"+actionContent, "\n")
 
 	dashLineCount := len(strings.Split(dashContent, "\n"))
-	selectedRow := dashLineCount + m.selected + 2
+	selectedRow := dashLineCount + actionSelectionRow(m.actions, m.selected)
 	if selectedRow-m.scroll >= contentHeight {
 		m.scroll = selectedRow - contentHeight + 1
 	}
@@ -961,12 +992,7 @@ func (m model) renderActionsForWidth(width int) string {
 	var lines []string
 	lines = append(lines, "")
 
-	lastRec := -1
-	for i, a := range m.actions {
-		if a.Recommended {
-			lastRec = i
-		}
-	}
+	lastRec := lastRecommendedActionIndex(m.actions)
 
 	if lastRec >= 0 {
 		lines = append(lines, " "+sectionStyle.Render("Recommended:"))
@@ -1013,9 +1039,13 @@ func (m model) renderStatusBar() string {
 		activityHint := "[a] activity"
 		switch m.activityPanel {
 		case activityNormal:
-			activityHint = "[a] expand"
+			if m.activityNormalCloses {
+				activityHint = "[a] close"
+			} else {
+				activityHint = "[a] expand"
+			}
 		case activityExpanded:
-			activityHint = "[a] close"
+			activityHint = "[a] smaller"
 		}
 		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  " + activityHint + "  [Ctrl+M/m] mode  [q] quit"
 	}

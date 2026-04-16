@@ -246,6 +246,37 @@ func TestRenderActionsForWidth_AllActionsHavePrefix(t *testing.T) {
 	}
 }
 
+func TestRenderActionsForWidth_SelectedActionInActionsSection(t *testing.T) {
+	m := model{
+		actions: []action{
+			{Tag: "start", Label: "Start a new feature", Recommended: true},
+			{Tag: "release", Label: "Start a release", Recommended: true},
+			{Tag: "pull", Label: "Pull latest"},
+		},
+		selected: 2,
+	}
+
+	rendered := stripANSI(m.renderActionsForWidth(80))
+	if !strings.Contains(rendered, "Actions:") {
+		t.Fatalf("expected Actions section header, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "▸ Pull latest") {
+		t.Fatalf("expected selected cursor in Actions section, got:\n%s", rendered)
+	}
+}
+
+func TestActionSelectionRow_AccountsForSplitHeader(t *testing.T) {
+	actions := []action{
+		{Tag: "start", Label: "Start a new feature", Recommended: true},
+		{Tag: "release", Label: "Start a release", Recommended: true},
+		{Tag: "pull", Label: "Pull latest"},
+	}
+
+	if got := actionSelectionRow(actions, 2); got != 6 {
+		t.Fatalf("expected selected action row 6 after split header, got %d", got)
+	}
+}
+
 func TestActivityPanel_DefaultsNormal(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse
@@ -271,24 +302,40 @@ func TestActivityPanel_CyclesOnKeyA(t *testing.T) {
 		t.Fatalf("expected activityPanel to be activityExpanded, got %d", updated.activityPanel)
 	}
 
-	// expanded → hidden
+	// expanded → normal
 	next2, _ := updated.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	updated2, ok := next2.(model)
 	if !ok {
 		t.Fatal("expected model type")
 	}
-	if updated2.activityPanel != activityHidden {
-		t.Fatalf("expected activityPanel to be activityHidden, got %d", updated2.activityPanel)
+	if updated2.activityPanel != activityNormal {
+		t.Fatalf("expected activityPanel to return to activityNormal, got %d", updated2.activityPanel)
+	}
+	if !updated2.activityNormalCloses {
+		t.Fatal("expected normal panel after expanded state to close on next toggle")
 	}
 
-	// hidden → normal
+	// normal → hidden
 	next3, _ := updated2.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	updated3, ok := next3.(model)
 	if !ok {
 		t.Fatal("expected model type")
 	}
-	if updated3.activityPanel != activityNormal {
-		t.Fatalf("expected activityPanel to cycle back to activityNormal, got %d", updated3.activityPanel)
+	if updated3.activityPanel != activityHidden {
+		t.Fatalf("expected activityPanel to be activityHidden, got %d", updated3.activityPanel)
+	}
+
+	// hidden → normal
+	next4, _ := updated3.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	updated4, ok := next4.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated4.activityPanel != activityNormal {
+		t.Fatalf("expected activityPanel to reopen at activityNormal, got %d", updated4.activityPanel)
+	}
+	if updated4.activityNormalCloses {
+		t.Fatal("expected reopened normal panel to expand on the next toggle")
 	}
 }
 
