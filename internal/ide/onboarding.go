@@ -11,7 +11,6 @@ import (
 
 type aiIntegrationChoice struct {
 	Enabled bool   `json:"enabled"`
-	IDEID   string `json:"ide_id,omitempty"`
 	Version string `json:"version,omitempty"`
 }
 
@@ -21,19 +20,12 @@ var readAIAnswerFunc = func() (string, error) {
 	return reader.ReadString('\n')
 }
 
-func aiIntegrationChoicePath() (string, error) {
-	home, err := UserHomeDirFunc()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".gitflow", "ai-integration.json"), nil
+func aiIntegrationChoicePath(projectRoot string) string {
+	return filepath.Join(projectRoot, ".gitflow", "ai-integration.json")
 }
 
-func loadAIIntegrationChoice() (choice aiIntegrationChoice, exists bool, err error) {
-	path, err := aiIntegrationChoicePath()
-	if err != nil {
-		return aiIntegrationChoice{}, false, err
-	}
+func loadAIIntegrationChoice(projectRoot string) (choice aiIntegrationChoice, exists bool, err error) {
+	path := aiIntegrationChoicePath(projectRoot)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -47,11 +39,8 @@ func loadAIIntegrationChoice() (choice aiIntegrationChoice, exists bool, err err
 	return choice, true, nil
 }
 
-func saveAIIntegrationChoice(choice aiIntegrationChoice) error {
-	path, err := aiIntegrationChoicePath()
-	if err != nil {
-		return err
-	}
+func saveAIIntegrationChoice(projectRoot string, choice aiIntegrationChoice) error {
+	path := aiIntegrationChoicePath(projectRoot)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
@@ -82,7 +71,7 @@ func askAIIntegration(detected DetectedIDE) (bool, error) {
 // EnsureRulesWithAIConsent installs IDE-specific instructions and embedded
 // skill only when user consent for AI integration is enabled.
 //
-// Consent is persisted at $HOME/.gitflow/ai-integration.json.
+// Consent is persisted at {projectRoot}/.gitflow/ai-integration.json (per project).
 // In non-interactive mode (agents / --json) this function does NOT auto-enable;
 // it skips provisioning when no prior consent exists, preserving explicit
 // user opt-in.
@@ -91,7 +80,7 @@ func askAIIntegration(detected DetectedIDE) (bool, error) {
 // is skipped entirely (zero file I/O). On version mismatch, rules are
 // re-provisioned idempotently and the stored version is updated.
 func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interactive bool, appVersion string) ([]string, error) {
-	choice, exists, err := loadAIIntegrationChoice()
+	choice, exists, err := loadAIIntegrationChoice(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +97,8 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 		}
 		// Save consent WITHOUT version so the provisioning path below runs
 		// on this first invocation.  The version is stamped after provisioning.
-		choice = aiIntegrationChoice{Enabled: enabled, IDEID: detected.ID}
-		if err := saveAIIntegrationChoice(choice); err != nil {
+		choice = aiIntegrationChoice{Enabled: enabled}
+		if err := saveAIIntegrationChoice(projectRoot, choice); err != nil {
 			return nil, err
 		}
 	}
@@ -132,7 +121,7 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 	// Update stored version so subsequent runs skip provisioning.
 	if appVersion != "" && choice.Version != appVersion {
 		choice.Version = appVersion
-		_ = saveAIIntegrationChoice(choice)
+		_ = saveAIIntegrationChoice(projectRoot, choice)
 	}
 
 	return created, nil
