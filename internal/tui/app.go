@@ -300,14 +300,6 @@ func (m model) hasPendingAnimations() bool {
 	if math.Abs(m.activityAnim-float64(m.activityPanel)) > eps {
 		return true
 	}
-	if m.mode == viewOutput || m.outputClosing {
-		if math.Abs(m.outputAnim-1.0) > eps && !m.outputClosing {
-			return true
-		}
-		if m.outputClosing && m.outputAnim > eps {
-			return true
-		}
-	}
 	return false
 }
 
@@ -371,16 +363,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uiAnimTickMsg:
 		m.activityAnim = animateToward(m.activityAnim, float64(m.activityPanel), 0.06)
-		targetOutput := 0.0
-		if m.mode == viewOutput && !m.outputClosing {
-			targetOutput = 1.0
-		}
-		m.outputAnim = animateToward(m.outputAnim, targetOutput, 0.06)
-		if m.outputClosing && m.outputAnim <= 0.001 {
-			m.outputAnim = 0
-			m.outputClosing = false
-			m.mode = viewDashboard
-		}
 		return m, m.animationTickCmd()
 
 	case tea.KeyMsg:
@@ -499,8 +481,11 @@ func (m model) handleOutputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("q", "esc", "enter"))):
-		m.outputClosing = true
-		return m, m.animationTickCmd()
+		// Snap-close: no shrink animation to prevent ghost-box artifacts.
+		m.outputAnim = 0
+		m.outputClosing = false
+		m.mode = viewDashboard
+		return m, nil
 	case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
 		if m.outputScroll < maxScroll {
 			m.outputScroll++
@@ -1034,7 +1019,7 @@ func (m model) renderStatusBar() string {
 	case m.running:
 		hint = " " + m.spinner.View() + " Running: " + m.runningTitle + "  [q] quit"
 	case m.mode == viewOutput:
-		hint = " [j/k] scroll  [q/Esc/Enter] close"
+		hint = " " + m.outputTitle + "  [j/k] scroll  [q/Esc/Enter] close"
 	default:
 		activityHint := "[a] activity"
 		switch m.activityPanel {
@@ -1237,8 +1222,7 @@ func (m model) renderOutputOverlay(base string) string {
 		Width(boxW)
 
 	box := boxStyle.Render(strings.Join(contentLines, "\n"))
-	clearedBase := blankBaseContent(base, m.width, m.height)
-	return placeOverlay(clearedBase, box, m.width, m.height)
+	return placeOverlay(base, box, m.width, m.height)
 }
 
 func (m model) renderHelpOverlay(base string) string {
@@ -1317,7 +1301,6 @@ func (m model) renderPaletteOverlay(base string) string {
 	content := strings.Join(lines, "\n")
 	box := boxStyle.Render(content)
 
-	base = blankBaseContent(base, m.width, m.height)
 	return placeOverlay(base, box, m.width, m.height)
 }
 
@@ -1345,19 +1328,7 @@ func (m model) renderInputOverlay(base string) string {
 		Width(boxWidth)
 
 	box := boxStyle.Render(strings.Join(lines, "\n"))
-	base = blankBaseContent(base, m.width, m.height)
 	return placeOverlay(base, box, m.width, m.height)
-}
-
-// blankBaseContent clears the content area (rows 1..h-2) of the base so that
-// dashboard text does not show through around overlay boxes.
-func blankBaseContent(base string, w, h int) string {
-	lines := strings.Split(base, "\n")
-	blank := strings.Repeat(" ", w)
-	for i := 1; i < len(lines) && i < h-1; i++ {
-		lines[i] = blank
-	}
-	return strings.Join(lines, "\n")
 }
 
 func placeOverlay(base, overlay string, w, h int) string {
