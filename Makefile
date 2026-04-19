@@ -19,6 +19,7 @@ COVER_DIR := test
 .PHONY: release-local release-local-github
 .PHONY: package-homebrew package-choco package-winget package-all
 .PHONY: publish-github publish-homebrew publish-winget publish-choco publish-linux publish-all
+.PHONY: push-winget
 .PHONY: upload-release-assets cleanup-release-assets validate-release-assets validate-linux-packages
 .PHONY: require-gh
 
@@ -237,10 +238,27 @@ publish-github:
 	@$(MAKE) require-gh
 	@$(MAKE) -B $(CHECKSUMS_FILE) BUILD_REF="$(TAG)"
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
-	@echo "→ Ensuring GitHub release $(TAG) exists..."
-	@if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
-		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes "Local build artifacts"; \
-	fi
+	@echo "→ Ensuring GitHub release $(TAG) exists with changelog executive summary..."
+	@notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
+	awk -v version="$(RELEASE_VERSION)" ' \
+		BEGIN { section_header = "## [" version "] - " } \
+		index($$0, section_header) == 1 { in_version=1; next } \
+		in_version && index($$0, "## [") == 1 { in_version=0 } \
+		in_version && /^### TL;DR/ { in_tldr=1; next } \
+		in_tldr && /^### / { in_tldr=0 } \
+		in_tldr { print } \
+	' CHANGELOG.md > "$$notes_file"; \
+	if [ ! -s "$$notes_file" ]; then \
+		echo "Missing TL;DR in CHANGELOG.md for version $(RELEASE_VERSION)."; \
+		rm -f "$$notes_file"; \
+		exit 1; \
+	fi; \
+	if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
+		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
+	else \
+		gh release edit "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
+	fi; \
+	rm -f "$$notes_file"
 	@$(MAKE) cleanup-release-assets RELEASE_TAG="$(TAG)"
 	@$(MAKE) upload-release-assets RELEASE_TAG="$(TAG)" RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "Done. GitHub release $(TAG) now hosts locally-built artifacts."
@@ -274,6 +292,15 @@ publish-winget: publish-github
 	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.yaml; \
 	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak
 	@echo "Done. Updated Winget manifest for $(TAG)."
+
+## push-winget: submit the current version to the winget community repository via wingetcreate
+push-winget:
+	wingetcreate update \
+		--version $(RELEASE_VERSION) \
+		--urls https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip \
+		--submit \
+		NovaeMX.gitflow-helper
+	@echo "Winget submission done for $(TAG)."
 
 ## publish-choco: upload artifacts first, then update Chocolatey metadata to point at the current GitHub release artifact and checksum
 publish-choco: publish-github

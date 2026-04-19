@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>gitflow-helper</id>
-    <version>0.5.39</version>
+    <version>0.5.40</version>
     <title>Gitflow Helper</title>
     <authors>Luis Lozano</authors>
     <owners>novaemx</owners>
