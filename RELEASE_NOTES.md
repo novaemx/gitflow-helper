@@ -1,14 +1,14 @@
-# Release 0.5.32
+# Release 0.5.33
 
-**Date:** 2026-04-16
+**Date:** 2026-04-19
 
 ## What's New
 
-- Merge feature 'fix-health-overlay-ui' into develop
+- Merge feature 'activity-sort-semver-makefile-fix' into develop
+- Activity sort, semver rules, goreleaser tag fix
 
 ## Bug Fixes
 
 - Merge bugfix 'fix-overlay-ux' into develop
 - Restore background, snap-close overlay, show action in status bar
-- Eliminate overlay ghost-box artifacts
 

@@ -136,3 +136,14 @@ git checkout feature/<slug>
 ```
 
 Report the violation to the user immediately.
+
+## Conventional Commits — Semantic Versioning
+
+Always write commit messages in Conventional Commits format:
+```
+<type>(<scope>): <subject>
+```
+
+Types: `feat` (MINOR), `fix`/`perf` (PATCH), `feat!`/`fix!` (MAJOR), `chore`/`docs`/`refactor`/`test`/`ci`/`style` (no bump).
+Breaking change: append `!` or add `BREAKING CHANGE:` footer.
+Subject: imperative mood, no period, ≤72 chars.
