@@ -626,6 +626,42 @@ func TestRenderBase_ActivityTransitionFitsViewportWithoutArtifacts(t *testing.T)
 	if !strings.Contains(stripANSI(rows[len(rows)-1]), "[a] expand") {
 		t.Fatalf("expected status bar to remain visible, got %q", stripANSI(rows[len(rows)-1]))
 	}
+	if !strings.Contains(stripANSI(rows[len(rows)-2]), "╰") {
+		t.Fatalf("expected medium panel bottom border before status bar, got %q", stripANSI(rows[len(rows)-2]))
+	}
+}
+
+func TestRenderBase_MediumActivityDoesNotWrapAwayBottomBorder(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:       s,
+		mode:          viewDashboard,
+		activityPanel: activityNormal,
+		activityAnim:  float64(activityNormal),
+		width:         110,
+		height:        24,
+		mcpActivity: []mcpserver.ActivityEntry{{
+			Tool:      "Finish feature 'activity-overlay-skill-commit' gitflow finish",
+			Args:      "gitflow finish --json --with-a-very-long-argument-to-force-panel-truncation",
+			Result:    "ok",
+			Source:    "cli",
+			Timestamp: "2026-04-19T20:36:00Z",
+		}},
+	}
+	m.gf = &gitflow.Logic{
+		Config:     config.FlowConfig{ProjectRoot: t.TempDir(), IntegrationMode: config.IntegrationModeLocalMerge},
+		AppVersion: "0.5.34",
+		State:      state.RepoState{Current: "develop", Version: "0.5.34"},
+	}
+	m.dashLines = []dashLine{{text: "dashboard", style: "ok"}}
+	m.actions = []action{{Tag: "push", Label: "Push current branch", Recommended: true}}
+
+	rendered := m.renderBase()
+	rows := strings.Split(rendered, "\n")
+	if !strings.Contains(stripANSI(rows[len(rows)-2]), "╰") {
+		t.Fatalf("expected panel bottom border to remain visible, got %q", stripANSI(rows[len(rows)-2]))
+	}
 }
 
 func TestOutputOverlayClose_SnapsReturnsDashboard(t *testing.T) {

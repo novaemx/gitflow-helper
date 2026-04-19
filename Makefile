@@ -17,6 +17,7 @@ COVER_DIR := test
 .PHONY: release-local release-local-github
 .PHONY: package-homebrew package-choco package-winget package-all
 .PHONY: publish-github publish-homebrew publish-winget publish-choco publish-all
+.PHONY: require-gh
 
 # ── OS/arch detection ────────────────────────────────────────
 UNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -135,13 +136,18 @@ $(CHECKSUMS_FILE):
 		goreleaser release --clean --skip=publish; \
 	else \
 		_build_tag=$$(git describe --tags --abbrev=0 2>/dev/null); \
-		_orig_branch=$$(git rev-parse --abbrev-ref HEAD); \
-		echo "→ HEAD is not tagged. Checking out $$_build_tag to build artifacts..."; \
-		git -c advice.detachedHead=false checkout "$$_build_tag"; \
-		goreleaser release --clean --skip=publish; \
+		[ -n "$$_build_tag" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+		_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+		echo "→ HEAD is not tagged. Building from temporary worktree at $$_build_tag..."; \
+		git worktree add --detach "$$_worktree" "$$_build_tag" >/dev/null; \
+		( cd "$$_worktree" && goreleaser release --clean --skip=publish ); \
 		_exit=$$?; \
-		echo "→ Returning to $$_orig_branch..."; \
-		git checkout "$$_orig_branch" --quiet; \
+		if [ $$_exit -eq 0 ]; then \
+			rm -rf "$(DIST)"; \
+			cp -R "$$_worktree/$(DIST)" "$(DIST)"; \
+		fi; \
+		git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
+		rm -rf "$$_worktree"; \
 		exit $$_exit; \
 	fi
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Expected $(CHECKSUMS_FILE) was not generated" && exit 1)
@@ -150,10 +156,14 @@ $(CHECKSUMS_FILE):
 ## release-local: build release artifacts locally only (no GitHub Actions)
 release-local: $(CHECKSUMS_FILE)
 
+require-gh:
+	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
+
 ## release-local-github: build locally and upload artifacts to the latest GitHub release tag
 ## Usage: make release-local-github
-release-local-github: $(CHECKSUMS_FILE)
-	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
+release-local-github:
+	@$(MAKE) require-gh
+	@$(MAKE) $(CHECKSUMS_FILE)
 	@echo "→ Uploading artifacts from $(DIST)/ to release $(LATEST_TAG)..."
 	@for f in $(DIST)/*; do \
 		gh release upload "$(LATEST_TAG)" "$$f" --repo "$(GITHUB_REPO)" --clobber; \
@@ -162,9 +172,10 @@ release-local-github: $(CHECKSUMS_FILE)
 
 ## publish-github: create/update GitHub Release and upload locally-built artifacts
 ## Usage: make publish-github TAG=v0.5.12
-publish-github: $(CHECKSUMS_FILE)
+publish-github:
 	@test -n "$(TAG)" || (echo "TAG is required. Example: make publish-github TAG=v0.5.12" && exit 1)
-	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
+	@$(MAKE) require-gh
+	@$(MAKE) $(CHECKSUMS_FILE)
 	@echo "→ Ensuring GitHub release $(TAG) exists..."
 	@if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
 		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes "Local build artifacts"; \
@@ -218,7 +229,7 @@ publish-choco: publish-github
 	@echo "Done. Updated Chocolatey package metadata for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
-publish-all: publish-homebrew publish-winget publish-choco
+publish-all: require-gh publish-homebrew publish-winget publish-choco
 	@echo "All publish targets completed for $(TAG)."
 
 ## release-snapshot: test goreleaser locally without publishing

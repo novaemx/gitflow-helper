@@ -233,6 +233,20 @@ func statPart(path string) string {
 	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
 }
 
+func truncateRunes(text string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= maxWidth {
+		return text
+	}
+	if maxWidth <= 3 {
+		return string(runes[:maxWidth])
+	}
+	return string(runes[:maxWidth-3]) + "..."
+}
+
 func repoFingerprint(root string) string {
 	gitDir := resolveGitDir(root)
 	if gitDir == "" {
@@ -985,7 +999,7 @@ func (m model) renderActivityPanel(width, height int) string {
 			lineWidth = 8
 		}
 		if lipgloss.Width(plainLine) > lineWidth {
-			plainLine = lipgloss.NewStyle().MaxWidth(lineWidth).Render(plainLine)
+			plainLine = truncateRunes(plainLine, lineWidth)
 		}
 
 		parts := strings.SplitN(plainLine, " ", 3)
