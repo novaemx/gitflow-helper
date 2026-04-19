@@ -124,6 +124,41 @@ gitflow --json pull
 gitflow --json finish
 ```
 
+## Post-finish invariant stabilization (required)
+
+After finishing a `release/*` or `hotfix/*`, immediately verify and stabilize the invariant before ending the task:
+
+```bash
+gitflow --json status
+```
+
+Decision rules:
+
+1. if `main_ahead_of_develop > 0` -> run `gitflow --json backmerge` immediately
+2. re-run `gitflow --json status` and confirm `main_ahead_of_develop == 0`
+3. if `develop_ahead_of_main > 0` with `main_only_files=[]` and `develop_only_files=[]`, treat it as merge-metadata divergence (non-semantic)
+4. do not report metadata-only divergence as a release blocker once step 2 passes
+
+Release push policy after finish:
+
+1. push protected branches and current release tag explicitly
+2. use narrow pushes, not blanket historical tag pushes
+
+Recommended commands:
+
+```bash
+git push origin main develop
+git push origin vX.Y.Z
+```
+
+Avoid this in release finish flows:
+
+```bash
+git push --tags
+```
+
+Reason: broad tag pushes can fail on old refs/policies and create noisy partial failures unrelated to the current release.
+
 ## Release finish changelog policy (required)
 
 When finishing a `release/*` branch, `CHANGELOG.md` must be updated before `gitflow --json finish`.
