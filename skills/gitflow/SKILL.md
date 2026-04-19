@@ -140,6 +140,16 @@ Examples:
 - `fix(commands): handle empty merge_head in status`
 - `docs(skill): clarify conflict escalation path`
 
+## Post-validation commit flow (required)
+
+When the agent modifies tracked files and all requested or relevant tests pass:
+
+1. stage the changed files with `git add`
+2. inspect the staged diff and derive a Conventional Commit message from the real scope of the changes
+3. create the commit on the active flow branch before ending the task
+4. do not leave tested source changes uncommitted unless the user explicitly asks for that outcome
+5. if tests fail, fix them or report the blocker instead of creating a partial success commit
+
 ## Remote sync with origin (required)
 
 Agents must keep local and remote history aligned:

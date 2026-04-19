@@ -27,6 +27,9 @@ func TestEnsureEmbeddedSkill_ProjectScopedIDE(t *testing.T) {
 	if !strings.Contains(string(data), "name: gitflow") {
 		t.Fatal("expected embedded skill frontmatter")
 	}
+	if !strings.Contains(string(data), "Post-validation commit flow") {
+		t.Fatal("expected embedded skill post-validation commit guidance")
+	}
 
 	path2, err := ensureEmbeddedSkill(dir, IDECursor)
 	if err != nil {

@@ -694,7 +694,7 @@ func (m model) renderBase() string {
 	} else {
 		normalW = 27
 	}
-	fullW := m.width - 2
+	fullW := m.width
 	if fullW < 24 {
 		fullW = 24
 	}
@@ -720,7 +720,7 @@ func (m model) renderBase() string {
 	}
 
 	if rightW >= m.width-3 {
-		panel := m.renderActivityPanel(rightW, contentHeight)
+		panel := m.renderActivityPanel(m.width, contentHeight)
 		sections = append(sections, panel)
 		sections = append(sections, m.renderStatusBar())
 		return strings.Join(sections, "\n")
@@ -769,7 +769,11 @@ func (m model) renderBase() string {
 		return strings.Join(sections, "\n")
 	}
 
-	rightPanel := m.renderActivityPanel(rightW, contentHeight)
+	rightPanelWidth := rightW
+	if rightPanelWidth > 0 {
+		rightPanelWidth--
+	}
+	rightPanel := m.renderActivityPanel(rightPanelWidth, contentHeight)
 	rightLines := strings.Split(rightPanel, "\n")
 	if len(rightLines) > contentHeight {
 		rightLines = rightLines[:contentHeight]
@@ -915,6 +919,14 @@ func (m model) renderActivityPanel(width, height int) string {
 	if height < 5 {
 		height = 5
 	}
+	boxWidth := width - 2
+	if boxWidth < 22 {
+		boxWidth = 22
+	}
+	innerHeight := height - 2
+	if innerHeight < 3 {
+		innerHeight = 3
+	}
 
 	var lines []string
 	lines = append(lines, boldStyle.Render("Agent Activity"))
@@ -999,8 +1011,8 @@ func (m model) renderActivityPanel(width, height int) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("8")).
 		Padding(0, 1).
-		Width(width).
-		Height(height - 2)
+		Width(boxWidth).
+		Height(innerHeight)
 
 	return panel.Render(strings.Join(lines, "\n"))
 }

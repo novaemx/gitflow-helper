@@ -14,6 +14,7 @@ import (
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
+	"github.com/novaemx/gitflow-helper/internal/state"
 )
 
 func TestResolveGitDir_DirectoryDotGit(t *testing.T) {
@@ -535,6 +536,95 @@ func TestActivityPanel_AnimatesVisiblyOnNarrowTerminal(t *testing.T) {
 	// If normalW was 0, rightW would be 0 and the panel would be invisible.
 	if !strings.Contains(base, "Agent Activity") {
 		t.Fatal("activity panel not visible at width=80 with anim=0.5; normalW is likely 0")
+	}
+}
+
+func TestRenderBase_ExpandedActivityPreservesChrome(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:       s,
+		mode:          viewDashboard,
+		activityPanel: activityExpanded,
+		activityAnim:  float64(activityExpanded),
+		width:         100,
+		height:        24,
+		mcpActivity: []mcpserver.ActivityEntry{{
+			Tool:      "interactive-tui",
+			Args:      "gitflow status",
+			Result:    "ok",
+			Source:    "cli",
+			Timestamp: "2026-04-19T20:21:00Z",
+		}},
+	}
+	m.gf = &gitflow.Logic{
+		Config:     config.FlowConfig{ProjectRoot: t.TempDir(), IntegrationMode: config.IntegrationModeLocalMerge},
+		AppVersion: "0.5.34",
+		State:      state.RepoState{Current: "feature/activity-overlay", Version: "0.5.34"},
+	}
+
+	rendered := m.renderBase()
+	rows := strings.Split(rendered, "\n")
+	if len(rows) != m.height {
+		t.Fatalf("expected %d rows, got %d", m.height, len(rows))
+	}
+	if !strings.Contains(stripANSI(rows[0]), "gitflow v0.5.34") {
+		t.Fatalf("expected title bar in first row, got %q", stripANSI(rows[0]))
+	}
+	if !strings.Contains(stripANSI(rows[len(rows)-1]), "[a] smaller") {
+		t.Fatalf("expected status bar in last row, got %q", stripANSI(rows[len(rows)-1]))
+	}
+	if !strings.Contains(stripANSI(rendered), "Agent Activity") {
+		t.Fatalf("expected expanded activity panel in render, got %q", stripANSI(rendered))
+	}
+	for i, row := range rows {
+		if got := lipgloss.Width(row); got != m.width {
+			t.Fatalf("expected row %d width %d, got %d", i, m.width, got)
+		}
+	}
+}
+
+func TestRenderBase_ActivityTransitionFitsViewportWithoutArtifacts(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:       s,
+		mode:          viewDashboard,
+		activityPanel: activityNormal,
+		activityAnim:  1.4,
+		width:         110,
+		height:        24,
+		mcpActivity: []mcpserver.ActivityEntry{{
+			Tool:      "interactive-tui",
+			Args:      "gitflow finish",
+			Result:    "started",
+			Source:    "cli",
+			Timestamp: "2026-04-19T20:18:00Z",
+		}},
+	}
+	m.gf = &gitflow.Logic{
+		Config:     config.FlowConfig{ProjectRoot: t.TempDir(), IntegrationMode: config.IntegrationModeLocalMerge},
+		AppVersion: "0.5.34",
+		State:      state.RepoState{Current: "feature/activity-overlay", Version: "0.5.34"},
+	}
+	m.dashLines = []dashLine{{text: "dashboard", style: "ok"}}
+	m.actions = []action{{Tag: "finish", Label: "Finish feature", Recommended: true}}
+
+	rendered := m.renderBase()
+	rows := strings.Split(rendered, "\n")
+	if len(rows) != m.height {
+		t.Fatalf("expected %d rows, got %d", m.height, len(rows))
+	}
+	for i, row := range rows {
+		if got := lipgloss.Width(row); got != m.width {
+			t.Fatalf("expected row %d width %d, got %d", i, m.width, got)
+		}
+	}
+	if !strings.Contains(stripANSI(rows[0]), "gitflow v0.5.34") {
+		t.Fatalf("expected title bar to remain visible, got %q", stripANSI(rows[0]))
+	}
+	if !strings.Contains(stripANSI(rows[len(rows)-1]), "[a] expand") {
+		t.Fatalf("expected status bar to remain visible, got %q", stripANSI(rows[len(rows)-1]))
 	}
 }
 
