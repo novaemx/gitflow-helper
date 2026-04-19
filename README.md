@@ -199,11 +199,12 @@ make universal    # create macOS universal binary with lipo
 make test         # run tests
 make vet          # run go vet
 make release-local                    # build release artifacts locally (no publish)
+make release-local-github             # upload local artifacts to the latest existing GitHub release tag
 make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts
-make publish-homebrew TAG=v0.5.12     # update Homebrew formula checksums/URLs
-make publish-winget TAG=v0.5.12       # update Winget manifest checksum/URL
-make publish-choco TAG=v0.5.12        # update Chocolatey metadata checksum/URL
-make publish-all TAG=v0.5.12          # do all of the above in one command
+make publish-homebrew TAG=v0.5.12     # upload release artifacts, then update Homebrew formula
+make publish-winget TAG=v0.5.12       # upload release artifacts, then update Winget manifest
+make publish-choco TAG=v0.5.12        # upload release artifacts, then update Chocolatey metadata
+make publish-all TAG=v0.5.12          # upload once and update all package manifests
 make install      # install to GOPATH/bin
 ```
 
@@ -238,10 +239,14 @@ This repository does not use GitHub Actions to compile binaries.
 ### Publish Flow (No Cloud Build)
 
 ```bash
+# Upload local artifacts to the latest existing release tag
+make release-local-github
+
 # Create/update the GitHub release and upload locally-built binaries
 make publish-github TAG=v0.5.12
 
-# Refresh package manifests to point at that GitHub release
+# Refresh package manifests to point at that GitHub release.
+# Each target now depends on publish-github, so artifacts are uploaded first.
 make publish-homebrew TAG=v0.5.12
 make publish-winget TAG=v0.5.12
 make publish-choco TAG=v0.5.12

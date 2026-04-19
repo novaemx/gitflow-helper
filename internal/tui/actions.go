@@ -216,7 +216,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	switch btype {
 	case "feature":
 		name := strings.TrimPrefix(s.Current, "feature/")
-		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
+		canFinish := !s.Dirty
 		label := fmt.Sprintf("Finish feature '%s'", name)
 		if prMode {
 			label = fmt.Sprintf("Prepare PR for feature '%s'", name)
@@ -234,13 +234,13 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 		high = append(high, action{
 			Label: label, Tag: "finish",
-			Recommended: hasWork, Command: "gitflow finish",
+			Recommended: canFinish, Command: "gitflow finish",
 		})
 		high = append(high, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
 
 	case "bugfix":
 		name := strings.TrimPrefix(s.Current, "bugfix/")
-		hasWork := curFlow != nil && curFlow.CommitsAhead > 0 && !s.Dirty
+		canFinish := !s.Dirty
 		label := fmt.Sprintf("Finish bugfix '%s'", name)
 		if prMode {
 			label = fmt.Sprintf("Prepare PR for bugfix '%s'", name)
@@ -258,7 +258,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 		high = append(high, action{
 			Label: label, Tag: "finish",
-			Recommended: hasWork, Command: "gitflow finish",
+			Recommended: canFinish, Command: "gitflow finish",
 		})
 		high = append(high, action{Label: fmt.Sprintf("Sync with %s", cfg.DevelopBranch), Tag: "sync", Command: "gitflow sync"})
 

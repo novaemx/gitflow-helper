@@ -281,3 +281,45 @@ func TestBuildActions_PRModeUsesPreparePRLabel(t *testing.T) {
 		t.Fatalf("expected command to remain gitflow finish in PR mode, got %q", actions[idx].Command)
 	}
 }
+
+func TestBuildActions_RecommendsFinishForCleanFeatureWithoutAheadCommits(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            "feature/clean-branch",
+		HasDefaultRemote:   true,
+		GitFlowInitialized: true,
+		Dirty:              false,
+		Features:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	finish, ok := actionByTag(actions, "finish")
+	if !ok {
+		t.Fatal("expected finish action for current feature branch")
+	}
+	if !finish.Recommended {
+		t.Fatal("expected finish to be recommended for a clean feature branch")
+	}
+}
+
+func TestBuildActions_RecommendsFinishForCleanBugfixWithoutAheadCommits(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            "bugfix/clean-branch",
+		HasDefaultRemote:   true,
+		GitFlowInitialized: true,
+		Dirty:              false,
+		Bugfixes:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	finish, ok := actionByTag(actions, "finish")
+	if !ok {
+		t.Fatal("expected finish action for current bugfix branch")
+	}
+	if !finish.Recommended {
+		t.Fatal("expected finish to be recommended for a clean bugfix branch")
+	}
+}

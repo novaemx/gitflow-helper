@@ -5,6 +5,7 @@ LDFLAGS  := -s -w -X main.version=$(VERSION)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'
 DIST     := dist
 TAG      ?= v$(VERSION)
+LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
 LINUX_ARCHIVE   := $(DIST)/$(BINARY)-$(VERSION)-linux-amd64.tar.gz
@@ -149,16 +150,15 @@ $(CHECKSUMS_FILE):
 ## release-local: build release artifacts locally only (no GitHub Actions)
 release-local: $(CHECKSUMS_FILE)
 
-## release-local-github: build locally and upload artifacts to existing GitHub release tag
-## Usage: make release-local-github TAG=v0.5.12
+## release-local-github: build locally and upload artifacts to the latest GitHub release tag
+## Usage: make release-local-github
 release-local-github: $(CHECKSUMS_FILE)
-	@test -n "$(TAG)" || (echo "TAG is required. Example: make release-local-github TAG=v0.5.12" && exit 1)
 	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
-	@echo "→ Uploading artifacts from $(DIST)/ to release $(TAG)..."
+	@echo "→ Uploading artifacts from $(DIST)/ to release $(LATEST_TAG)..."
 	@for f in $(DIST)/*; do \
-		gh release upload "$(TAG)" "$$f" --clobber; \
+		gh release upload "$(LATEST_TAG)" "$$f" --repo "$(GITHUB_REPO)" --clobber; \
 	done
-	@echo "Done. Local-built artifacts uploaded to GitHub release $(TAG)."
+	@echo "Done. Local-built artifacts uploaded to GitHub release $(LATEST_TAG)."
 
 ## publish-github: create/update GitHub Release and upload locally-built artifacts
 ## Usage: make publish-github TAG=v0.5.12
@@ -175,8 +175,8 @@ publish-github: $(CHECKSUMS_FILE)
 	done
 	@echo "Done. GitHub release $(TAG) now hosts locally-built artifacts."
 
-## publish-homebrew: update local Homebrew formula to point at current GitHub release artifacts
-publish-homebrew: $(CHECKSUMS_FILE)
+## publish-homebrew: upload artifacts first, then update local Homebrew formula to point at the current GitHub release
+publish-homebrew: publish-github
 	@darwin_sha=$$(awk '/gitflow-$(VERSION)-darwin-universal.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
 	linux_sha=$$(awk '/gitflow-$(VERSION)-linux-amd64.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
@@ -196,8 +196,8 @@ publish-homebrew: $(CHECKSUMS_FILE)
 	mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb
 	@echo "Done. Updated packaging/homebrew/gitflow-helper.rb for $(TAG)."
 
-## publish-winget: update local Winget manifest to point at current GitHub release artifact and checksum
-publish-winget: $(CHECKSUMS_FILE)
+## publish-winget: upload artifacts first, then update local Winget manifest to point at the current GitHub release artifact and checksum
+publish-winget: publish-github
 	@windows_sha=$$(awk '/gitflow-$(VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \
@@ -206,8 +206,8 @@ publish-winget: $(CHECKSUMS_FILE)
 	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak
 	@echo "Done. Updated Winget manifest for $(TAG)."
 
-## publish-choco: update Chocolatey metadata to point at current GitHub release artifact and checksum
-publish-choco: $(CHECKSUMS_FILE)
+## publish-choco: upload artifacts first, then update Chocolatey metadata to point at the current GitHub release artifact and checksum
+publish-choco: publish-github
 	@windows_sha=$$(awk '/gitflow-$(VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
 	sed -i.bak 's|<version>.*</version>|<version>$(VERSION)</version>|' packaging/chocolatey/gitflow-helper.nuspec; \
@@ -218,7 +218,7 @@ publish-choco: $(CHECKSUMS_FILE)
 	@echo "Done. Updated Chocolatey package metadata for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
-publish-all: publish-github publish-homebrew publish-winget publish-choco
+publish-all: publish-homebrew publish-winget publish-choco
 	@echo "All publish targets completed for $(TAG)."
 
 ## release-snapshot: test goreleaser locally without publishing
