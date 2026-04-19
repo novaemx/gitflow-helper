@@ -124,6 +124,49 @@ gitflow --json pull
 gitflow --json finish
 ```
 
+## Release finish changelog policy (required)
+
+When finishing a `release/*` branch, `CHANGELOG.md` must be updated before `gitflow --json finish`.
+
+Use Keep a Changelog 1.1.0 format and ordering:
+
+- reference: https://keepachangelog.com/en/1.1.0/
+- keep `## [Unreleased]` at the top
+- insert the new version section immediately below `## [Unreleased]`
+- version header format: `## [x.y.z] - YYYY-MM-DD`
+
+Required section layout for each release entry:
+
+1. high-level executive summary (`TL;DR`) with a short paragraph for non-technical stakeholders
+2. detailed change sections below the summary using Keep a Changelog categories as needed:
+    - `### Added`
+    - `### Changed`
+    - `### Fixed`
+    - `### Removed`
+    - `### Security`
+
+How to derive changelog content (no guesswork):
+
+1. identify previous tag and new release version/tag
+2. collect git differences from previous tag to release HEAD (commits, touched areas, notable behavior changes)
+3. group changes by user impact and category
+4. write concise bullets in plain English (what changed and why it matters)
+5. include only validated changes present in git history/diff
+
+Minimum quality bar:
+
+- no empty sections
+- no placeholder text
+- no raw commit dump without curation
+- summary and details must be consistent with actual git diff
+
+Release finish sequence must include:
+
+1. update `CHANGELOG.md` from git diff
+2. commit changelog on release branch
+3. run `gitflow --json finish`
+
+
 ## Guardrails
 
 - **no direct commits to `main` or `develop` — zero exceptions, no edge cases**

@@ -4,23 +4,23 @@
 class GitflowHelper < Formula
   desc "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
   homepage "https://github.com/novaemx/gitflow-helper"
-  version "0.1.0"
+  version "0.5.34"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v#{version}/gitflow-#{version}-darwin-universal.tar.gz"
-      sha256 "PLACEHOLDER_SHA256_DARWIN"
+      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.34/gitflow-0.5.34-darwin-universal.tar.gz"
+      sha256 "61dade8360e57a349ee937b354dabad3fd165f0d087c2d886c46d665b64dcbf2"
     else
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v#{version}/gitflow-#{version}-darwin-universal.tar.gz"
-      sha256 "PLACEHOLDER_SHA256_DARWIN"
+      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.34/gitflow-0.5.34-darwin-universal.tar.gz"
+      sha256 "61dade8360e57a349ee937b354dabad3fd165f0d087c2d886c46d665b64dcbf2"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v#{version}/gitflow-#{version}-linux-amd64.tar.gz"
-      sha256 "PLACEHOLDER_SHA256_LINUX"
+      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.34/gitflow-0.5.34-linux-amd64.tar.gz"
+      sha256 "c7fa6befaf79698c20822f7e20f5da092e3e057303a9a9653d6a06d7da6e6313"
     end
   end
 

@@ -17,6 +17,7 @@ COVER_DIR := test
 .PHONY: release-local release-local-github
 .PHONY: package-homebrew package-choco package-winget package-all
 .PHONY: publish-github publish-homebrew publish-winget publish-choco publish-all
+.PHONY: upload-release-assets
 .PHONY: require-gh
 
 # ── OS/arch detection ────────────────────────────────────────
@@ -159,15 +160,25 @@ release-local: $(CHECKSUMS_FILE)
 require-gh:
 	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
 
+upload-release-assets:
+	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
+	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@echo "→ Uploading release assets from $(CHECKSUMS_FILE) to $(RELEASE_TAG)..."
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | while read -r asset; do \
+		[ -n "$$asset" ] || continue; \
+		file="$(DIST)/$$asset"; \
+		[ -f "$$file" ] || { echo "Missing artifact: $$file"; exit 1; }; \
+		gh release upload "$(RELEASE_TAG)" "$$file" --repo "$(GITHUB_REPO)" --clobber; \
+	done
+	@gh release upload "$(RELEASE_TAG)" "$(CHECKSUMS_FILE)" --repo "$(GITHUB_REPO)" --clobber
+	@echo "Done. Uploaded archives + checksums to $(RELEASE_TAG)."
+
 ## release-local-github: build locally and upload artifacts to the latest GitHub release tag
 ## Usage: make release-local-github
 release-local-github:
 	@$(MAKE) require-gh
 	@$(MAKE) $(CHECKSUMS_FILE)
-	@echo "→ Uploading artifacts from $(DIST)/ to release $(LATEST_TAG)..."
-	@for f in $(DIST)/*; do \
-		gh release upload "$(LATEST_TAG)" "$$f" --repo "$(GITHUB_REPO)" --clobber; \
-	done
+	@$(MAKE) upload-release-assets RELEASE_TAG="$(LATEST_TAG)"
 	@echo "Done. Local-built artifacts uploaded to GitHub release $(LATEST_TAG)."
 
 ## publish-github: create/update GitHub Release and upload locally-built artifacts
@@ -180,10 +191,7 @@ publish-github:
 	@if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
 		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes "Local build artifacts"; \
 	fi
-	@echo "→ Uploading local artifacts to GitHub release $(TAG)..."
-	@for f in $(DIST)/*; do \
-		gh release upload "$(TAG)" "$$f" --repo "$(GITHUB_REPO)" --clobber; \
-	done
+	@$(MAKE) upload-release-assets RELEASE_TAG="$(TAG)"
 	@echo "Done. GitHub release $(TAG) now hosts locally-built artifacts."
 
 ## publish-homebrew: upload artifacts first, then update local Homebrew formula to point at the current GitHub release
@@ -193,14 +201,17 @@ publish-homebrew: publish-github
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
 	[ -n "$$linux_sha" ] || { echo "Missing linux checksum"; exit 1; }; \
 	awk -v version="$(VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" -v linux_sha="$$linux_sha" ' \
-		BEGIN { sha_count = 0 } \
+		BEGIN { target_sha = "" } \
 		/^[[:space:]]*version "/ { sub(/version ".*"/, "version \"" version "\"") } \
 		/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/, "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") } \
 		/releases\/download\/v[^\/]*\/gitflow-[^"]*-linux-amd64.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-linux-amd64.tar.gz/, "releases/download/" tag "/gitflow-" version "-linux-amd64.tar.gz") } \
+		/gitflow-[^"]*-darwin-universal.tar.gz/ { target_sha = darwin_sha } \
+		/gitflow-[^"]*-linux-amd64.tar.gz/ { target_sha = linux_sha } \
 		/^[[:space:]]*sha256 "/ { \
-			sha_count++; \
-			if (sha_count == 1) { sub(/sha256 ".*"/, "sha256 \"" darwin_sha "\"") } \
-			else if (sha_count == 2) { sub(/sha256 ".*"/, "sha256 \"" linux_sha "\"") } \
+			if (target_sha != "") { \
+				sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); \
+				target_sha = ""; \
+			} \
 		} \
 		{ print } \
 	' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
