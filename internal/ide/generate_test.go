@@ -425,3 +425,112 @@ func TestClaudeCodeAppendToExisting(t *testing.T) {
 		t.Error("expected gitflow section appended")
 	}
 }
+
+func TestGenerateSemverCursorRule(t *testing.T) {
+	dir := t.TempDir()
+
+	path, err := generateSemverCursorRule(dir)
+	if err != nil {
+		t.Fatalf("generateSemverCursorRule: %v", err)
+	}
+	expected := filepath.Join(dir, ".cursor", "rules", "semver.mdc")
+	if path != expected {
+		t.Errorf("expected path %s, got %s", expected, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "alwaysApply: true") {
+		t.Error("expected frontmatter with alwaysApply")
+	}
+	if !strings.Contains(content, "feat") || !strings.Contains(content, "BREAKING CHANGE") {
+		t.Error("expected conventional commits content")
+	}
+}
+
+func TestSemverCursorRuleIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	if semverCursorRuleExists(dir) {
+		t.Error("expected false before generation")
+	}
+	_, _ = generateSemverCursorRule(dir)
+	if !semverCursorRuleExists(dir) {
+		t.Error("expected true after generation")
+	}
+}
+
+func TestGenerateSemverCopilotSection(t *testing.T) {
+	dir := t.TempDir()
+
+	path, err := generateSemverCopilotSection(dir)
+	if err != nil {
+		t.Fatalf("generateSemverCopilotSection: %v", err)
+	}
+	if path == "" {
+		t.Fatal("expected non-empty path")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, semverCopilotMarker) {
+		t.Error("expected semver section marker in copilot instructions")
+	}
+	if !strings.Contains(content, "feat") {
+		t.Error("expected conventional commits content")
+	}
+}
+
+func TestSemverCopilotSectionIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	if semverCopilotSectionExists(dir) {
+		t.Error("expected false before generation")
+	}
+	_, _ = generateSemverCopilotSection(dir)
+	if !semverCopilotSectionExists(dir) {
+		t.Error("expected true after generation")
+	}
+	// Second call must not duplicate content
+	_, _ = generateSemverCopilotSection(dir)
+	data, _ := os.ReadFile(copilotPath(dir))
+	count := strings.Count(string(data), semverCopilotMarker)
+	if count != 1 {
+		t.Errorf("expected semver marker exactly once, found %d times", count)
+	}
+}
+
+func TestEnsureRulesForIDE_Cursor_HasSemver(t *testing.T) {
+	dir := t.TempDir()
+	_, err := EnsureRulesForIDE(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"})
+	if err != nil {
+		t.Fatalf("EnsureRulesForIDE: %v", err)
+	}
+	if !semverCursorRuleExists(dir) {
+		t.Error("expected .cursor/rules/semver.mdc to be created for Cursor")
+	}
+}
+
+func TestEnsureRulesForIDE_VSCode_HasSemver(t *testing.T) {
+	dir := t.TempDir()
+	_, err := EnsureRulesForIDE(dir, DetectedIDE{ID: IDEVSCode, DisplayName: "VS Code"})
+	if err != nil {
+		t.Fatalf("EnsureRulesForIDE: %v", err)
+	}
+	if !semverCopilotSectionExists(dir) {
+		t.Error("expected semver section in copilot-instructions.md for VSCode")
+	}
+}
+
+func TestEnsureRulesForIDE_Copilot_HasSemver(t *testing.T) {
+	dir := t.TempDir()
+	_, err := EnsureRulesForIDE(dir, DetectedIDE{ID: IDECopilot, DisplayName: "VS Code + Copilot"})
+	if err != nil {
+		t.Fatalf("EnsureRulesForIDE: %v", err)
+	}
+	if !semverCopilotSectionExists(dir) {
+		t.Error("expected semver section in copilot-instructions.md for Copilot")
+	}
+}
