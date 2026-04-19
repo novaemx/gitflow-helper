@@ -4,8 +4,20 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"sort"
 	"time"
 )
+
+func activityTimestamp(entry ActivityEntry) (time.Time, bool) {
+	if entry.Timestamp == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, entry.Timestamp)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
 
 // ReadActivityLog reads the last N entries from the shared MCP activity log.
 func ReadActivityLog(projectRoot string, maxEntries int) []ActivityEntry {
@@ -25,8 +37,21 @@ func ReadActivityLog(projectRoot string, maxEntries int) []ActivityEntry {
 		}
 	}
 
-	if len(entries) > maxEntries {
-		entries = entries[len(entries)-maxEntries:]
+	sort.SliceStable(entries, func(i, j int) bool {
+		left, leftOK := activityTimestamp(entries[i])
+		right, rightOK := activityTimestamp(entries[j])
+		switch {
+		case leftOK && rightOK && !left.Equal(right):
+			return left.After(right)
+		case leftOK != rightOK:
+			return leftOK
+		default:
+			return i > j
+		}
+	})
+
+	if maxEntries > 0 && len(entries) > maxEntries {
+		entries = entries[:maxEntries]
 	}
 	return entries
 }

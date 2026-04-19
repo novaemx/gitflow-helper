@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -59,5 +60,29 @@ func TestRecord_ConcurrentWritesProduceValidJSONL(t *testing.T) {
 	entries := ReadActivityLog(root, total+10)
 	if len(entries) != total {
 		t.Fatalf("expected %d parsed entries, got %d", total, len(entries))
+	}
+}
+
+func TestReadActivityLog_ReturnsNewestFirst(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+
+	log := strings.Join([]string{
+		`{"tool":"first","timestamp":"2026-04-18T10:00:00Z","result":"ok"}`,
+		`{"tool":"second","timestamp":"2026-04-18T11:00:00Z","result":"ok"}`,
+		`{"tool":"third","timestamp":"2026-04-18T12:00:00Z","result":"ok"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(ActivityLogPath(root), []byte(log), 0644); err != nil {
+		t.Fatalf("write activity log: %v", err)
+	}
+
+	entries := ReadActivityLog(root, 2)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Tool != "third" || entries[1].Tool != "second" {
+		t.Fatalf("expected newest-first order, got %+v", entries)
 	}
 }
