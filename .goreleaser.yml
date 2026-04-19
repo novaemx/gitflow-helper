@@ -78,28 +78,32 @@ universal_binaries:
 
 archives:
   - id: linux
-    builds:
+    ids:
       - linux-amd64
     name_template: "{{ .ProjectName }}-{{ .Version }}-linux-amd64"
-    format: tar.gz
+    formats:
+      - tar.gz
 
   - id: linux-aarch64
-    builds:
+    ids:
       - linux-arm64
     name_template: "{{ .ProjectName }}-{{ .Version }}-linux-aarch64"
-    format: tar.gz
+    formats:
+      - tar.gz
 
   - id: windows
-    builds:
+    ids:
       - windows-amd64
     name_template: "{{ .ProjectName }}-{{ .Version }}-windows-amd64"
-    format: zip
+    formats:
+      - zip
 
   - id: darwin
-    builds:
+    ids:
       - darwin-universal
     name_template: "{{ .ProjectName }}-{{ .Version }}-darwin-universal"
-    format: tar.gz
+    formats:
+      - tar.gz
 
 checksum:
   name_template: "checksums.txt"
@@ -116,7 +120,7 @@ nfpms:
       - deb
       - rpm
       - archlinux
-    builds:
+    ids:
       - linux-amd64
       - linux-arm64
     bindir: /usr/bin
@@ -142,21 +146,18 @@ release:
   draft: false
   prerelease: auto
 
-brews:
+homebrew_casks:
   - name: gitflow-helper
+    ids:
+      - darwin
+    binaries:
+      - gitflow
     repository:
       owner: novaemx
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: "https://github.com/novaemx/gitflow-helper"
     description: "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
     license: "MIT"
-    dependencies:
-      - name: git
-    test: |
-      assert_match "gitflow", shell_output("#{bin}/gitflow --version")
-    install: |
-      bin.install "gitflow"
     # Only upload to homebrew if token is provided (typically in CI/CD)
     skip_upload: "true"
