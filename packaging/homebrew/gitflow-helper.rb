@@ -4,16 +4,16 @@
 class GitflowHelper < Formula
   desc "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
   homepage "https://github.com/novaemx/gitflow-helper"
-  version "0.5.35"
+  version "0.5.38"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.35/gitflow-0.5.35-darwin-universal.tar.gz"
-      sha256 "b7ea0b9ae5c5f598a3378e2a9621dbd9ba96ee582b26fbf3a1500b5d65a3cc6c"
+      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.38/gitflow-0.5.38-darwin-universal.tar.gz"
+      sha256 "42364615724999bd3c2b20495011956bc4a2fd15d193702dfbaf12a07db08c88"
     else
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.35/gitflow-0.5.35-darwin-universal.tar.gz"
-      sha256 "b7ea0b9ae5c5f598a3378e2a9621dbd9ba96ee582b26fbf3a1500b5d65a3cc6c"
+      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.38/gitflow-0.5.38-darwin-universal.tar.gz"
+      sha256 "42364615724999bd3c2b20495011956bc4a2fd15d193702dfbaf12a07db08c88"
     end
   end
 

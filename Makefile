@@ -10,6 +10,7 @@ LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERS
 GITHUB_REPO ?= novaemx/gitflow-helper
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
 LINUX_ARCHIVE   := $(DIST)/$(BINARY)-$(VERSION)-linux-amd64.tar.gz
+LINUX_ARM64_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-linux-aarch64.tar.gz
 DARWIN_ARCHIVE  := $(DIST)/$(BINARY)-$(VERSION)-darwin-universal.tar.gz
 CHECKSUMS_FILE  := $(DIST)/checksums.txt
 COVER_DIR := test
@@ -78,6 +79,8 @@ build-all: clean
 	@mkdir -p $(DIST)
 	@echo "→ Linux amd64"
 	GOOS=linux   GOARCH=amd64 $(BUILD) -o $(DIST)/$(BINARY)-linux-amd64       ./cmd/gitflow
+	@echo "→ Linux arm64 (aarch64)"
+	GOOS=linux   GOARCH=arm64 $(BUILD) -o $(DIST)/$(BINARY)-linux-aarch64      ./cmd/gitflow
 	@echo "→ Windows amd64"
 	GOOS=windows GOARCH=amd64 $(BUILD) -o $(DIST)/$(BINARY)-windows-amd64.exe ./cmd/gitflow
 	@echo "→ macOS amd64"
@@ -184,12 +187,16 @@ validate-release-assets:
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz$$' || { echo "Missing darwin checksum for $(RELEASE_VERSION)"; exit 1; }
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-windows-amd64.zip$$' || { echo "Missing windows checksum for $(RELEASE_VERSION)"; exit 1; }
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-linux-amd64.tar.gz$$' || { echo "Missing linux tarball checksum for $(RELEASE_VERSION)"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-linux-aarch64.tar.gz$$' || { echo "Missing linux aarch64 tarball checksum for $(RELEASE_VERSION)"; exit 1; }
 
 validate-linux-packages:
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '\\.deb$$' || { echo "Missing .deb package in checksums"; exit 1; }
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '\\.rpm$$' || { echo "Missing .rpm package in checksums"; exit 1; }
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '\\.pkg\\.tar\\.zst$$' || { echo "Missing Arch package (.pkg.tar.zst) in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_amd64\\.deb$$' || { echo "Missing amd64 .deb package in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_arm64\\.deb$$' || { echo "Missing arm64 .deb package in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_amd64\\.rpm$$' || { echo "Missing amd64 .rpm package in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_arm64\\.rpm$$' || { echo "Missing arm64 .rpm package in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_amd64\\.pkg\\.tar\\.zst$$' || { echo "Missing amd64 Arch package (.pkg.tar.zst) in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_arm64\\.pkg\\.tar\\.zst$$' || { echo "Missing arm64 Arch package (.pkg.tar.zst) in checksums"; exit 1; }
 
 cleanup-release-assets:
 	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
@@ -279,10 +286,10 @@ publish-choco: publish-github
 	rm -f packaging/chocolatey/gitflow-helper.nuspec.bak packaging/chocolatey/tools/chocolateyinstall.ps1.bak
 	@echo "Done. Updated Chocolatey package metadata for $(TAG)."
 
-## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst)
+## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
 publish-linux: publish-github
 	@$(MAKE) validate-linux-packages
-	@echo "Done. Linux package artifacts (.deb/.rpm/.pkg.tar.zst) are present for $(TAG)."
+	@echo "Done. Linux amd64+arm64 package artifacts (.deb/.rpm/.pkg.tar.zst) are present for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
 publish-all: require-gh publish-homebrew publish-winget publish-choco publish-linux
