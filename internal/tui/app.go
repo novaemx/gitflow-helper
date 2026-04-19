@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,6 +36,11 @@ const (
 	activityHidden   activityPanelState = 0
 	activityNormal   activityPanelState = 1
 	activityExpanded activityPanelState = 2
+)
+
+const (
+	activityPollInterval = 2 * time.Second
+	repoWatchInterval    = 2 * time.Second
 )
 
 type model struct {
@@ -79,7 +83,8 @@ type model struct {
 	outputClosing bool
 
 	// Git state watch
-	lastGitFingerprint string
+	lastGitFingerprint      string
+	lastActivityFingerprint string
 }
 
 type refreshMsg struct{}
@@ -234,7 +239,8 @@ func repoFingerprint(root string) string {
 		return ""
 	}
 
-	// Fast metadata-based signals for refs/index transitions.
+	// Keep the watcher cheap: rely on filesystem metadata that Git updates for
+	// refs, index, merge state, and reflogs instead of shelling out each tick.
 	parts := []string{fmt.Sprintf("gitdir:%s", gitDir)}
 	headPath := filepath.Join(gitDir, "HEAD")
 	headData, _ := os.ReadFile(headPath)
@@ -250,37 +256,52 @@ func repoFingerprint(root string) string {
 		}
 	}
 
-	metaFiles := []string{"index", "ORIG_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD", "REBASE_HEAD", "packed-refs", filepath.Join("logs", "HEAD")}
+	metaFiles := []string{
+		"index",
+		"ORIG_HEAD",
+		"MERGE_HEAD",
+		"CHERRY_PICK_HEAD",
+		"REBASE_HEAD",
+		"packed-refs",
+		filepath.Join("logs", "HEAD"),
+		filepath.Join("refs", "heads"),
+		filepath.Join("refs", "tags"),
+		filepath.Join("logs", "refs", "heads"),
+	}
 	for _, rel := range metaFiles {
 		parts = append(parts, rel+"="+statPart(filepath.Join(gitDir, filepath.FromSlash(rel))))
 	}
 
-	// Snapshot dynamic state so TUI reacts to file changes, branch updates,
-	// and ref movement even when mtimes are coarse on some filesystems.
-	gitSnapshot := func(args ...string) string {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
-		out, err := cmd.Output()
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(string(out))
-	}
-	parts = append(parts,
-		"status="+gitSnapshot("status", "--porcelain=v2", "--branch"),
-		"refs="+gitSnapshot("for-each-ref", "--format=%(refname:short):%(objectname)", "refs/heads"),
-		"stash="+gitSnapshot("stash", "list"),
-	)
-
 	return strings.Join(parts, "|")
+}
+
+func activityLogFingerprint(root string) string {
+	return statPart(mcpserver.ActivityLogPath(root))
+}
+
+func (m *model) loadActivityIfChanged(force bool) bool {
+	if m.gf == nil {
+		m.mcpActivity = nil
+		m.lastActivityFingerprint = ""
+		return true
+	}
+
+	fingerprint := activityLogFingerprint(m.gf.Config.ProjectRoot)
+	if !force && fingerprint == m.lastActivityFingerprint {
+		return false
+	}
+
+	m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
+	m.lastActivityFingerprint = fingerprint
+	return true
 }
 
 func (m model) Init() tea.Cmd {
 	m.lastGitFingerprint = repoFingerprint(m.gf.Config.ProjectRoot)
-	m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
+	m.loadActivityIfChanged(true)
 	return tea.Batch(
-		tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return activityTickMsg{} }),
-		tea.Tick(1*time.Second, func(t time.Time) tea.Msg { return watchTickMsg{} }),
+		tea.Tick(activityPollInterval, func(t time.Time) tea.Msg { return activityTickMsg{} }),
+		tea.Tick(repoWatchInterval, func(t time.Time) tea.Msg { return watchTickMsg{} }),
 		m.spinner.Tick,
 	)
 }
@@ -330,6 +351,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = viewOutput
 		m.outputClosing = false
 		m.outputAnim = 1 // snap open — no grow animation to prevent ghost-box artifacts
+		m.loadActivityIfChanged(true)
 		m.refresh(false)
 		return m, nil
 
@@ -346,8 +368,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case activityTickMsg:
-		m.mcpActivity = mcpserver.ReadActivityLog(m.gf.Config.ProjectRoot, 20)
-		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		m.loadActivityIfChanged(false)
+		return m, tea.Tick(activityPollInterval, func(t time.Time) tea.Msg {
 			return activityTickMsg{}
 		})
 
@@ -357,7 +379,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refresh(true)
 		}
 		m.lastGitFingerprint = fp
-		return m, tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		return m, tea.Tick(repoWatchInterval, func(t time.Time) tea.Msg {
 			return watchTickMsg{}
 		})
 
@@ -903,14 +925,8 @@ func (m model) renderActivityPanel(width, height int) string {
 	if maxEntries < 1 {
 		maxEntries = 1
 	}
-	// Keep the most-recent entries (tail of the log), then reverse so newest
-	// appears at the top of the panel.
 	if len(entries) > maxEntries {
-		entries = entries[len(entries)-maxEntries:]
-	}
-	// Reverse in place: newest at index 0.
-	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
-		entries[i], entries[j] = entries[j], entries[i]
+		entries = entries[:maxEntries]
 	}
 
 	if len(entries) == 0 {

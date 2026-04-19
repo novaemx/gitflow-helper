@@ -115,6 +115,47 @@ func TestRepoFingerprint_ChangesWhenHeadChanges(t *testing.T) {
 	}
 }
 
+func TestLoadActivityIfChanged_SkipsReloadWhenFingerprintMatches(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	if err := os.WriteFile(mcpserver.ActivityLogPath(root), []byte(""), 0644); err != nil {
+		t.Fatalf("write activity log: %v", err)
+	}
+
+	m := model{
+		gf:          &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: root}},
+		mcpActivity: []mcpserver.ActivityEntry{{Tool: "cached", Timestamp: "2026-04-19T10:00:00Z"}},
+	}
+	m.lastActivityFingerprint = activityLogFingerprint(root)
+
+	changed := m.loadActivityIfChanged(false)
+	if changed {
+		t.Fatal("expected unchanged activity log to skip reload")
+	}
+	if len(m.mcpActivity) != 1 || m.mcpActivity[0].Tool != "cached" {
+		t.Fatalf("expected cached activity to remain intact, got %+v", m.mcpActivity)
+	}
+}
+
+func TestRenderActivityPanel_UsesNewestLoadedOrder(t *testing.T) {
+	m := model{
+		mcpActivity: []mcpserver.ActivityEntry{
+			{Tool: "newest", Result: "ok", Source: "cli", Timestamp: "2026-04-19T12:00:00Z"},
+			{Tool: "older", Result: "ok", Source: "cli", Timestamp: "2026-04-19T10:00:00Z"},
+		},
+	}
+
+	rendered := stripANSI(m.renderActivityPanel(60, 10))
+	if strings.Index(rendered, "newest") > strings.Index(rendered, "older") {
+		t.Fatalf("expected activity panel to keep newest entry first, got %q", rendered)
+	}
+	if strings.Count(rendered, "newest") != 1 || strings.Count(rendered, "older") != 1 {
+		t.Fatalf("expected stable render output without duplication, got %q", rendered)
+	}
+}
+
 func TestSelectionIndexForRefresh_PreservesExactAction(t *testing.T) {
 	actions := []action{
 		{Tag: "pull", Label: "Pull latest"},
