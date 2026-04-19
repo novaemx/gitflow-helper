@@ -233,6 +233,20 @@ func statPart(path string) string {
 	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
 }
 
+func truncateRunes(text string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= maxWidth {
+		return text
+	}
+	if maxWidth <= 3 {
+		return string(runes[:maxWidth])
+	}
+	return string(runes[:maxWidth-3]) + "..."
+}
+
 func repoFingerprint(root string) string {
 	gitDir := resolveGitDir(root)
 	if gitDir == "" {
@@ -694,7 +708,7 @@ func (m model) renderBase() string {
 	} else {
 		normalW = 27
 	}
-	fullW := m.width - 2
+	fullW := m.width
 	if fullW < 24 {
 		fullW = 24
 	}
@@ -720,7 +734,7 @@ func (m model) renderBase() string {
 	}
 
 	if rightW >= m.width-3 {
-		panel := m.renderActivityPanel(rightW, contentHeight)
+		panel := m.renderActivityPanel(m.width, contentHeight)
 		sections = append(sections, panel)
 		sections = append(sections, m.renderStatusBar())
 		return strings.Join(sections, "\n")
@@ -769,7 +783,11 @@ func (m model) renderBase() string {
 		return strings.Join(sections, "\n")
 	}
 
-	rightPanel := m.renderActivityPanel(rightW, contentHeight)
+	rightPanelWidth := rightW
+	if rightPanelWidth > 0 {
+		rightPanelWidth--
+	}
+	rightPanel := m.renderActivityPanel(rightPanelWidth, contentHeight)
 	rightLines := strings.Split(rightPanel, "\n")
 	if len(rightLines) > contentHeight {
 		rightLines = rightLines[:contentHeight]
@@ -915,6 +933,14 @@ func (m model) renderActivityPanel(width, height int) string {
 	if height < 5 {
 		height = 5
 	}
+	boxWidth := width - 2
+	if boxWidth < 22 {
+		boxWidth = 22
+	}
+	innerHeight := height - 2
+	if innerHeight < 3 {
+		innerHeight = 3
+	}
 
 	var lines []string
 	lines = append(lines, boldStyle.Render("Agent Activity"))
@@ -973,7 +999,7 @@ func (m model) renderActivityPanel(width, height int) string {
 			lineWidth = 8
 		}
 		if lipgloss.Width(plainLine) > lineWidth {
-			plainLine = lipgloss.NewStyle().MaxWidth(lineWidth).Render(plainLine)
+			plainLine = truncateRunes(plainLine, lineWidth)
 		}
 
 		parts := strings.SplitN(plainLine, " ", 3)
@@ -999,8 +1025,8 @@ func (m model) renderActivityPanel(width, height int) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("8")).
 		Padding(0, 1).
-		Width(width).
-		Height(height - 2)
+		Width(boxWidth).
+		Height(innerHeight)
 
 	return panel.Render(strings.Join(lines, "\n"))
 }

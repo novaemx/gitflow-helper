@@ -147,3 +147,17 @@ Always write commit messages in Conventional Commits format:
 Types: `feat` (MINOR), `fix`/`perf` (PATCH), `feat!`/`fix!` (MAJOR), `chore`/`docs`/`refactor`/`test`/`ci`/`style` (no bump).
 Breaking change: append `!` or add `BREAKING CHANGE:` footer.
 Subject: imperative mood, no period, ≤72 chars.
+
+## Packaging artifact policy (required)
+
+Artifact scope per distribution channel:
+
+- Chocolatey: publish only Windows binary package artifacts
+- Winget: publish only Windows binary package artifacts
+- Homebrew: publish only macOS binary package artifacts
+- Linux distributions: publish native Linux packages, including:
+   - `.deb` (Debian/Ubuntu family)
+   - `.rpm` (RHEL/Fedora/openSUSE family)
+   - Arch-compatible package artifacts for Arch/CachyOS ecosystems
+
+Before release finish, verify required channel artifacts exist and match release version/checksums.

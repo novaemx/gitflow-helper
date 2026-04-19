@@ -22,18 +22,48 @@ Project compatibility note:
 - `bugfix/*` is treated as a project alias for non-production fixes from `develop`
 - this alias does not change nvie merge targets (`develop`)
 
-## Mandatory pre-flight (before any code change)
+## HARD STOP — branch check (runs before ANYTHING else)
+
+Before reading a single file, writing a single line, or calling any tool that could modify state:
 
 ```bash
 gitflow --json status
 ```
 
-Evaluate in this order:
+Then execute this decision tree — **top to bottom, no skipping**:
 
-1. if `git_flow_initialized=false` -> `gitflow --json init`
-2. if `merge.in_merge=true` -> STOP and report
-3. if `main_ahead_of_develop>0` -> `gitflow --json backmerge`
-4. if current branch is `main` or `develop` and task modifies code -> create flow branch first
+```
+① git_flow_initialized == false?
+  YES → gitflow --json init   THEN restart this checklist
+  NO  → continue
+
+② merge.in_merge == true?
+  YES → STOP. Report conflicted_files to user. Do not proceed.
+  NO  → continue
+
+③ main_ahead_of_develop > 0?
+  YES → gitflow --json backmerge   THEN continue
+  NO  → continue
+
+④ current branch == "main" OR "develop"?
+  YES → CREATE FLOW BRANCH NOW (see branch routing table below)
+      DO NOT edit any file before this step completes.
+  NO  → you are on a valid flow branch, proceed with the task
+```
+
+> **Violation examples** (these are bugs, not shortcuts):
+> - Editing source files while on `develop`, then committing → ❌ WRONG
+> - Creating a file "just this once" directly on `main` → ❌ WRONG
+> - Committing VERSION, AGENTS.md, or any generated file on `develop` → ❌ WRONG
+>
+> There are **zero exceptions**. Even single-line typo fixes require a flow branch.
+
+## Mandatory pre-flight sequence
+
+1. if `git_flow_initialized=false` → `gitflow --json init`
+2. if `merge.in_merge=true` → STOP and report
+3. if `main_ahead_of_develop>0` → `gitflow --json backmerge`
+4. if current branch is `main` or `develop` → create flow branch BEFORE any edit
 
 Never edit code directly on `main` or `develop`.
 
@@ -94,9 +124,134 @@ gitflow --json pull
 gitflow --json finish
 ```
 
+## Release finish changelog policy (required)
+
+When finishing a `release/*` branch, `CHANGELOG.md` must be updated before `gitflow --json finish`.
+
+Use Keep a Changelog 1.1.0 format and ordering:
+
+- reference: https://keepachangelog.com/en/1.1.0/
+- keep `## [Unreleased]` at the top
+- insert the new version section immediately below `## [Unreleased]`
+- version header format: `## [x.y.z] - YYYY-MM-DD`
+
+Required section layout for each release entry:
+
+1. high-level executive summary (`TL;DR`) with a short paragraph for non-technical stakeholders
+2. detailed change sections below the summary using Keep a Changelog categories as needed:
+   - `### Added`
+   - `### Changed`
+   - `### Fixed`
+   - `### Removed`
+   - `### Security`
+
+How to derive changelog content (no guesswork):
+
+1. identify previous tag and new release version/tag
+2. collect git differences from previous tag to release HEAD (commits, touched areas, notable behavior changes)
+3. group changes by user impact and category
+4. write concise bullets in plain English (what changed and why it matters)
+5. include only validated changes present in git history/diff
+
+Minimum quality bar:
+
+- no empty sections
+- no placeholder text
+- no raw commit dump without curation
+- summary and details must be consistent with actual git diff
+
+Release finish sequence must include:
+
+1. update `CHANGELOG.md` from git diff
+2. commit changelog on release branch
+3. run `gitflow --json finish`
+
+
+## Commit message policy (required)
+
+Use Conventional Commits for all agent-authored commits:
+
+- format: `<type>(<scope>): <subject>`
+- subject: imperative mood, no trailing period, <= 72 chars preferred
+- valid types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `build`, `ci`
+- scope: optional but recommended (for example: `flow`, `commands`, `ide`, `tui`)
+- keep commits atomic and logically grouped (avoid mixed-purpose commits)
+
+Examples:
+
+- `feat(flow): add guard for release branch naming`
+- `fix(commands): handle empty merge_head in status`
+- `docs(skill): clarify conflict escalation path`
+
+## Post-validation commit flow (required)
+
+When the agent modifies tracked files and all requested or relevant tests pass:
+
+1. stage the changed files with `git add`
+2. inspect the staged diff and derive a Conventional Commit message from the real scope of the changes
+3. create the commit on the active flow branch before ending the task
+4. do not leave tested source changes uncommitted unless the user explicitly asks for that outcome
+5. if tests fail, fix them or report the blocker instead of creating a partial success commit
+
+## Remote sync with origin (required)
+
+Agents must keep local and remote history aligned:
+
+1. before starting work: `gitflow --json pull`
+2. after branch creation: `git push -u origin <current-branch>`
+3. during long-running work: `gitflow --json sync` before major commits/rebases
+4. before finish: ensure branch is pushed and up to date with origin
+5. after finish: push resulting protected branches/tags if not auto-pushed by tooling
+
+If no `origin` exists, STOP and report instead of guessing a remote.
+
+## Conflict strategy and escalation
+
+When gitflow JSON commands fail, inspect exit code:
+
+- `0`: success, continue
+- `1`: non-conflict error, report with command and stderr summary
+- `2`: conflict-needs-human path
+
+For exit code `2`:
+
+1. run `gitflow --json status` and capture `merge.conflicted_files`
+2. if conflict is trivial and mechanical (for example version/changelog-only) and policy allows, resolve and continue
+3. if conflict impacts source logic, generated lockfiles with semantic changes, or unclear ownership, STOP and ask user for guidance
+4. never force-continue (`-X ours/theirs`, hard reset, or conflict marker deletion) without explicit user instruction
+
+## Housekeeping (post-merge)
+
+After successful finish, keep branches clean:
+
+1. verify merged state for the flow branch
+2. delete local merged branch: `git branch -d <branch>` (or `-D` only with explicit user approval)
+3. delete remote merged branch: `git push origin --delete <branch>`
+4. prune stale remote-tracking refs: `git fetch --prune`
+5. keep active release/hotfix branches only when still open
+
 ## Guardrails
 
-- no direct commits to `main` or `develop`
+- **no direct commits to `main` or `develop` — zero exceptions, no edge cases**
 - keep `develop` superset of `main`
 - always use structured `--json` output for agents
 - exit codes: `0` success, `1` error, `2` conflict-needs-human
+
+## Recovery — if you already committed on develop/main by mistake
+
+```bash
+# 1. create the flow branch from current HEAD
+gitflow --json start feature <slug>
+# (gitflow auto-stashes dirty state and switches branch)
+
+# 2. if commits already landed on develop, cherry-pick them:
+git log develop --oneline -5   # find the wrong SHA(s)
+git cherry-pick <sha>
+
+# 3. revert the wrong commit(s) from develop:
+git checkout develop
+git revert <sha> --no-edit
+git checkout feature/<slug>
+```
+
+Report the violation to the user and explain what happened.

@@ -124,12 +124,118 @@ gitflow --json pull
 gitflow --json finish
 ```
 
+## Release finish changelog policy (required)
+
+When finishing a `release/*` branch, `CHANGELOG.md` must be updated before `gitflow --json finish`.
+
+Use Keep a Changelog 1.1.0 format and ordering:
+
+- reference: https://keepachangelog.com/en/1.1.0/
+- keep `## [Unreleased]` at the top
+- insert the new version section immediately below `## [Unreleased]`
+- version header format: `## [x.y.z] - YYYY-MM-DD`
+
+Required section layout for each release entry:
+
+1. high-level executive summary (`TL;DR`) with a short paragraph for non-technical stakeholders
+2. detailed change sections below the summary using Keep a Changelog categories as needed:
+    - `### Added`
+    - `### Changed`
+    - `### Fixed`
+    - `### Removed`
+    - `### Security`
+
+How to derive changelog content (no guesswork):
+
+1. identify previous tag and new release version/tag
+2. collect git differences from previous tag to release HEAD (commits, touched areas, notable behavior changes)
+3. group changes by user impact and category
+4. write concise bullets in plain English (what changed and why it matters)
+5. include only validated changes present in git history/diff
+
+Minimum quality bar:
+
+- no empty sections
+- no placeholder text
+- no raw commit dump without curation
+- summary and details must be consistent with actual git diff
+
+Release finish sequence must include:
+
+1. update `CHANGELOG.md` from git diff
+2. commit changelog on release branch
+3. run `gitflow --json finish`
+
+
 ## Guardrails
 
 - **no direct commits to `main` or `develop` — zero exceptions, no edge cases**
 - keep `develop` superset of `main`
 - always use structured `--json` output for agents
 - exit codes: `0` success, `1` error, `2` conflict-needs-human
+
+## Commit message policy (required)
+
+Use Conventional Commits for all agent-authored commits:
+
+- format: `<type>(<scope>): <subject>`
+- subject: imperative mood, no trailing period, <= 72 chars preferred
+- valid types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `build`, `ci`
+- scope: optional but recommended (for example: `flow`, `commands`, `ide`, `tui`)
+- keep commits atomic and logically grouped (avoid mixed-purpose commits)
+
+Examples:
+
+- `feat(flow): add guard for release branch naming`
+- `fix(commands): handle empty merge_head in status`
+- `docs(skill): clarify conflict escalation path`
+
+## Post-validation commit flow (required)
+
+When the agent modifies tracked files and all requested or relevant tests pass:
+
+1. stage the changed files with `git add`
+2. inspect the staged diff and derive a Conventional Commit message from the real scope of the changes
+3. create the commit on the active flow branch before ending the task
+4. do not leave tested source changes uncommitted unless the user explicitly asks for that outcome
+5. if tests fail, fix them or report the blocker instead of creating a partial success commit
+
+## Remote sync with origin (required)
+
+Agents must keep local and remote history aligned:
+
+1. before starting work: `gitflow --json pull`
+2. after branch creation: `git push -u origin <current-branch>`
+3. during long-running work: `gitflow --json sync` before major commits/rebases
+4. before finish: ensure branch is pushed and up to date with origin
+5. after finish: push resulting protected branches/tags if not auto-pushed by tooling
+
+If no `origin` exists, STOP and report instead of guessing a remote.
+
+## Conflict strategy and escalation
+
+When gitflow JSON commands fail, inspect exit code:
+
+- `0`: success, continue
+- `1`: non-conflict error, report with command and stderr summary
+- `2`: conflict-needs-human path
+
+For exit code `2`:
+
+1. run `gitflow --json status` and capture `merge.conflicted_files`
+2. if conflict is trivial and mechanical (for example version/changelog-only) and policy allows, resolve and continue
+3. if conflict impacts source logic, generated lockfiles with semantic changes, or unclear ownership, STOP and ask user for guidance
+4. never force-continue (`-X ours/theirs`, hard reset, or conflict marker deletion) without explicit user instruction
+
+## Housekeeping (post-merge)
+
+After successful finish, keep branches clean:
+
+1. verify merged state for the flow branch
+2. delete local merged branch: `git branch -d <branch>` (or `-D` only with explicit user approval)
+3. delete remote merged branch: `git push origin --delete <branch>`
+4. prune stale remote-tracking refs: `git fetch --prune`
+5. keep active release/hotfix branches only when still open
 
 ## Recovery — if you already committed on develop/main by mistake
 
