@@ -458,7 +458,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 	// Utilities
 	low = append(low,
 		action{Label: "List tags / releases", Tag: "tags", Command: "git tag --sort=-version:refname -n1"},
-		action{Label: "View commit log", Tag: "log", Command: "gitflow log"},
+		action{Label: "View commit log", Tag: "log", Command: "git --no-pager log --all --decorate --oneline -n 40"},
 		action{Label: "Repo health check", Tag: "health", Command: "gitflow health"},
 		action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"},
 		action{Label: "Undo last operation", Tag: "undo", Command: "gitflow undo"},
