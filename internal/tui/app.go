@@ -679,7 +679,7 @@ func (m model) View() string {
 
 	switch m.mode {
 	case viewOutput:
-		return m.renderOutputOverlay(base)
+		return m.renderOutputOverlay(m.blankViewport())
 	case viewHelp:
 		return m.renderHelpOverlay(base)
 	case viewPalette:
@@ -689,6 +689,18 @@ func (m model) View() string {
 	}
 
 	return base
+}
+
+func (m model) blankViewport() string {
+	if m.width <= 0 || m.height <= 0 {
+		return ""
+	}
+	line := strings.Repeat(" ", m.width)
+	rows := make([]string, m.height)
+	for i := range rows {
+		rows[i] = line
+	}
+	return strings.Join(rows, "\n")
 }
 
 func (m model) renderBase() string {
