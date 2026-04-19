@@ -145,6 +145,30 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 		}
 	}
 
+	// Provision conventional-commits / semver rule:
+	//   Cursor        → .cursor/rules/semver.mdc
+	//   VSCode/Copilot → appended section in .github/copilot-instructions.md
+	switch detected.ID {
+	case IDECursor, IDEBoth:
+		if !semverCursorRuleExists(projectRoot) {
+			path, err := generateSemverCursorRule(projectRoot)
+			if err != nil {
+				return created, err
+			}
+			created = append(created, path)
+		}
+	case IDEVSCode, IDECopilot:
+		if !semverCopilotSectionExists(projectRoot) {
+			path, err := generateSemverCopilotSection(projectRoot)
+			if err != nil {
+				return created, err
+			}
+			if path != "" {
+				created = append(created, path)
+			}
+		}
+	}
+
 	return created, nil
 }
 

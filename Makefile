@@ -130,7 +130,19 @@ release:
 
 $(CHECKSUMS_FILE):
 	@echo "→ Building release artifacts locally (no cloud build)..."
-	goreleaser release --clean --skip=publish
+	@if git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
+		goreleaser release --clean --skip=publish; \
+	else \
+		_build_tag=$$(git describe --tags --abbrev=0 2>/dev/null); \
+		_orig_branch=$$(git rev-parse --abbrev-ref HEAD); \
+		echo "→ HEAD is not tagged. Checking out $$_build_tag to build artifacts..."; \
+		git -c advice.detachedHead=false checkout "$$_build_tag"; \
+		goreleaser release --clean --skip=publish; \
+		_exit=$$?; \
+		echo "→ Returning to $$_orig_branch..."; \
+		git checkout "$$_orig_branch" --quiet; \
+		exit $$_exit; \
+	fi
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Expected $(CHECKSUMS_FILE) was not generated" && exit 1)
 	@echo "Done. Artifacts and checksums in $(DIST)/"
 

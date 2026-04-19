@@ -903,18 +903,34 @@ func (m model) renderActivityPanel(width, height int) string {
 	if maxEntries < 1 {
 		maxEntries = 1
 	}
+	// Keep the most-recent entries (tail of the log), then reverse so newest
+	// appears at the top of the panel.
 	if len(entries) > maxEntries {
 		entries = entries[len(entries)-maxEntries:]
+	}
+	// Reverse in place: newest at index 0.
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+		entries[i], entries[j] = entries[j], entries[i]
 	}
 
 	if len(entries) == 0 {
 		lines = append(lines, dimStyle.Render("No activity yet."))
 	}
 
+	today := time.Now().UTC().Format("2006-01-02")
 	for _, entry := range entries {
 		ts := entry.Timestamp
-		if len(ts) > 19 {
-			ts = ts[11:19]
+		// Parse RFC3339 timestamp and format as HH:MM (today) or MM-DD HH:MM (other day).
+		if t, err := time.Parse(time.RFC3339, ts); err == nil {
+			t = t.UTC()
+			if t.Format("2006-01-02") == today {
+				ts = t.Format("15:04")
+			} else {
+				ts = t.Format("01-02 15:04")
+			}
+		} else if len(ts) >= 19 {
+			// Fallback: extract from ISO-like string.
+			ts = ts[11:16]
 		}
 		icon := okStyle.Render("✓")
 		if entry.Error != "" || entry.Result == "error" {
