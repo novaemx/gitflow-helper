@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 PackageIdentifier: novaemx.gitflow-helper
-PackageVersion: 0.5.35
+PackageVersion: 0.5.38
 PackageLocale: en-US
 Publisher: Luis Lozano
 PublisherUrl: https://github.com/novaemx
@@ -24,8 +24,8 @@ Tags:
 Installers:
   - Architecture: x64
     InstallerType: zip
-    InstallerUrl: https://github.com/novaemx/gitflow-helper/releases/download/v0.5.35/gitflow-0.5.35-windows-amd64.zip
-    InstallerSha256: 664e607f18952370ffca370613be6ee8864df6bf59d4ebc18ee8601f58ea7fc9
+    InstallerUrl: https://github.com/novaemx/gitflow-helper/releases/download/v0.5.38/gitflow-0.5.38-windows-amd64.zip
+    InstallerSha256: c589f6efdb961d831928ca8ef96b6f58c1fdd8b95003f0657f2c95f673269e8a
     NestedInstallerType: portable
     NestedInstallerFiles:
       - RelativeFilePath: gitflow.exe

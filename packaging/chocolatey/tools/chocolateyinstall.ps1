@@ -2,10 +2,10 @@ $ErrorActionPreference = 'Stop'
 
 $toolsDir    = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $packageName = 'gitflow-helper'
-$version     = '0.5.35'
+$version     = '0.5.38'
 
-$url      = "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.35/gitflow-0.5.35-windows-amd64.zip"
-$checksum = '664e607f18952370ffca370613be6ee8864df6bf59d4ebc18ee8601f58ea7fc9'
+$url      = "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.38/gitflow-0.5.38-windows-amd64.zip"
+$checksum = 'c589f6efdb961d831928ca8ef96b6f58c1fdd8b95003f0657f2c95f673269e8a'
 
 Install-ChocolateyZipPackage `
   -PackageName $packageName `
