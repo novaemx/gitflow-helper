@@ -348,7 +348,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 			if candidate != nil {
 				normal = append(normal, action{
 					Label: fmt.Sprintf("Switch to release '%s' and finish it", candidate.Name), Tag: "finish",
-					Recommended: true, Command: fmt.Sprintf("git checkout %s && gitflow finish", candidate.Name),
+					Recommended: true, Command: fmt.Sprintf("git checkout %s; gitflow finish", candidate.Name),
 				})
 			}
 		}
