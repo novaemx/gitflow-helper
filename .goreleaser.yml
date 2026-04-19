@@ -86,6 +86,25 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+nfpms:
+  - id: linux-packages
+    package_name: gitflow-helper
+    vendor: novaemx
+    homepage: https://github.com/novaemx/gitflow-helper
+    maintainer: Luis Lozano
+    description: Git Flow workflow helper with interactive TUI and CLI.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    builds:
+      - linux-amd64
+    bindir: /usr/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/licenses/gitflow-helper/LICENSE
+
 snapshot:
   version_template: "{{ .Version }}-SNAPSHOT-{{ if eq .ShortCommit \"none\" }}dev{{ else }}{{ .ShortCommit }}{{ end }}"
 

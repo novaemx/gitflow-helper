@@ -5,6 +5,7 @@ LDFLAGS  := -s -w -X main.version=$(VERSION)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'
 DIST     := dist
 TAG      ?= v$(VERSION)
+RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
@@ -16,8 +17,8 @@ COVER_DIR := test
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
 .PHONY: package-homebrew package-choco package-winget package-all
-.PHONY: publish-github publish-homebrew publish-winget publish-choco publish-all
-.PHONY: upload-release-assets
+.PHONY: publish-github publish-homebrew publish-winget publish-choco publish-linux publish-all
+.PHONY: upload-release-assets cleanup-release-assets validate-release-assets validate-linux-packages
 .PHONY: require-gh
 
 # ── OS/arch detection ────────────────────────────────────────
@@ -133,7 +134,25 @@ release:
 
 $(CHECKSUMS_FILE):
 	@echo "→ Building release artifacts locally (no cloud build)..."
-	@if git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
+	@if [ -n "$(BUILD_REF)" ]; then \
+		_build_ref="$(BUILD_REF)"; \
+		echo "→ Building from requested ref $$_build_ref..."; \
+		if git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
+			goreleaser release --clean --skip=publish; \
+		else \
+			_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+			git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; \
+			( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+			_exit=$$?; \
+			if [ $$_exit -eq 0 ]; then \
+				rm -rf "$(DIST)"; \
+				cp -R "$$_worktree/$(DIST)" "$(DIST)"; \
+			fi; \
+			git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
+			rm -rf "$$_worktree"; \
+			exit $$_exit; \
+		fi; \
+	elif git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
 		goreleaser release --clean --skip=publish; \
 	else \
 		_build_tag=$$(git describe --tags --abbrev=0 2>/dev/null); \
@@ -141,7 +160,7 @@ $(CHECKSUMS_FILE):
 		_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
 		echo "→ HEAD is not tagged. Building from temporary worktree at $$_build_tag..."; \
 		git worktree add --detach "$$_worktree" "$$_build_tag" >/dev/null; \
-		( cd "$$_worktree" && goreleaser release --clean --skip=publish ); \
+		( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
 		_exit=$$?; \
 		if [ $$_exit -eq 0 ]; then \
 			rm -rf "$(DIST)"; \
@@ -160,9 +179,31 @@ release-local: $(CHECKSUMS_FILE)
 require-gh:
 	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
 
+validate-release-assets:
+	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz$$' || { echo "Missing darwin checksum for $(RELEASE_VERSION)"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-windows-amd64.zip$$' || { echo "Missing windows checksum for $(RELEASE_VERSION)"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-linux-amd64.tar.gz$$' || { echo "Missing linux tarball checksum for $(RELEASE_VERSION)"; exit 1; }
+
+validate-linux-packages:
+	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '\\.deb$$' || { echo "Missing .deb package in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '\\.rpm$$' || { echo "Missing .rpm package in checksums"; exit 1; }
+	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '\\.pkg\\.tar\\.zst$$' || { echo "Missing Arch package (.pkg.tar.zst) in checksums"; exit 1; }
+
+cleanup-release-assets:
+	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
+	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@echo "→ Removing previously published assets from $(RELEASE_TAG) (if present)..."
+	@{ awk '{print $$2}' "$(CHECKSUMS_FILE)"; echo "checksums.txt"; } | while read -r asset; do \
+		[ -n "$$asset" ] || continue; \
+		gh release delete-asset "$(RELEASE_TAG)" "$$asset" --repo "$(GITHUB_REPO)" --yes >/dev/null 2>&1 || true; \
+	done
+
 upload-release-assets:
 	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Uploading release assets from $(CHECKSUMS_FILE) to $(RELEASE_TAG)..."
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | while read -r asset; do \
 		[ -n "$$asset" ] || continue; \
@@ -177,7 +218,8 @@ upload-release-assets:
 ## Usage: make release-local-github
 release-local-github:
 	@$(MAKE) require-gh
-	@$(MAKE) $(CHECKSUMS_FILE)
+	@$(MAKE) -B $(CHECKSUMS_FILE) BUILD_REF="$(LATEST_TAG)"
+	@$(MAKE) cleanup-release-assets RELEASE_TAG="$(LATEST_TAG)"
 	@$(MAKE) upload-release-assets RELEASE_TAG="$(LATEST_TAG)"
 	@echo "Done. Local-built artifacts uploaded to GitHub release $(LATEST_TAG)."
 
@@ -186,27 +228,25 @@ release-local-github:
 publish-github:
 	@test -n "$(TAG)" || (echo "TAG is required. Example: make publish-github TAG=v0.5.12" && exit 1)
 	@$(MAKE) require-gh
-	@$(MAKE) $(CHECKSUMS_FILE)
+	@$(MAKE) -B $(CHECKSUMS_FILE) BUILD_REF="$(TAG)"
+	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Ensuring GitHub release $(TAG) exists..."
 	@if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
 		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes "Local build artifacts"; \
 	fi
-	@$(MAKE) upload-release-assets RELEASE_TAG="$(TAG)"
+	@$(MAKE) cleanup-release-assets RELEASE_TAG="$(TAG)"
+	@$(MAKE) upload-release-assets RELEASE_TAG="$(TAG)" RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "Done. GitHub release $(TAG) now hosts locally-built artifacts."
 
 ## publish-homebrew: upload artifacts first, then update local Homebrew formula to point at the current GitHub release
 publish-homebrew: publish-github
-	@darwin_sha=$$(awk '/gitflow-$(VERSION)-darwin-universal.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
-	linux_sha=$$(awk '/gitflow-$(VERSION)-linux-amd64.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
+	@darwin_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
-	[ -n "$$linux_sha" ] || { echo "Missing linux checksum"; exit 1; }; \
-	awk -v version="$(VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" -v linux_sha="$$linux_sha" ' \
+	awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
 		BEGIN { target_sha = "" } \
 		/^[[:space:]]*version "/ { sub(/version ".*"/, "version \"" version "\"") } \
 		/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/, "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") } \
-		/releases\/download\/v[^\/]*\/gitflow-[^"]*-linux-amd64.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-linux-amd64.tar.gz/, "releases/download/" tag "/gitflow-" version "-linux-amd64.tar.gz") } \
 		/gitflow-[^"]*-darwin-universal.tar.gz/ { target_sha = darwin_sha } \
-		/gitflow-[^"]*-linux-amd64.tar.gz/ { target_sha = linux_sha } \
 		/^[[:space:]]*sha256 "/ { \
 			if (target_sha != "") { \
 				sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); \
@@ -220,27 +260,32 @@ publish-homebrew: publish-github
 
 ## publish-winget: upload artifacts first, then update local Winget manifest to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
-	@windows_sha=$$(awk '/gitflow-$(VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
+	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
-	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.yaml; \
+	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \
+	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.yaml; \
 	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.yaml; \
 	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak
 	@echo "Done. Updated Winget manifest for $(TAG)."
 
 ## publish-choco: upload artifacts first, then update Chocolatey metadata to point at the current GitHub release artifact and checksum
 publish-choco: publish-github
-	@windows_sha=$$(awk '/gitflow-$(VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
+	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
-	sed -i.bak 's|<version>.*</version>|<version>$(VERSION)</version>|' packaging/chocolatey/gitflow-helper.nuspec; \
-	sed -i.bak "s|\$$version     = '.*'|\$$version     = '$(VERSION)'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	sed -i.bak "s|\$$url      = \".*\"|\$$url      = \"https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(VERSION)-windows-amd64.zip\"|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
+	sed -i.bak 's|<version>.*</version>|<version>$(RELEASE_VERSION)</version>|' packaging/chocolatey/gitflow-helper.nuspec; \
+	sed -i.bak "s|\$$version     = '.*'|\$$version     = '$(RELEASE_VERSION)'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
+	sed -i.bak "s|\$$url      = \".*\"|\$$url      = \"https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip\"|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
 	sed -i.bak "s|\$$checksum = '.*'|\$$checksum = '$$windows_sha'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
 	rm -f packaging/chocolatey/gitflow-helper.nuspec.bak packaging/chocolatey/tools/chocolateyinstall.ps1.bak
 	@echo "Done. Updated Chocolatey package metadata for $(TAG)."
 
+## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst)
+publish-linux: publish-github
+	@$(MAKE) validate-linux-packages
+	@echo "Done. Linux package artifacts (.deb/.rpm/.pkg.tar.zst) are present for $(TAG)."
+
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
-publish-all: require-gh publish-homebrew publish-winget publish-choco
+publish-all: require-gh publish-homebrew publish-winget publish-choco publish-linux
 	@echo "All publish targets completed for $(TAG)."
 
 ## release-snapshot: test goreleaser locally without publishing
