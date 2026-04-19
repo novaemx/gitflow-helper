@@ -327,12 +327,12 @@ version:
 
 # ── Packaging Targets ─────────────────────────────────────
 
-## package-homebrew: build snapshot and prepare Homebrew formula via goreleaser
+## package-homebrew: build snapshot and prepare Homebrew cask via goreleaser
 package-homebrew:
 	@echo "→ Building Homebrew snapshot..."
 	goreleaser release --snapshot --clean
-	@echo "Homebrew formula generated in dist/."
-	@echo "Test locally: brew install --formula dist/homebrew/Formula/gitflow-helper.rb"
+	@echo "Homebrew cask generated in dist/."
+	@echo "Test locally: brew install --cask dist/homebrew/Casks/gitflow-helper.rb"
 
 ## package-choco: package Chocolatey nupkg (requires choco CLI on Windows/Mono)
 package-choco: build-all
