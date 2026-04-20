@@ -58,6 +58,7 @@ go install github.com/novaemx/gitflow-helper/cmd/gitflow@latest
 ```bash
 git clone https://github.com/novaemx/gitflow-helper.git
 cd gitflow-helper
+bash scripts/install-hooks.sh  # install git hooks (enforces gitflow policy)
 make build          # current platform
 make build-all      # all platforms
 make universal      # macOS universal binary

@@ -202,6 +202,94 @@ Release finish sequence must include:
 3. run `gitflow --json finish`
 
 
+## Guardrails
+
+- **no direct commits to `main` or `develop` — zero exceptions, no edge cases**
+- keep `develop` superset of `main`
+- always use structured `--json` output for agents
+- exit codes: `0` success, `1` error, `2` conflict-needs-human
+
+## File scope discipline per branch type (required)
+
+Before committing, verify that modified files are **allowed** on the current branch type.
+This rule is generic — it applies to any project using this skill.
+
+### Default scope matrix
+
+| Branch type | Allowed changes | Prohibited changes |
+|---|---|---|
+| `feature/*` | Source code, tests, documentation | Release metadata (version files, packaging, changelogs) |
+| `bugfix/*` | Source code, tests, documentation | Release metadata (version files, packaging, changelogs) |
+| `release/*` | Everything including release metadata | — |
+| `hotfix/*` | Everything including release metadata | — |
+
+### "Release metadata" definition
+
+Release metadata includes any file whose content is versioned per-release, such as:
+
+- Version files (e.g. `VERSION`, `version.txt`, `*.nuspec`, `*.rb` formula, `*.yaml` distribution manifests)
+- Packaging files (e.g. `packaging/`, `dist/`, `homebrew/`, `chocolatey/`, `winget/`)
+- Release notes and changelogs (e.g. `CHANGELOG.md`, `RELEASE_NOTES.md`)
+- Distribution configuration files updated during release (e.g. `manifest.yaml`, install scripts)
+
+> **Every project has different file paths.** Before starting work, identify which files in
+> the project are release metadata (inspect packaging/ structure, look for version bump files).
+
+### Agent enforcement protocol
+
+Before committing on a feature/* or bugfix/* branch:
+
+```bash
+# 1. Inspect what's staged
+git diff --cached --name-only
+
+# 2. Flag any release metadata files
+# If release metadata found → STOP. Do not commit.
+# → Ask user or move changes to a release/* branch.
+```
+
+If a violation is detected:
+
+```bash
+# Unstage the protected file
+git reset HEAD <protected-file>
+
+# If changes are intentional for release, create release branch instead:
+gitflow --json finish   # finish current feature first
+gitflow --json start release <version>
+# re-apply changes on release branch
+```
+
+### Installing a protective pre-commit hook (recommended)
+
+Projects should ship a hook that mechanically enforces this policy.
+If the project includes a `scripts/install-hooks.sh`, run it after cloning:
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+If not present, create a minimal hook at `.git/hooks/pre-commit`:
+
+```bash
+#!/bin/bash
+# Block release-metadata commits outside release/hotfix branches
+BRANCH=$(git branch --show-current)
+if [[ ! $BRANCH =~ ^(release/|hotfix/) ]]; then
+  PROTECTED=$(git diff --cached --name-only | grep -E "^(packaging/|VERSION$|CHANGELOG\.md$)")
+  if [[ -n "$PROTECTED" ]]; then
+    echo "❌ GITFLOW VIOLATION: Release metadata staged on $BRANCH"
+    echo "Files: $PROTECTED"
+    echo "Allowed only on release/* or hotfix/*"
+    exit 1
+  fi
+fi
+```
+
+> Adjust the `grep -E` pattern to match the project's actual release metadata paths.
+
+---
+
 ## Commit message policy (required)
 
 Use Conventional Commits for all agent-authored commits:
@@ -264,13 +352,6 @@ After successful finish, keep branches clean:
 3. delete remote merged branch: `git push origin --delete <branch>`
 4. prune stale remote-tracking refs: `git fetch --prune`
 5. keep active release/hotfix branches only when still open
-
-## Guardrails
-
-- **no direct commits to `main` or `develop` — zero exceptions, no edge cases**
-- keep `develop` superset of `main`
-- always use structured `--json` output for agents
-- exit codes: `0` success, `1` error, `2` conflict-needs-human
 
 ## Recovery — if you already committed on develop/main by mistake
 
