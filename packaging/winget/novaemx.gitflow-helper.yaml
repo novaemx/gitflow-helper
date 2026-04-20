@@ -1,34 +1,12 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
-PackageIdentifier: novaemx.gitflow-helper
+# Created using wingetcreate 1.12.8.0
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+
+PackageIdentifier: NovaeMX.gitflow-helper
 PackageVersion: 0.5.40
 PackageLocale: en-US
-Publisher: Luis Lozano
-PublisherUrl: https://github.com/novaemx
-PackageName: Gitflow Helper
-PackageUrl: https://github.com/novaemx/gitflow-helper
-License: MIT
-LicenseUrl: https://github.com/novaemx/gitflow-helper/blob/main/LICENSE
-ShortDescription: Git Flow workflow helper with interactive TUI and CLI
-Description: >-
-  A comprehensive Git Flow workflow helper with an interactive full-screen TUI
-  and CLI subcommands. Only requires git — no git-flow extensions needed.
-  Detects IDE environment (Cursor, VS Code, Claude Code, Windsurf, Zed, etc.)
-  and auto-initializes gitflow branch structure.
-Tags:
-  - git
-  - gitflow
-  - cli
-  - tui
-  - devtools
-  - workflow
-Installers:
-  - Architecture: x64
-    InstallerType: zip
-    InstallerUrl: https://github.com/novaemx/gitflow-helper/releases/download/v0.5.40/gitflow-0.5.40-windows-amd64.zip
-    InstallerSha256: 00629bbc43159a8ec200da1e19cfaea37cb250adf93cd55202265647edf6f326
-    NestedInstallerType: portable
-    NestedInstallerFiles:
-      - RelativeFilePath: gitflow.exe
-        PortableCommandAlias: gitflow
-ManifestType: singleton
-ManifestVersion: 1.6.0
+Publisher: NovaeMX
+PackageName: Gitflow-helper
+License: MIT License
+ShortDescription: Gitflow helper with AI/IDE integration
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0

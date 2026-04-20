@@ -2,6 +2,9 @@
 
 A single static binary that enforces the [git-flow branching model](https://nvie.com/posts/a-successful-git-branching-model/) with an interactive TUI for humans and a `--json` mode for AI agents. Detects your IDE (Cursor / VS Code Copilot) and generates pre-flight rules automatically.
 
+![Homebrew](https://img.shields.io/badge/homebrew-v0.5.40-orange)
+![Winget](https://img.shields.io/badge/winget-v0.5.40-blue)
+
 ## Features
 
 - **15 CLI commands** covering the full gitflow lifecycle: status, pull, push, start, finish, sync, switch, backmerge, cleanup, health, doctor, log, undo, releasenotes, init
@@ -13,6 +16,17 @@ A single static binary that enforces the [git-flow branching model](https://nvie
 - **Embedded gitflow skill** — `gitflow setup` installs or updates `SKILL.md` in `.agents/skills/gitflow/` or `~/.agents/skills/gitflow/`
 
 ## Install
+
+### Homebrew (Formula)
+
+`gitflow-helper` is distributed as a Homebrew Formula (CLI tool), not a Cask.
+
+```bash
+brew tap novaemx/tap
+brew install gitflow-helper
+```
+
+The formula installs shell completions for `bash`, `zsh`, and `fish` automatically.
 
 ### From GitHub Releases
 
@@ -201,8 +215,9 @@ make vet          # run go vet
 make release-local                    # build release artifacts locally (no publish)
 make release-local-github             # upload local artifacts to the latest existing GitHub release tag
 make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts
-make publish-homebrew TAG=v0.5.12     # upload release artifacts, then update Homebrew formula
-make publish-winget TAG=v0.5.12       # upload release artifacts, then update Winget manifest
+make publish-homebrew TAG=v0.5.12     # upload artifacts, update packaging/homebrew and ../homebrew-tap/Formula
+make publish-winget TAG=v0.5.12       # upload artifacts, then update Winget version/installer/defaultLocale manifests
+make push-winget TAG=v0.5.12          # submit/update Winget package in microsoft/winget-pkgs via wingetcreate
 make publish-choco TAG=v0.5.12        # upload release artifacts, then update Chocolatey metadata
 make publish-all TAG=v0.5.12          # upload once and update all package manifests
 make install      # install to GOPATH/bin
@@ -249,6 +264,7 @@ make publish-github TAG=v0.5.12
 # Each target now depends on publish-github, so artifacts are uploaded first.
 make publish-homebrew TAG=v0.5.12
 make publish-winget TAG=v0.5.12
+make push-winget TAG=v0.5.12
 make publish-choco TAG=v0.5.12
 
 # Or do everything in one shot

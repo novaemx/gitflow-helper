@@ -7,23 +7,20 @@ class GitflowHelper < Formula
   version "0.5.40"
   license "MIT"
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.40/gitflow-0.5.40-darwin-universal.tar.gz"
-      sha256 "1b8b62f54590cba5d5f9a3ccf0de043a5c48e3f95f74919a2023ba37d0d120cd"
-    else
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.40/gitflow-0.5.40-darwin-universal.tar.gz"
-      sha256 "1b8b62f54590cba5d5f9a3ccf0de043a5c48e3f95f74919a2023ba37d0d120cd"
-    end
-  end
+  url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.40/gitflow-0.5.40-darwin-universal.tar.gz"
+  sha256 "1b8b62f54590cba5d5f9a3ccf0de043a5c48e3f95f74919a2023ba37d0d120cd"
 
   depends_on "git"
 
   def install
     bin.install "gitflow"
+    (bash_completion/"gitflow").write `#{bin}/gitflow completion bash`
+    (zsh_completion/"_gitflow").write `#{bin}/gitflow completion zsh`
+    (fish_completion/"gitflow.fish").write `#{bin}/gitflow completion fish`
   end
 
   test do
-    assert_match "gitflow", shell_output("#{bin}/gitflow --version")
+    assert_match version.to_s, shell_output("#{bin}/gitflow --version")
+    assert_match "bash", shell_output("#{bin}/gitflow completion --help")
   end
 end

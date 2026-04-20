@@ -8,6 +8,7 @@ TAG      ?= v$(VERSION)
 RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
+HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow-helper.rb
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
 LINUX_ARCHIVE   := $(DIST)/$(BINARY)-$(VERSION)-linux-amd64.tar.gz
 LINUX_ARM64_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-linux-aarch64.tar.gz
@@ -281,20 +282,26 @@ publish-homebrew: publish-github
 		{ print } \
 	' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
 	mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb
-	@echo "Done. Updated packaging/homebrew/gitflow-helper.rb for $(TAG)."
+	@[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
+	cp packaging/homebrew/gitflow-helper.rb "$(HOMEBREW_TAP_FORMULA)"
+	@echo "Done. Updated Homebrew formulas for $(TAG):"
+	@echo "  - packaging/homebrew/gitflow-helper.rb"
+	@echo "  - $(HOMEBREW_TAP_FORMULA)"
 
-## publish-winget: upload artifacts first, then update local Winget manifest to point at the current GitHub release artifact and checksum
+## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
 	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak
-	@echo "Done. Updated Winget manifest for $(TAG)."
+	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
+	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
+	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
+	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.version.yaml; \
+	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak packaging/winget/novaemx.gitflow-helper.installer.yaml.bak packaging/winget/novaemx.gitflow-helper.version.yaml.bak
+	@echo "Done. Updated Winget manifests for $(TAG)."
 
 ## push-winget: submit the current version to the winget community repository via wingetcreate
-push-winget:
+push-winget: publish-winget
 	wingetcreate update \
 		--version $(RELEASE_VERSION) \
 		--urls https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip \
@@ -354,7 +361,7 @@ version:
 
 # ── Packaging Targets ─────────────────────────────────────
 
-## package-homebrew: build snapshot and prepare Homebrew cask via goreleaser
+## package-homebrew: build snapshot and prepare Homebrew formula artifacts via goreleaser
 package-homebrew:
 	@echo "→ Building Homebrew snapshot..."
 	goreleaser release --snapshot --clean
