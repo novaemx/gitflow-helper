@@ -30,6 +30,47 @@ func TestResolveGitDir_DirectoryDotGit(t *testing.T) {
 	}
 }
 
+func TestShouldPollProtectedBranchState_Develop(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		gf: &gitflow.Logic{
+			Config: cfg,
+			State:  state.RepoState{Current: cfg.DevelopBranch},
+		},
+	}
+
+	if !m.shouldPollProtectedBranchState() {
+		t.Fatal("expected develop to force protected-branch polling")
+	}
+}
+
+func TestShouldPollProtectedBranchState_Main(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		gf: &gitflow.Logic{
+			Config: cfg,
+			State:  state.RepoState{Current: cfg.MainBranch},
+		},
+	}
+
+	if !m.shouldPollProtectedBranchState() {
+		t.Fatal("expected main to force protected-branch polling")
+	}
+}
+
+func TestShouldPollProtectedBranchState_Feature(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		gf: &gitflow.Logic{
+			Config: cfg,
+			State:  state.RepoState{Current: "feature/auto-refresh"},
+		},
+	}
+
+	if m.shouldPollProtectedBranchState() {
+		t.Fatal("expected feature branch to keep metadata-only polling")
+	}
+}
 func TestResolveGitDir_GitdirFile(t *testing.T) {
 	root := t.TempDir()
 	realGitDir := filepath.Join(root, ".worktrees", "wt1")

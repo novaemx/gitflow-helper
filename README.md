@@ -2,8 +2,8 @@
 
 A single static binary that enforces the [git-flow branching model](https://nvie.com/posts/a-successful-git-branching-model/) with an interactive TUI for humans and a `--json` mode for AI agents. Detects your IDE (Cursor / VS Code Copilot) and generates pre-flight rules automatically.
 
-![Homebrew](https://img.shields.io/badge/homebrew-v0.5.40-orange)
-![Winget](https://img.shields.io/badge/winget-v0.5.40-blue)
+![Homebrew](https://img.shields.io/badge/homebrew-v0.5.40-green)
+![Winget](https://img.shields.io/badge/winget-v0.5.40-green)
 
 ## Features
 

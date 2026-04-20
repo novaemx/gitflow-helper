@@ -180,6 +180,13 @@ func (m *model) refresh(preserveSelection bool) {
 	m.scroll = 0
 }
 
+func (m *model) shouldPollProtectedBranchState() bool {
+	if m.gf == nil {
+		return false
+	}
+	return m.gf.State.Current == m.gf.Config.DevelopBranch || m.gf.State.Current == m.gf.Config.MainBranch
+}
+
 func resolveGitDir(root string) string {
 	gitPath := filepath.Join(root, ".git")
 	info, err := os.Stat(gitPath)
@@ -407,7 +414,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case watchTickMsg:
 		fp := repoFingerprint(m.gf.Config.ProjectRoot)
-		if fp != m.lastGitFingerprint && m.mode == viewDashboard {
+		shouldRefresh := fp != m.lastGitFingerprint
+		if !shouldRefresh && m.mode == viewDashboard && m.shouldPollProtectedBranchState() {
+			shouldRefresh = true
+		}
+		if shouldRefresh && m.mode == viewDashboard {
 			m.refresh(true)
 		}
 		m.lastGitFingerprint = fp
