@@ -236,6 +236,7 @@ func NewRootCmd(version string) *cobra.Command {
 	}
 
 	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Machine-readable JSON output (for agents)")
+	root.SetVersionTemplate("gitflow version {{.Version}}\nAuthor Luis Lozano\n")
 
 	root.AddCommand(
 		newStatusCmd(),
