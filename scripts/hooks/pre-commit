@@ -13,7 +13,8 @@ if [[ $BRANCH =~ ^(release/|hotfix/) ]]; then
 fi
 
 # Project-specific release metadata patterns — adjust if project layout changes
-PROTECTED=$(git diff --cached --name-only | grep -E \
+# Only flag Added/Modified/Renamed/Copied — not Deleted files
+PROTECTED=$(git diff --cached --name-status | awk '$1 != "D"' | awk '{print $2}' | grep -E \
     "^packaging/|^VERSION$|^CHANGELOG\.md$|^AGENTS\.md$|^RELEASE_NOTES\.md$" || true)
 
 if [[ -n "$PROTECTED" ]]; then

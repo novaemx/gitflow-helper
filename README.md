@@ -219,7 +219,6 @@ make publish-github TAG=v0.5.12       # create/update GitHub release and upload 
 make publish-homebrew TAG=v0.5.12     # upload artifacts, update packaging/homebrew and ../homebrew-tap/Formula
 make publish-winget TAG=v0.5.12       # upload artifacts, then update Winget version/installer/defaultLocale manifests
 make push-winget TAG=v0.5.12          # submit/update Winget package in microsoft/winget-pkgs via wingetcreate
-make publish-choco TAG=v0.5.12        # upload release artifacts, then update Chocolatey metadata
 make publish-all TAG=v0.5.12          # upload once and update all package manifests
 make install      # install to GOPATH/bin
 ```
@@ -250,7 +249,7 @@ This repository does not use GitHub Actions to compile binaries.
 
 - All release binaries are built locally on maintainer machines.
 - GitHub Releases are used only as artifact hosting/distribution.
-- Homebrew, Winget, and Chocolatey manifests point to those GitHub Release artifacts.
+- Homebrew and Winget manifests point to those GitHub Release artifacts.
 
 ### Publish Flow (No Cloud Build)
 
@@ -266,7 +265,6 @@ make publish-github TAG=v0.5.12
 make publish-homebrew TAG=v0.5.12
 make publish-winget TAG=v0.5.12
 make push-winget TAG=v0.5.12
-make publish-choco TAG=v0.5.12
 
 # Or do everything in one shot
 make publish-all TAG=v0.5.12

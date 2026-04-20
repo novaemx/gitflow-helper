@@ -18,8 +18,8 @@ COVER_DIR := test
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
-.PHONY: package-homebrew package-choco package-winget package-all
-.PHONY: publish-github publish-homebrew publish-winget publish-choco publish-linux publish-all
+.PHONY: package-homebrew package-winget package-all
+.PHONY: publish-github publish-homebrew publish-winget publish-linux publish-all
 .PHONY: push-winget
 .PHONY: upload-release-assets cleanup-release-assets validate-release-assets validate-linux-packages
 .PHONY: require-gh
@@ -309,24 +309,13 @@ push-winget: publish-winget
 		NovaeMX.gitflow-helper
 	@echo "Winget submission done for $(TAG)."
 
-## publish-choco: upload artifacts first, then update Chocolatey metadata to point at the current GitHub release artifact and checksum
-publish-choco: publish-github
-	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
-	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
-	sed -i.bak 's|<version>.*</version>|<version>$(RELEASE_VERSION)</version>|' packaging/chocolatey/gitflow-helper.nuspec; \
-	sed -i.bak "s|\$$version     = '.*'|\$$version     = '$(RELEASE_VERSION)'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	sed -i.bak "s|\$$url      = \".*\"|\$$url      = \"https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip\"|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	sed -i.bak "s|\$$checksum = '.*'|\$$checksum = '$$windows_sha'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	rm -f packaging/chocolatey/gitflow-helper.nuspec.bak packaging/chocolatey/tools/chocolateyinstall.ps1.bak
-	@echo "Done. Updated Chocolatey package metadata for $(TAG)."
-
 ## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
 publish-linux: publish-github
 	@$(MAKE) validate-linux-packages
 	@echo "Done. Linux amd64+arm64 package artifacts (.deb/.rpm/.pkg.tar.zst) are present for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
-publish-all: require-gh publish-homebrew publish-winget publish-choco publish-linux
+publish-all: require-gh publish-homebrew publish-winget publish-linux
 	@echo "All publish targets completed for $(TAG)."
 
 ## release-snapshot: test goreleaser locally without publishing
