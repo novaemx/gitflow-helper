@@ -717,6 +717,43 @@ func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
 	}
 }
 
+func TestSlashShortcut_DoesNotEnterPalette(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewDashboard}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated.mode != viewDashboard {
+		t.Fatalf("expected mode to remain dashboard after '/', got %v", updated.mode)
+	}
+}
+
+func TestRenderActivityPanel_NarrowWidthKeepsBottomBorder(t *testing.T) {
+	m := model{
+		mcpActivity: []mcpserver.ActivityEntry{{
+			Tool:      "interactive-tui",
+			Args:      "gitflow finish --json --with-a-very-long-argument-to-force-panel-truncation-on-narrow-layout",
+			Result:    "ok",
+			Source:    "cli",
+			Timestamp: "2026-04-19T20:36:00Z",
+		}},
+	}
+
+	rendered := stripANSI(m.renderActivityPanel(30, 10))
+	rows := strings.Split(rendered, "\n")
+	if len(rows) == 0 {
+		t.Fatal("expected panel rows")
+	}
+	if !strings.Contains(rows[len(rows)-1], "╰") {
+		t.Fatalf("expected panel bottom border to be visible, got %q", rows[len(rows)-1])
+	}
+}
+
 // TestRenderOutputOverlay_BoxCoversOwnArea verifies that the overlay box
 // replaces base content within its boundaries.
 func TestRenderOutputOverlay_BoxCoversOwnArea(t *testing.T) {
@@ -836,7 +873,6 @@ func TestAllOverlays_BackgroundVisibleOutsideBox(t *testing.T) {
 	}{
 		{"output", func() string { return m.renderOutputOverlay(base) }},
 		{"help", func() string { return m.renderHelpOverlay(base) }},
-		{"palette", func() string { return m.renderPaletteOverlay(base) }},
 		{"input", func() string { return m.renderInputOverlay(base) }},
 	}
 	for _, tc := range tests {

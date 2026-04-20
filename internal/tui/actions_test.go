@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -321,5 +322,27 @@ func TestBuildActions_RecommendsFinishForCleanBugfixWithoutAheadCommits(t *testi
 	}
 	if !finish.Recommended {
 		t.Fatal("expected finish to be recommended for a clean bugfix branch")
+	}
+}
+
+func TestBuildActions_TagsActionIncludesReleaseColumns(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            cfg.DevelopBranch,
+		HasDefaultRemote:   true,
+		GitFlowInitialized: true,
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	tags, ok := actionByTag(actions, "tags")
+	if !ok {
+		t.Fatal("expected tags action")
+	}
+	if !strings.Contains(tags.Command, "for-each-ref") {
+		t.Fatalf("expected tags command to use for-each-ref table output, got %q", tags.Command)
+	}
+	if !strings.Contains(tags.Command, "Date") || !strings.Contains(tags.Command, "Release") {
+		t.Fatalf("expected tags command to include Date/Release columns, got %q", tags.Command)
 	}
 }
