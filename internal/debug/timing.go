@@ -7,13 +7,44 @@ import (
 	"time"
 )
 
+type Level int
+
+const (
+	LevelOff Level = iota
+	LevelLog
+	LevelDebug
+)
+
 var (
-	enabled = os.Getenv("GITFLOW_DEBUG") == "1"
+	level   = envLevel()
 	mu      sync.Mutex
 	timings []TimingEntry
 	startMu sync.Mutex
 	markers = make(map[string]time.Time)
 )
+
+func envLevel() Level {
+	if os.Getenv("GITFLOW_DEBUG") == "1" {
+		return LevelDebug
+	}
+	if os.Getenv("GITFLOW_LOG") == "1" {
+		return LevelLog
+	}
+	return LevelOff
+}
+
+func Configure(logEnabled, debugEnabled bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	switch {
+	case debugEnabled:
+		level = LevelDebug
+	case logEnabled:
+		level = LevelLog
+	default:
+		level = envLevel()
+	}
+}
 
 // TimingEntry represents a timed measurement
 type TimingEntry struct {
@@ -24,7 +55,7 @@ type TimingEntry struct {
 
 // Start marks the beginning of a timing block; returns a function to call End
 func Start(name string) func() {
-	if !enabled {
+	if !IsDebugEnabled() {
 		return func() {}
 	}
 	startMu.Lock()
@@ -35,7 +66,7 @@ func Start(name string) func() {
 
 // End completes a timing block and records it
 func End(name string) {
-	if !enabled {
+	if !IsDebugEnabled() {
 		return
 	}
 	startMu.Lock()
@@ -59,10 +90,18 @@ func End(name string) {
 
 // Printf logs debug messages if enabled
 func Printf(format string, args ...any) {
-	if !enabled {
+	if !IsDebugEnabled() {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+}
+
+// Logf logs high-level troubleshooting messages.
+func Logf(format string, args ...any) {
+	if !IsLogEnabled() {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[LOG] "+format+"\n", args...)
 }
 
 // Timings returns all recorded timings
@@ -74,7 +113,7 @@ func Timings() []TimingEntry {
 
 // PrintTimings outputs all timings in human-readable format
 func PrintTimings() {
-	if !enabled {
+	if !IsDebugEnabled() {
 		return
 	}
 	mu.Lock()
@@ -96,5 +135,17 @@ func PrintTimings() {
 
 // IsEnabled returns true if debug mode is on
 func IsEnabled() bool {
-	return enabled
+	return IsDebugEnabled()
+}
+
+func IsLogEnabled() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return level >= LevelLog
+}
+
+func IsDebugEnabled() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return level >= LevelDebug
 }

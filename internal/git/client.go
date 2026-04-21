@@ -1,9 +1,11 @@
 package git
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
+	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/output"
 )
 
@@ -26,16 +28,57 @@ func NewLocalGitClient(root string) *LocalGitClient {
 	return &LocalGitClient{Root: root}
 }
 
+func previewGitOutput(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "<empty>"
+	}
+	if len(trimmed) > 320 {
+		return trimmed[:320] + "..."
+	}
+	return trimmed
+}
+
+func logGitInvocation(root string, args []string) {
+	cmdLine := fmt.Sprintf("git %s", strings.Join(args, " "))
+	if debug.IsDebugEnabled() {
+		debug.Printf("cwd=%s cmd=%s", root, cmdLine)
+		return
+	}
+	if debug.IsLogEnabled() {
+		debug.Logf("%s", cmdLine)
+	}
+}
+
+func logGitResult(code int, stdout, stderr string) {
+	if !debug.IsDebugEnabled() {
+		return
+	}
+	debug.Printf("git exit=%d stdout=%s stderr=%s", code, previewGitOutput(stdout), previewGitOutput(stderr))
+}
+
 func (c *LocalGitClient) Exec(args ...string) error {
+	logGitInvocation(c.Root, args)
 	output.Infof("  %s→ git %s%s", output.Dim, strings.Join(args, " "), output.Reset)
 	cmd := exec.Command("git", args...)
 	cmd.Dir = c.Root
 	cmd.Stdout = output.Writer()
 	cmd.Stderr = output.Writer()
-	return cmd.Run()
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		} else {
+			code = 1
+		}
+	}
+	logGitResult(code, "", "")
+	return err
 }
 
 func (c *LocalGitClient) ExecResult(args ...string) (int, string, string) {
+	logGitInvocation(c.Root, args)
 	cmd := exec.Command("git", args...)
 	cmd.Dir = c.Root
 	var stdout, stderr strings.Builder
@@ -50,7 +93,10 @@ func (c *LocalGitClient) ExecResult(args ...string) (int, string, string) {
 			code = 1
 		}
 	}
-	return code, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String())
+	trimmedStdout := strings.TrimSpace(stdout.String())
+	trimmedStderr := strings.TrimSpace(stderr.String())
+	logGitResult(code, trimmedStdout, trimmedStderr)
+	return code, trimmedStdout, trimmedStderr
 }
 
 func (c *LocalGitClient) ExecQuiet(args ...string) string {

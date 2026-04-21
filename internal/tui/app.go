@@ -380,7 +380,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case cmdDoneMsg:
 		m.outputTitle = msg.title
 		lines := strings.Split(stripANSI(msg.output), "\n")
+		if len(lines) == 1 && strings.TrimSpace(lines[0]) == "" {
+			lines = nil
+		}
 		if msg.err != nil {
+			if len(lines) == 0 {
+				lines = append(lines, errorStyle.Render("Tip: rerun the command with --debug for git diagnostics."))
+			}
 			lines = append(lines, "", errorStyle.Render("Error: "+msg.err.Error()))
 		}
 		m.outputLines = lines
