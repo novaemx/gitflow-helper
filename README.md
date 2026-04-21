@@ -94,8 +94,12 @@ Run `gitflow` without arguments to launch the full-screen dashboard:
 
 All commands support `--json` for machine-readable output.
 
+Use `--log` to write troubleshooting output to `.gitflow/logs/gitflow.log`. Add `--debug` to include verbose debug details in the same file.
+
 ```bash
 gitflow status                     # repo state dashboard
+gitflow status --log               # write troubleshooting logs to .gitflow/logs/gitflow.log
+gitflow status --log --debug       # include verbose debug details in the log file
 gitflow pull                       # safe fetch + fast-forward merge
 gitflow push                       # push current branch (target-aware)
 gitflow push develop               # push current branch to target branch with validation

@@ -3,6 +3,7 @@ package debug
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -15,12 +16,21 @@ const (
 	LevelDebug
 )
 
+const (
+	logDirName  = ".gitflow"
+	logsDirName = "logs"
+	logFileName = "gitflow.log"
+)
+
 var (
-	level   = envLevel()
-	mu      sync.Mutex
-	timings []TimingEntry
-	startMu sync.Mutex
-	markers = make(map[string]time.Time)
+	level          = envLevel()
+	mu             sync.Mutex
+	timings        []TimingEntry
+	startMu        sync.Mutex
+	markers        = make(map[string]time.Time)
+	logFile        *os.File
+	logFilePath    string
+	configuredRoot string
 )
 
 func envLevel() Level {
@@ -33,9 +43,10 @@ func envLevel() Level {
 	return LevelOff
 }
 
-func Configure(logEnabled, debugEnabled bool) {
+func Configure(projectRoot string, logEnabled, debugEnabled bool) {
 	mu.Lock()
 	defer mu.Unlock()
+
 	switch {
 	case debugEnabled:
 		level = LevelDebug
@@ -44,6 +55,67 @@ func Configure(logEnabled, debugEnabled bool) {
 	default:
 		level = envLevel()
 	}
+
+	if level < LevelLog {
+		closeLogFileLocked()
+		configuredRoot = ""
+		return
+	}
+
+	root := projectRoot
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			closeLogFileLocked()
+			configuredRoot = ""
+			return
+		}
+		root = cwd
+	}
+
+	path := filepath.Join(root, logDirName, logsDirName, logFileName)
+	if logFile != nil && logFilePath == path {
+		configuredRoot = root
+		return
+	}
+
+	closeLogFileLocked()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		configuredRoot = root
+		logFilePath = path
+		return
+	}
+
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		configuredRoot = root
+		logFilePath = path
+		return
+	}
+
+	logFile = file
+	logFilePath = path
+	configuredRoot = root
+	_, _ = logFile.WriteString(fmt.Sprintf("%s [LOG] logging enabled level=%s\n", time.Now().Format(time.RFC3339), level.String()))
+}
+
+func (l Level) String() string {
+	switch l {
+	case LevelDebug:
+		return "debug"
+	case LevelLog:
+		return "log"
+	default:
+		return "off"
+	}
+}
+
+func closeLogFileLocked() {
+	if logFile != nil {
+		_ = logFile.Close()
+		logFile = nil
+	}
+	logFilePath = ""
 }
 
 // TimingEntry represents a timed measurement
@@ -90,18 +162,35 @@ func End(name string) {
 
 // Printf logs debug messages if enabled
 func Printf(format string, args ...any) {
-	if !IsDebugEnabled() {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	writeLine(LevelDebug, "DEBUG", format, args...)
 }
 
 // Logf logs high-level troubleshooting messages.
 func Logf(format string, args ...any) {
-	if !IsLogEnabled() {
+	writeLine(LevelLog, "LOG", format, args...)
+}
+
+func writeLine(minLevel Level, prefix, format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	line := fmt.Sprintf("[%s] %s\n", prefix, message)
+
+	mu.Lock()
+	enabled := level >= minLevel
+	file := logFile
+	mu.Unlock()
+
+	if !enabled {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "[LOG] "+format+"\n", args...)
+
+	_, _ = os.Stderr.WriteString(line)
+	if file != nil {
+		mu.Lock()
+		if logFile != nil {
+			_, _ = logFile.WriteString(fmt.Sprintf("%s %s", time.Now().Format(time.RFC3339), line))
+		}
+		mu.Unlock()
+	}
 }
 
 // Timings returns all recorded timings
@@ -117,20 +206,31 @@ func PrintTimings() {
 		return
 	}
 	mu.Lock()
-	defer mu.Unlock()
-
 	if len(timings) == 0 {
+		mu.Unlock()
 		return
 	}
+	entries := append([]TimingEntry(nil), timings...)
+	file := logFile
+	mu.Unlock()
 
-	fmt.Fprintf(os.Stderr, "\n=== TIMING REPORT ===\n")
+	report := "\n=== TIMING REPORT ===\n"
 	var total time.Duration
-	for _, t := range timings {
-		fmt.Fprintf(os.Stderr, "  %-50s %10.3fms\n", t.Name, t.Duration.Seconds()*1000)
+	for _, t := range entries {
+		report += fmt.Sprintf("  %-50s %10.3fms\n", t.Name, t.Duration.Seconds()*1000)
 		total += t.Duration
 	}
-	fmt.Fprintf(os.Stderr, "  %-50s %10.3fms\n", "TOTAL", total.Seconds()*1000)
-	fmt.Fprintf(os.Stderr, "======================\n\n")
+	report += fmt.Sprintf("  %-50s %10.3fms\n", "TOTAL", total.Seconds()*1000)
+	report += "======================\n\n"
+
+	_, _ = os.Stderr.WriteString(report)
+	if file != nil {
+		mu.Lock()
+		if logFile != nil {
+			_, _ = logFile.WriteString(fmt.Sprintf("%s %s", time.Now().Format(time.RFC3339), report))
+		}
+		mu.Unlock()
+	}
 }
 
 // IsEnabled returns true if debug mode is on
