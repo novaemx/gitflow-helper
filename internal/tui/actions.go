@@ -224,6 +224,16 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		if s.Dirty {
 			label += dirtyNote
 		}
+		if s.Dirty {
+			high = append(high, action{
+				Label:       "Commit all changes",
+				Tag:         "commit",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Commit message:",
+				Command:     `gitflow commit "%s"`,
+			})
+		}
 		if s.HasDefaultRemote {
 			high = append(high, action{
 				Label:       "Push current branch",
@@ -247,6 +257,16 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 		if s.Dirty {
 			label += dirtyNote
+		}
+		if s.Dirty {
+			high = append(high, action{
+				Label:       "Commit all changes",
+				Tag:         "commit",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Commit message:",
+				Command:     `gitflow commit "%s"`,
+			})
 		}
 		if s.HasDefaultRemote {
 			high = append(high, action{

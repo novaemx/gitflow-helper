@@ -249,6 +249,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newPushCmd(),
 		newInitCmd(),
 		newStartCmd(),
+		newCommitCmd(),
 		newFinishCmd(),
 		newFastReleaseCmd(),
 		newSyncCmd(),
