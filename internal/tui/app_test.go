@@ -976,3 +976,19 @@ func TestOutputStatusBar_ShowsActionName(t *testing.T) {
 		t.Fatalf("status bar should show action title, got: %q", plain)
 	}
 }
+
+func TestNormalizeActionInput_SlugifiesBugfixBranchNames(t *testing.T) {
+	a := action{Command: "gitflow start bugfix %s"}
+	got := normalizeActionInput(a, " Fix login crash #42 ")
+	if got != "fix-login-crash-42" {
+		t.Fatalf("normalizeActionInput() = %q, want %q", got, "fix-login-crash-42")
+	}
+}
+
+func TestNormalizeActionInput_PreservesCommitMessages(t *testing.T) {
+	a := action{Command: "gitflow commit %s"}
+	got := normalizeActionInput(a, "Fix login crash")
+	if got != "Fix login crash" {
+		t.Fatalf("normalizeActionInput() = %q, want original value", got)
+	}
+}

@@ -1,7 +1,8 @@
 BINARY   := gitflow
 MODULE   := github.com/novaemx/gitflow-helper
 VERSION  ?= $(shell cat VERSION 2>/dev/null || git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS  := -s -w -X main.version=$(VERSION)
+COMMIT   ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")
+LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'
 DIST     := dist
 TAG      ?= v$(VERSION)

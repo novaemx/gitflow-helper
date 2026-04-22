@@ -578,6 +578,11 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		val := m.inputField.Value()
 		m.mode = viewDashboard
 		if val != "" && m.pendingAction != nil {
+			val = normalizeActionInput(*m.pendingAction, val)
+			if val == "" {
+				m.pendingAction = nil
+				return m, nil
+			}
 			finalCmd := fmt.Sprintf(m.pendingAction.Command, val)
 			a := action{
 				Label:   m.pendingAction.Label,
@@ -593,6 +598,45 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.inputField, cmd = m.inputField.Update(msg)
 	return m, cmd
+}
+
+func normalizeActionInput(a action, value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(a.Command, "gitflow start feature ") ||
+		strings.HasPrefix(a.Command, "gitflow start bugfix ") {
+		return slugifyBranchInput(trimmed)
+	}
+
+	return trimmed
+}
+
+func slugifyBranchInput(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		isAlpha := r >= 'a' && r <= 'z'
+		isDigit := r >= '0' && r <= '9'
+		if isAlpha || isDigit {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	return strings.Trim(builder.String(), "-")
 }
 
 func (m model) startCommand(a action) (tea.Model, tea.Cmd) {
