@@ -140,32 +140,85 @@ release:
 
 $(CHECKSUMS_FILE):
 	@echo "→ Building release artifacts locally (no cloud build)..."
-	@if [ -n "$(BUILD_REF)" ]; then \
-		_build_ref="$(BUILD_REF)"; \
+	@_build_ref="$(BUILD_REF)"; \
+	if [ -n "$$_build_ref" ]; then \
 		echo "→ Building from requested ref $$_build_ref..."; \
-		if git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
-			goreleaser release --clean --skip=publish; \
-		else \
-			_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
-			git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; \
-			( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
-			_exit=$$?; \
-			if [ $$_exit -eq 0 ]; then \
-				rm -rf "$(DIST)"; \
-				cp -R "$$_worktree/$(DIST)" "$(DIST)"; \
-			fi; \
-			git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
-			rm -rf "$$_worktree"; \
-			exit $$_exit; \
-		fi; \
-	elif git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
-		goreleaser release --clean --skip=publish; \
 	else \
-		_build_tag=$$(git describe --tags --abbrev=0 2>/dev/null); \
-		[ -n "$$_build_tag" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+		_current_branch=$$(git branch --show-current 2>/dev/null || true); \
+		if git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
+			_build_ref="HEAD"; \
+			echo "→ Auto BUILD_REF: HEAD is already tagged."; \
+		elif [ "$$_current_branch" = "release/$(RELEASE_VERSION)" ] || [ "$$_current_branch" = "hotfix/$(RELEASE_VERSION)" ]; then \
+			_build_ref="HEAD"; \
+			echo "→ Auto BUILD_REF: using current branch HEAD ($$_current_branch) for $(TAG)."; \
+		elif git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}" >/dev/null; then \
+			_build_ref="$(TAG)"; \
+			echo "→ Auto BUILD_REF: using existing tag $(TAG)."; \
+		else \
+			_build_ref=$$(git describe --tags --abbrev=0 2>/dev/null || true); \
+			[ -n "$$_build_ref" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+			echo "→ Auto BUILD_REF: falling back to latest tag $$_build_ref."; \
+		fi; \
+	fi; \
+	if [ "$$_build_ref" = "HEAD" ]; then \
+		_current_branch=$$(git branch --show-current 2>/dev/null || true); \
+		if [ "$$_current_branch" = "release/$(RELEASE_VERSION)" ] || [ "$$_current_branch" = "hotfix/$(RELEASE_VERSION)" ]; then \
+			if ! git diff --quiet || ! git diff --cached --quiet; then \
+				echo "Working tree is dirty; commit/stash changes before publishing $(TAG)."; \
+				exit 1; \
+			fi; \
+			if git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}" >/dev/null; then \
+				_tag_commit=$$(git rev-list -n 1 "$(TAG)"); \
+				_head_commit=$$(git rev-parse HEAD); \
+				if [ "$$_tag_commit" != "$$_head_commit" ]; then \
+					echo "→ Auto BUILD_REF: $(TAG) exists but points to a different commit; building from HEAD in an ephemeral clone with local tag override."; \
+					echo "  Tag commit:  $$_tag_commit"; \
+					echo "  HEAD commit: $$_head_commit"; \
+					_clone=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+					if ! git clone --quiet --no-hardlinks . "$$_clone"; then \
+						echo "Failed to create ephemeral clone for release build."; \
+						rm -rf "$$_clone"; \
+						exit 1; \
+					fi; \
+					( cd "$$_clone" && git checkout --detach HEAD >/dev/null && git tag -f "$(TAG)" HEAD >/dev/null && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+					_exit=$$?; \
+					if [ $$_exit -eq 0 ]; then \
+						rm -rf "$(DIST)"; \
+						cp -R "$$_clone/$(DIST)" "$(DIST)"; \
+					fi; \
+					rm -rf "$$_clone"; \
+					exit $$_exit; \
+				fi; \
+				goreleaser release --clean --skip=publish; \
+			else \
+				_clone=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+				echo "→ Auto BUILD_REF: no $(TAG) tag yet; building from an ephemeral clone tagged at HEAD."; \
+				if ! git clone --quiet --no-hardlinks . "$$_clone"; then \
+					echo "Failed to create ephemeral clone for release build."; \
+					rm -rf "$$_clone"; \
+					exit 1; \
+				fi; \
+				( cd "$$_clone" && git checkout --detach HEAD >/dev/null && git tag "$(TAG)" HEAD && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+				_exit=$$?; \
+				if [ $$_exit -eq 0 ]; then \
+					rm -rf "$(DIST)"; \
+					cp -R "$$_clone/$(DIST)" "$(DIST)"; \
+				fi; \
+				rm -rf "$$_clone"; \
+				exit $$_exit; \
+			fi; \
+		else \
+			goreleaser release --clean --skip=publish; \
+		fi; \
+	elif git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
+		goreleaser release --clean --skip=publish; \
+	elif git rev-parse --verify --quiet "$$_build_ref^{commit}" >/dev/null; then \
 		_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
-		echo "→ HEAD is not tagged. Building from temporary worktree at $$_build_tag..."; \
-		git worktree add --detach "$$_worktree" "$$_build_tag" >/dev/null; \
+		if ! git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; then \
+			echo "Failed to create worktree for ref '$$_build_ref'."; \
+			rm -rf "$$_worktree"; \
+			exit 1; \
+		fi; \
 		( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
 		_exit=$$?; \
 		if [ $$_exit -eq 0 ]; then \
@@ -175,6 +228,10 @@ $(CHECKSUMS_FILE):
 		git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
 		rm -rf "$$_worktree"; \
 		exit $$_exit; \
+	else \
+		echo "Resolved BUILD_REF '$$_build_ref' does not exist (tag/branch/commit)."; \
+		echo "Hint: pass BUILD_REF=<valid-ref> explicitly to override auto-inference."; \
+		exit 1; \
 	fi
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Expected $(CHECKSUMS_FILE) was not generated" && exit 1)
 	@echo "Done. Artifacts and checksums in $(DIST)/"
@@ -238,10 +295,11 @@ release-local-github:
 publish-github:
 	@test -n "$(TAG)" || (echo "TAG is required. Example: make publish-github TAG=v0.5.12" && exit 1)
 	@$(MAKE) require-gh
-	@$(MAKE) -B $(CHECKSUMS_FILE) BUILD_REF="$(TAG)"
+	@$(MAKE) -B $(CHECKSUMS_FILE)
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Ensuring GitHub release $(TAG) exists with changelog executive summary..."
 	@notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
+	: >| "$$notes_file"; \
 	awk -v version="$(RELEASE_VERSION)" ' \
 		BEGIN { section_header = "## [" version "] - " } \
 		index($$0, section_header) == 1 { in_version=1; next } \
@@ -249,14 +307,32 @@ publish-github:
 		in_version && /^### TL;DR/ { in_tldr=1; next } \
 		in_tldr && /^### / { in_tldr=0 } \
 		in_tldr { print } \
-	' CHANGELOG.md > "$$notes_file"; \
+	' CHANGELOG.md >| "$$notes_file"; \
 	if [ ! -s "$$notes_file" ]; then \
-		echo "Missing TL;DR in CHANGELOG.md for version $(RELEASE_VERSION)."; \
-		rm -f "$$notes_file"; \
-		exit 1; \
+		echo "→ Missing TL;DR in CHANGELOG.md for $(RELEASE_VERSION); generating notes from commits between release versions..."; \
+		current_ref="$(TAG)"; \
+		if ! git rev-parse -q --verify "$$current_ref^{commit}" >/dev/null 2>&1; then \
+			current_ref=$$(git rev-parse HEAD); \
+		fi; \
+		prev_tag=$$(git tag --sort=-version:refname | awk -v cur="$(TAG)" '$$0 != cur { print; exit }'); \
+		if [ -n "$$prev_tag" ]; then \
+			git log --no-merges --pretty='- %s' "$$prev_tag..$$current_ref" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "Range: $$prev_tag..$$current_ref" >> "$$notes_file"; \
+		else \
+			git log --no-merges --pretty='- %s' "$$current_ref" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "Range: initial..$$current_ref" >> "$$notes_file"; \
+		fi; \
+		if [ ! -s "$$notes_file" ]; then \
+			echo "Release $(TAG)" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "No commit descriptions were found for the selected range." >> "$$notes_file"; \
+		fi; \
 	fi; \
 	if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
-		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
+		target_commit=$$(git rev-parse HEAD); \
+		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --target "$$target_commit" --title "$(TAG)" --notes-file "$$notes_file"; \
 	else \
 		gh release edit "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
 	fi; \

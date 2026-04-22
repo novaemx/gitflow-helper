@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.41] - 2026-04-22
+
+### TL;DR
+Implemented changelog TL;DR guardrail for release/hotfix branches to auto-populate missing changelog templates, ensuring publish-github never fails on missing summaries. Enhanced Makefile with clean-tree validation and ephemeral build clones for untagged release versions.
+
+### Added
+- Added `ensureChangelogTLDR()` guardrail function that auto-creates CHANGELOG.md sections with TL;DR templates during `gitflow start release/hotfix`.
+- Implemented automatic CHANGELOG.md section header creation (with today's date) for new releases.
+
+### Changed
+- Enhanced release branch startup to guarantee CHANGELOG.md has proper structure before publish phase.
+- Modified Makefile publish workflow to validate and ensure changelog consistency.
+
+### Fixed
+- Resolved "Missing TL;DR in CHANGELOG.md" errors during release publishing.
+- Guardrail prevents incomplete changelog entries from blocking CI/CD pipelines.
+
 ## [0.5.40] - 2026-04-19
 
 ### TL;DR
