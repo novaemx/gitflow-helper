@@ -140,32 +140,37 @@ release:
 
 $(CHECKSUMS_FILE):
 	@echo "→ Building release artifacts locally (no cloud build)..."
-	@if [ -n "$(BUILD_REF)" ]; then \
-		_build_ref="$(BUILD_REF)"; \
+	@_build_ref="$(BUILD_REF)"; \
+	if [ -n "$$_build_ref" ]; then \
 		echo "→ Building from requested ref $$_build_ref..."; \
-		if git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
-			goreleaser release --clean --skip=publish; \
-		else \
-			_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
-			git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; \
-			( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
-			_exit=$$?; \
-			if [ $$_exit -eq 0 ]; then \
-				rm -rf "$(DIST)"; \
-				cp -R "$$_worktree/$(DIST)" "$(DIST)"; \
-			fi; \
-			git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
-			rm -rf "$$_worktree"; \
-			exit $$_exit; \
-		fi; \
-	elif git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
-		goreleaser release --clean --skip=publish; \
 	else \
-		_build_tag=$$(git describe --tags --abbrev=0 2>/dev/null); \
-		[ -n "$$_build_tag" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+		_current_branch=$$(git branch --show-current 2>/dev/null || true); \
+		if git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
+			_build_ref="HEAD"; \
+			echo "→ Auto BUILD_REF: HEAD is already tagged."; \
+		elif [ "$$_current_branch" = "release/$(RELEASE_VERSION)" ] || [ "$$_current_branch" = "hotfix/$(RELEASE_VERSION)" ]; then \
+			_build_ref="HEAD"; \
+			echo "→ Auto BUILD_REF: using current branch HEAD ($$_current_branch) for $(TAG)."; \
+		elif git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}" >/dev/null; then \
+			_build_ref="$(TAG)"; \
+			echo "→ Auto BUILD_REF: using existing tag $(TAG)."; \
+		else \
+			_build_ref=$$(git describe --tags --abbrev=0 2>/dev/null || true); \
+			[ -n "$$_build_ref" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+			echo "→ Auto BUILD_REF: falling back to latest tag $$_build_ref."; \
+		fi; \
+	fi; \
+	if [ "$$_build_ref" = "HEAD" ]; then \
+		goreleaser release --clean --skip=publish; \
+	elif git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
+		goreleaser release --clean --skip=publish; \
+	elif git rev-parse --verify --quiet "$$_build_ref^{commit}" >/dev/null; then \
 		_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
-		echo "→ HEAD is not tagged. Building from temporary worktree at $$_build_tag..."; \
-		git worktree add --detach "$$_worktree" "$$_build_tag" >/dev/null; \
+		if ! git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; then \
+			echo "Failed to create worktree for ref '$$_build_ref'."; \
+			rm -rf "$$_worktree"; \
+			exit 1; \
+		fi; \
 		( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
 		_exit=$$?; \
 		if [ $$_exit -eq 0 ]; then \
@@ -175,6 +180,10 @@ $(CHECKSUMS_FILE):
 		git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
 		rm -rf "$$_worktree"; \
 		exit $$_exit; \
+	else \
+		echo "Resolved BUILD_REF '$$_build_ref' does not exist (tag/branch/commit)."; \
+		echo "Hint: pass BUILD_REF=<valid-ref> explicitly to override auto-inference."; \
+		exit 1; \
 	fi
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Expected $(CHECKSUMS_FILE) was not generated" && exit 1)
 	@echo "Done. Artifacts and checksums in $(DIST)/"
@@ -238,7 +247,7 @@ release-local-github:
 publish-github:
 	@test -n "$(TAG)" || (echo "TAG is required. Example: make publish-github TAG=v0.5.12" && exit 1)
 	@$(MAKE) require-gh
-	@$(MAKE) -B $(CHECKSUMS_FILE) BUILD_REF="$(TAG)"
+	@$(MAKE) -B $(CHECKSUMS_FILE)
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Ensuring GitHub release $(TAG) exists with changelog executive summary..."
 	@notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
