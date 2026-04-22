@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/debug"
@@ -224,110 +223,6 @@ func bumpVersionOnBranch(cfg config.FlowConfig, branchType, ver string) {
 	}
 }
 
-// ensureChangelogTLDR ensures CHANGELOG.md has a version section with a TL;DR template
-// for release/hotfix branches. This guardrail prevents "Missing TL;DR" errors during publish.
-func ensureChangelogTLDR(cfg config.FlowConfig, branchType, ver string) {
-	if branchType != "release" && branchType != "hotfix" {
-		return
-	}
-
-	changelogPath := filepath.Join(cfg.ProjectRoot, "CHANGELOG.md")
-	data, err := os.ReadFile(changelogPath)
-	if err != nil {
-		debug.Logf("Could not read CHANGELOG.md for TL;DR guardrail: %v", err)
-		return
-	}
-
-	lines := strings.Split(string(data), "\n")
-	versionHeader := fmt.Sprintf("## [%s] - ", ver)
-	tldrMarker := "### TL;DR"
-	
-	var (
-		versionLineIdx = -1
-		tldrLineIdx    = -1
-	)
-
-	// Find version header and TL;DR marker
-	for i, line := range lines {
-		if strings.HasPrefix(line, versionHeader) {
-			versionLineIdx = i
-		} else if versionLineIdx >= 0 && tldrLineIdx < 0 && strings.HasPrefix(line, tldrMarker) {
-			tldrLineIdx = i
-		} else if versionLineIdx >= 0 && tldrLineIdx < 0 && i > versionLineIdx && (strings.HasPrefix(line, "### ") || strings.HasPrefix(line, "## ")) {
-			// Found another section/subsection without a TL;DR — will insert before it
-			break
-		}
-	}
-
-	// If version section doesn't exist, create it
-	if versionLineIdx < 0 {
-		// Find insertion point (after "## [Unreleased]")
-		insertIdx := -1
-		for i, line := range lines {
-			if strings.HasPrefix(line, "## [Unreleased]") {
-				insertIdx = i + 1
-				break
-			}
-		}
-		if insertIdx < 0 {
-			return // Can't find insertion point
-		}
-
-		// Create version section with date
-		todayStr := time.Now().Format("2006-01-02")
-		newSection := []string{
-			fmt.Sprintf("## [%s] - %s", ver, todayStr),
-			"",
-			"### TL;DR",
-			"<!-- Summarize changes in 1-2 sentences for release notes -->",
-			"",
-		}
-
-		// Insert new section
-		lines = append(lines[:insertIdx], append(newSection, lines[insertIdx:]...)...)
-		changeData := strings.Join(lines, "\n")
-		if err := os.WriteFile(changelogPath, []byte(changeData), 0644); err != nil {
-			debug.Logf("Could not write CHANGELOG.md guardrail update: %v", err)
-			return
-		}
-
-		// Commit the change
-		_ = git.Exec("add", "CHANGELOG.md")
-		_ = git.Exec("commit", "-m", fmt.Sprintf("chore(release): initialize changelog for %s with TL;DR template", ver))
-		return
-	}
-
-	// Version header exists but TL;DR doesn't
-	if tldrLineIdx < 0 {
-		insertIdx := versionLineIdx + 1
-		// Skip empty lines after version header
-		for i := versionLineIdx + 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i]) != "" {
-				insertIdx = i
-				break
-			}
-			insertIdx = i + 1
-		}
-
-		// Insert TL;DR section
-		tldrContent := []string{
-			"### TL;DR",
-			"<!-- Summarize changes in 1-2 sentences for release notes -->",
-		}
-		lines = append(lines[:insertIdx], append(tldrContent, append([]string{""}, lines[insertIdx:]...)...)...)
-		changeData := strings.Join(lines, "\n")
-		if err := os.WriteFile(changelogPath, []byte(changeData), 0644); err != nil {
-			debug.Logf("Could not write CHANGELOG.md guardrail update: %v", err)
-			return
-		}
-
-		// Commit the change
-		_ = git.Exec("add", "CHANGELOG.md")
-		_ = git.Exec("commit", "-m", fmt.Sprintf("chore(release): add TL;DR template for %s", ver))
-	}
-}
-
-
 func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[string]any) {
 	validTypes := []string{"feature", "bugfix", "release", "hotfix"}
 	valid := false
@@ -438,7 +333,6 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	}
 
 	bumpVersionOnBranch(cfg, branchType, name)
-	ensureChangelogTLDR(cfg, branchType, name)
 
 	branchName := branchType + "/" + name
 	output.Infof("  %s✓ Branch '%s' created.%s", output.Green, branchName, output.Reset)

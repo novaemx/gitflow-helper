@@ -287,6 +287,7 @@ publish-github:
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Ensuring GitHub release $(TAG) exists with changelog executive summary..."
 	@notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
+	: >| "$$notes_file"; \
 	awk -v version="$(RELEASE_VERSION)" ' \
 		BEGIN { section_header = "## [" version "] - " } \
 		index($$0, section_header) == 1 { in_version=1; next } \
@@ -294,11 +295,28 @@ publish-github:
 		in_version && /^### TL;DR/ { in_tldr=1; next } \
 		in_tldr && /^### / { in_tldr=0 } \
 		in_tldr { print } \
-	' CHANGELOG.md > "$$notes_file"; \
+	' CHANGELOG.md >| "$$notes_file"; \
 	if [ ! -s "$$notes_file" ]; then \
-		echo "Missing TL;DR in CHANGELOG.md for version $(RELEASE_VERSION)."; \
-		rm -f "$$notes_file"; \
-		exit 1; \
+		echo "→ Missing TL;DR in CHANGELOG.md for $(RELEASE_VERSION); generating notes from commits between release versions..."; \
+		current_ref="$(TAG)"; \
+		if ! git rev-parse -q --verify "$$current_ref^{commit}" >/dev/null 2>&1; then \
+			current_ref=$$(git rev-parse HEAD); \
+		fi; \
+		prev_tag=$$(git tag --sort=-version:refname | awk -v cur="$(TAG)" '$$0 != cur { print; exit }'); \
+		if [ -n "$$prev_tag" ]; then \
+			git log --no-merges --pretty='- %s' "$$prev_tag..$$current_ref" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "Range: $$prev_tag..$$current_ref" >> "$$notes_file"; \
+		else \
+			git log --no-merges --pretty='- %s' "$$current_ref" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "Range: initial..$$current_ref" >> "$$notes_file"; \
+		fi; \
+		if [ ! -s "$$notes_file" ]; then \
+			echo "Release $(TAG)" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "No commit descriptions were found for the selected range." >> "$$notes_file"; \
+		fi; \
 	fi; \
 	if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
 		target_commit=$$(git rev-parse HEAD); \
