@@ -171,11 +171,23 @@ $(CHECKSUMS_FILE):
 				_tag_commit=$$(git rev-list -n 1 "$(TAG)"); \
 				_head_commit=$$(git rev-parse HEAD); \
 				if [ "$$_tag_commit" != "$$_head_commit" ]; then \
-					echo "Tag $(TAG) exists but does not point to HEAD."; \
-					echo "Tag commit:  $$_tag_commit"; \
-					echo "HEAD commit: $$_head_commit"; \
-					echo "Hint: move/create the release tag to HEAD or pass BUILD_REF explicitly."; \
-					exit 1; \
+					echo "→ Auto BUILD_REF: $(TAG) exists but points to a different commit; building from HEAD in an ephemeral clone with local tag override."; \
+					echo "  Tag commit:  $$_tag_commit"; \
+					echo "  HEAD commit: $$_head_commit"; \
+					_clone=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+					if ! git clone --quiet --no-hardlinks . "$$_clone"; then \
+						echo "Failed to create ephemeral clone for release build."; \
+						rm -rf "$$_clone"; \
+						exit 1; \
+					fi; \
+					( cd "$$_clone" && git checkout --detach HEAD >/dev/null && git tag -f "$(TAG)" HEAD >/dev/null && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+					_exit=$$?; \
+					if [ $$_exit -eq 0 ]; then \
+						rm -rf "$(DIST)"; \
+						cp -R "$$_clone/$(DIST)" "$(DIST)"; \
+					fi; \
+					rm -rf "$$_clone"; \
+					exit $$_exit; \
 				fi; \
 				goreleaser release --clean --skip=publish; \
 			else \
