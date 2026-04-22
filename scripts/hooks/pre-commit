@@ -1,0 +1,39 @@
+#!/bin/bash
+# scripts/hooks/pre-commit
+# Enforces gitflow file-scope policy: packaging/version files only on release/hotfix branches.
+# Installed via: bash scripts/install-hooks.sh
+
+set -e
+
+BRANCH=$(git branch --show-current)
+
+# Only apply restriction on feature/*, bugfix/*, develop, main
+if [[ $BRANCH =~ ^(release/|hotfix/) ]]; then
+    exit 0
+fi
+
+# Project-specific release metadata patterns — adjust if project layout changes
+# Only flag Added/Modified/Renamed/Copied — not Deleted files
+PROTECTED=$(git diff --cached --name-status | awk '$1 != "D"' | awk '{print $2}' | grep -E \
+    "^packaging/|^VERSION$|^CHANGELOG\.md$|^AGENTS\.md$|^RELEASE_NOTES\.md$" || true)
+
+if [[ -n "$PROTECTED" ]]; then
+    cat >&2 <<EOF
+❌ GITFLOW VIOLATION — Cannot commit release metadata on branch: $BRANCH
+
+Staged protected files:
+$(echo "$PROTECTED" | sed 's/^/  - /')
+
+Release metadata requires release/* or hotfix/* branches.
+
+What to do:
+  1. Unstage:  git reset HEAD <file>
+  2. Finish current branch if needed: gitflow --json finish
+  3. Create release branch: gitflow --json start release <version>
+  4. Re-apply changes there.
+
+EOF
+    exit 1
+fi
+
+exit 0

@@ -4,26 +4,23 @@
 class GitflowHelper < Formula
   desc "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
   homepage "https://github.com/novaemx/gitflow-helper"
-  version "0.5.39"
+  version "0.5.41"
   license "MIT"
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.39/gitflow-0.5.39-darwin-universal.tar.gz"
-      sha256 "532fbedc51c783389447fda28e1256074d4408dc0b6349205143e1a1ac01469e"
-    else
-      url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.39/gitflow-0.5.39-darwin-universal.tar.gz"
-      sha256 "532fbedc51c783389447fda28e1256074d4408dc0b6349205143e1a1ac01469e"
-    end
-  end
+  url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.41/gitflow-0.5.41-darwin-universal.tar.gz"
+  sha256 "18ebd0ca3e5a5a0853b03895b98da6d4e101bc022ff87ba04307fb55b9a1cf64"
 
   depends_on "git"
 
   def install
     bin.install "gitflow"
+    (bash_completion/"gitflow").write `#{bin}/gitflow completion bash`
+    (zsh_completion/"_gitflow").write `#{bin}/gitflow completion zsh`
+    (fish_completion/"gitflow.fish").write `#{bin}/gitflow completion fish`
   end
 
   test do
-    assert_match "gitflow", shell_output("#{bin}/gitflow --version")
+    assert_match version.to_s, shell_output("#{bin}/gitflow --version")
+    assert_match "bash", shell_output("#{bin}/gitflow completion --help")
   end
 end

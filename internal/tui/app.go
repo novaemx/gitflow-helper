@@ -26,7 +26,6 @@ const (
 	viewDashboard viewMode = iota
 	viewOutput
 	viewHelp
-	viewPalette
 	viewInput
 )
 
@@ -61,9 +60,6 @@ type model struct {
 	running      bool
 	runningTitle string
 	spinner      spinner.Model
-
-	// Command palette
-	paletteQuery string
 
 	// Input overlay
 	inputPrompt   string
@@ -182,6 +178,13 @@ func (m *model) refresh(preserveSelection bool) {
 	m.dashLines = buildDashboardLines(m.gf.State, m.gf.Config)
 	m.selected = selectionIndexForRefresh(m.actions, prev)
 	m.scroll = 0
+}
+
+func (m *model) shouldPollProtectedBranchState() bool {
+	if m.gf == nil {
+		return false
+	}
+	return m.gf.State.Current == m.gf.Config.DevelopBranch || m.gf.State.Current == m.gf.Config.MainBranch
 }
 
 func resolveGitDir(root string) string {
@@ -321,11 +324,33 @@ func (m model) Init() tea.Cmd {
 }
 
 func animateToward(current, target, step float64) float64 {
+	if current == target {
+		return current
+	}
+
+	delta := target - current
+	dist := math.Abs(delta)
+
+	// Ease movement by distance so panel transitions feel smoother near the end
+	// while still starting with enough speed on larger moves.
+	dynStep := dist * 0.22
+	if dynStep < step {
+		dynStep = step
+	}
+	if dynStep > 0.20 {
+		dynStep = 0.20
+	}
+
+	next := current + math.Copysign(dynStep, delta)
+	if math.Abs(target-next) < 0.01 {
+		return target
+	}
+
 	if current < target {
-		return math.Min(current+step, target)
+		return math.Min(next, target)
 	}
 	if current > target {
-		return math.Max(current-step, target)
+		return math.Max(next, target)
 	}
 	return current
 }
@@ -355,7 +380,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case cmdDoneMsg:
 		m.outputTitle = msg.title
 		lines := strings.Split(stripANSI(msg.output), "\n")
+		if len(lines) == 1 && strings.TrimSpace(lines[0]) == "" {
+			lines = nil
+		}
 		if msg.err != nil {
+			if len(lines) == 0 {
+				lines = append(lines, errorStyle.Render("Tip: rerun the command with --debug for git diagnostics."))
+			}
 			lines = append(lines, "", errorStyle.Render("Error: "+msg.err.Error()))
 		}
 		m.outputLines = lines
@@ -389,7 +420,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case watchTickMsg:
 		fp := repoFingerprint(m.gf.Config.ProjectRoot)
-		if fp != m.lastGitFingerprint && m.mode == viewDashboard {
+		shouldRefresh := fp != m.lastGitFingerprint
+		if !shouldRefresh && m.mode == viewDashboard && m.shouldPollProtectedBranchState() {
+			shouldRefresh = true
+		}
+		if shouldRefresh && m.mode == viewDashboard {
 			m.refresh(true)
 		}
 		m.lastGitFingerprint = fp
@@ -408,8 +443,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case viewHelp:
 			m.mode = viewDashboard
 			return m, nil
-		case viewPalette:
-			return m.handlePaletteKey(msg)
 		case viewInput:
 			return m.handleInputKey(msg)
 		default:
@@ -482,9 +515,6 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m.startCommand(a)
 			}
 		}
-	case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
-		m.mode = viewPalette
-		m.paletteQuery = ""
 	case key.Matches(msg, key.NewBinding(key.WithKeys("?"))):
 		m.mode = viewHelp
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
@@ -538,47 +568,6 @@ func (m model) handleOutputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handlePaletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
-		m.mode = viewDashboard
-	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-		filtered := m.filteredActions()
-		if len(filtered) > 0 && m.selected < len(filtered) {
-			a := filtered[m.selected]
-			m.mode = viewDashboard
-			if a.Tag == "exit" {
-				m.quitting = true
-				return m, tea.Quit
-			}
-			if a.Command != "" {
-				return m.startCommand(a)
-			}
-		}
-		m.mode = viewDashboard
-	case key.Matches(msg, key.NewBinding(key.WithKeys("backspace"))):
-		if len(m.paletteQuery) > 0 {
-			m.paletteQuery = m.paletteQuery[:len(m.paletteQuery)-1]
-			m.selected = 0
-		}
-	case key.Matches(msg, key.NewBinding(key.WithKeys("up"))):
-		if m.selected > 0 {
-			m.selected--
-		}
-	case key.Matches(msg, key.NewBinding(key.WithKeys("down"))):
-		filtered := m.filteredActions()
-		if m.selected < len(filtered)-1 {
-			m.selected++
-		}
-	default:
-		if len(msg.String()) == 1 {
-			m.paletteQuery += msg.String()
-			m.selected = 0
-		}
-	}
-	return m, nil
-}
-
 func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
@@ -589,6 +578,11 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		val := m.inputField.Value()
 		m.mode = viewDashboard
 		if val != "" && m.pendingAction != nil {
+			val = normalizeActionInput(*m.pendingAction, val)
+			if val == "" {
+				m.pendingAction = nil
+				return m, nil
+			}
 			finalCmd := fmt.Sprintf(m.pendingAction.Command, val)
 			a := action{
 				Label:   m.pendingAction.Label,
@@ -606,24 +600,49 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func normalizeActionInput(a action, value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(a.Command, "gitflow start feature ") ||
+		strings.HasPrefix(a.Command, "gitflow start bugfix ") {
+		return slugifyBranchInput(trimmed)
+	}
+
+	return trimmed
+}
+
+func slugifyBranchInput(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		isAlpha := r >= 'a' && r <= 'z'
+		isDigit := r >= '0' && r <= '9'
+		if isAlpha || isDigit {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	return strings.Trim(builder.String(), "-")
+}
+
 func (m model) startCommand(a action) (tea.Model, tea.Cmd) {
 	m.running = true
 	m.runningTitle = a.Label
 	return m, tea.Batch(m.spinner.Tick, m.runCommandAsync(a))
-}
-
-func (m model) filteredActions() []action {
-	if m.paletteQuery == "" {
-		return m.actions
-	}
-	q := strings.ToLower(m.paletteQuery)
-	var filtered []action
-	for _, a := range m.actions {
-		if strings.Contains(strings.ToLower(a.Label), q) {
-			filtered = append(filtered, a)
-		}
-	}
-	return filtered
 }
 
 // runCommandAsync executes a shell command in the background, captures output,
@@ -682,8 +701,6 @@ func (m model) View() string {
 		return m.renderOutputOverlay(m.blankViewport())
 	case viewHelp:
 		return m.renderHelpOverlay(base)
-	case viewPalette:
-		return m.renderPaletteOverlay(base)
 	case viewInput:
 		return m.renderInputOverlay(base)
 	}
@@ -959,7 +976,7 @@ func (m model) renderActivityPanel(width, height int) string {
 	lines = append(lines, "")
 
 	entries := m.mcpActivity
-	maxEntries := height - 4
+	maxEntries := innerHeight - 2
 	if maxEntries < 1 {
 		maxEntries = 1
 	}
@@ -1005,14 +1022,16 @@ func (m model) renderActivityPanel(width, height int) string {
 		}
 
 		plainPrefix := ts + " [" + source + "] "
-		plainLine := plainPrefix + detail
-		lineWidth := width - 4
+		lineWidth := boxWidth - 4
 		if lineWidth < 8 {
 			lineWidth = 8
 		}
-		if lipgloss.Width(plainLine) > lineWidth {
-			plainLine = truncateRunes(plainLine, lineWidth)
+		detailWidth := lineWidth - lipgloss.Width(plainPrefix)
+		if detailWidth < 4 {
+			detailWidth = 4
 		}
+		detail = truncateRunes(detail, detailWidth)
+		plainLine := plainPrefix + detail
 
 		parts := strings.SplitN(plainLine, " ", 3)
 		rendered := plainLine
@@ -1102,7 +1121,7 @@ func (m model) renderStatusBar() string {
 		case activityExpanded:
 			activityHint = "[a] smaller"
 		}
-		hint = " [j/k] move  [Enter] run  [/] search  [?] help  [r] refresh  " + activityHint + "  [Ctrl+M/m] mode  [q] quit"
+		hint = " [j/k] move  [Enter] run  [?] help  [r] refresh  " + activityHint + "  [Ctrl+M/m] mode  [q] quit"
 	}
 	if len(hint) > m.width {
 		hint = hint[:m.width]
@@ -1308,7 +1327,6 @@ func (m model) renderHelpOverlay(base string) string {
 		"",
 		"  Commands",
 		"  ────────────────",
-		"  /            Search / filter actions",
 		"  r            Refresh dashboard",
 		"  a            Toggle activity panel",
 		"  Ctrl+M / m   Toggle integration mode",
@@ -1329,46 +1347,6 @@ func (m model) renderHelpOverlay(base string) string {
 		Width(boxWidth)
 
 	content := strings.Join(help, "\n")
-	box := boxStyle.Render(content)
-
-	return placeOverlay(base, box, m.width, m.height)
-}
-
-func (m model) renderPaletteOverlay(base string) string {
-	filtered := m.filteredActions()
-	var lines []string
-	query := m.paletteQuery
-	if query == "" {
-		query = dimStyle.Render("type to filter...")
-	}
-	lines = append(lines, " > "+query)
-	lines = append(lines, "")
-	for i, a := range filtered {
-		marker := "  "
-		if i == m.selected {
-			marker = "▸ "
-		}
-		rec := ""
-		if a.Recommended {
-			rec = " ←"
-		}
-		lines = append(lines, " "+marker+a.Label+rec)
-	}
-
-	boxWidth := m.width / 2
-	if boxWidth < 55 {
-		boxWidth = 55
-	}
-	if boxWidth > m.width-4 {
-		boxWidth = m.width - 4
-	}
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("5")).
-		Padding(0, 1).
-		Width(boxWidth)
-
-	content := strings.Join(lines, "\n")
 	box := boxStyle.Render(content)
 
 	return placeOverlay(base, box, m.width, m.height)

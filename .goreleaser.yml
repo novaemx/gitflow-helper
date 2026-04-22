@@ -18,7 +18,7 @@ builds:
     goarch:
       - amd64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
 
   - id: linux-arm64
     main: ./cmd/gitflow
@@ -30,7 +30,7 @@ builds:
     goarch:
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
 
   - id: windows-amd64
     main: ./cmd/gitflow
@@ -42,7 +42,7 @@ builds:
     goarch:
       - amd64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
 
   - id: darwin-amd64
     main: ./cmd/gitflow
@@ -54,7 +54,7 @@ builds:
     goarch:
       - amd64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
 
   - id: darwin-arm64
     main: ./cmd/gitflow
@@ -66,7 +66,7 @@ builds:
     goarch:
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
 
 universal_binaries:
   - id: darwin-universal

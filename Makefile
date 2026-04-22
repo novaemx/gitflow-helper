@@ -1,13 +1,15 @@
 BINARY   := gitflow
 MODULE   := github.com/novaemx/gitflow-helper
 VERSION  ?= $(shell cat VERSION 2>/dev/null || git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS  := -s -w -X main.version=$(VERSION)
+COMMIT   ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")
+LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'
 DIST     := dist
 TAG      ?= v$(VERSION)
 RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
+HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow-helper.rb
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
 LINUX_ARCHIVE   := $(DIST)/$(BINARY)-$(VERSION)-linux-amd64.tar.gz
 LINUX_ARM64_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-linux-aarch64.tar.gz
@@ -17,8 +19,9 @@ COVER_DIR := test
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
-.PHONY: package-homebrew package-choco package-winget package-all
-.PHONY: publish-github publish-homebrew publish-winget publish-choco publish-linux publish-all
+.PHONY: package-homebrew package-winget package-all
+.PHONY: publish-github publish-homebrew publish-winget publish-linux publish-all
+.PHONY: push-winget
 .PHONY: upload-release-assets cleanup-release-assets validate-release-assets validate-linux-packages
 .PHONY: require-gh
 
@@ -137,32 +140,85 @@ release:
 
 $(CHECKSUMS_FILE):
 	@echo "→ Building release artifacts locally (no cloud build)..."
-	@if [ -n "$(BUILD_REF)" ]; then \
-		_build_ref="$(BUILD_REF)"; \
+	@_build_ref="$(BUILD_REF)"; \
+	if [ -n "$$_build_ref" ]; then \
 		echo "→ Building from requested ref $$_build_ref..."; \
-		if git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
-			goreleaser release --clean --skip=publish; \
-		else \
-			_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
-			git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; \
-			( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
-			_exit=$$?; \
-			if [ $$_exit -eq 0 ]; then \
-				rm -rf "$(DIST)"; \
-				cp -R "$$_worktree/$(DIST)" "$(DIST)"; \
-			fi; \
-			git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
-			rm -rf "$$_worktree"; \
-			exit $$_exit; \
-		fi; \
-	elif git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
-		goreleaser release --clean --skip=publish; \
 	else \
-		_build_tag=$$(git describe --tags --abbrev=0 2>/dev/null); \
-		[ -n "$$_build_tag" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+		_current_branch=$$(git branch --show-current 2>/dev/null || true); \
+		if git describe --exact-match --tags HEAD >/dev/null 2>&1; then \
+			_build_ref="HEAD"; \
+			echo "→ Auto BUILD_REF: HEAD is already tagged."; \
+		elif [ "$$_current_branch" = "release/$(RELEASE_VERSION)" ] || [ "$$_current_branch" = "hotfix/$(RELEASE_VERSION)" ]; then \
+			_build_ref="HEAD"; \
+			echo "→ Auto BUILD_REF: using current branch HEAD ($$_current_branch) for $(TAG)."; \
+		elif git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}" >/dev/null; then \
+			_build_ref="$(TAG)"; \
+			echo "→ Auto BUILD_REF: using existing tag $(TAG)."; \
+		else \
+			_build_ref=$$(git describe --tags --abbrev=0 2>/dev/null || true); \
+			[ -n "$$_build_ref" ] || { echo "No git tag found to build release artifacts"; exit 1; }; \
+			echo "→ Auto BUILD_REF: falling back to latest tag $$_build_ref."; \
+		fi; \
+	fi; \
+	if [ "$$_build_ref" = "HEAD" ]; then \
+		_current_branch=$$(git branch --show-current 2>/dev/null || true); \
+		if [ "$$_current_branch" = "release/$(RELEASE_VERSION)" ] || [ "$$_current_branch" = "hotfix/$(RELEASE_VERSION)" ]; then \
+			if ! git diff --quiet || ! git diff --cached --quiet; then \
+				echo "Working tree is dirty; commit/stash changes before publishing $(TAG)."; \
+				exit 1; \
+			fi; \
+			if git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}" >/dev/null; then \
+				_tag_commit=$$(git rev-list -n 1 "$(TAG)"); \
+				_head_commit=$$(git rev-parse HEAD); \
+				if [ "$$_tag_commit" != "$$_head_commit" ]; then \
+					echo "→ Auto BUILD_REF: $(TAG) exists but points to a different commit; building from HEAD in an ephemeral clone with local tag override."; \
+					echo "  Tag commit:  $$_tag_commit"; \
+					echo "  HEAD commit: $$_head_commit"; \
+					_clone=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+					if ! git clone --quiet --no-hardlinks . "$$_clone"; then \
+						echo "Failed to create ephemeral clone for release build."; \
+						rm -rf "$$_clone"; \
+						exit 1; \
+					fi; \
+					( cd "$$_clone" && git checkout --detach HEAD >/dev/null && git tag -f "$(TAG)" HEAD >/dev/null && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+					_exit=$$?; \
+					if [ $$_exit -eq 0 ]; then \
+						rm -rf "$(DIST)"; \
+						cp -R "$$_clone/$(DIST)" "$(DIST)"; \
+					fi; \
+					rm -rf "$$_clone"; \
+					exit $$_exit; \
+				fi; \
+				goreleaser release --clean --skip=publish; \
+			else \
+				_clone=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+				echo "→ Auto BUILD_REF: no $(TAG) tag yet; building from an ephemeral clone tagged at HEAD."; \
+				if ! git clone --quiet --no-hardlinks . "$$_clone"; then \
+					echo "Failed to create ephemeral clone for release build."; \
+					rm -rf "$$_clone"; \
+					exit 1; \
+				fi; \
+				( cd "$$_clone" && git checkout --detach HEAD >/dev/null && git tag "$(TAG)" HEAD && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+				_exit=$$?; \
+				if [ $$_exit -eq 0 ]; then \
+					rm -rf "$(DIST)"; \
+					cp -R "$$_clone/$(DIST)" "$(DIST)"; \
+				fi; \
+				rm -rf "$$_clone"; \
+				exit $$_exit; \
+			fi; \
+		else \
+			goreleaser release --clean --skip=publish; \
+		fi; \
+	elif git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
+		goreleaser release --clean --skip=publish; \
+	elif git rev-parse --verify --quiet "$$_build_ref^{commit}" >/dev/null; then \
 		_worktree=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
-		echo "→ HEAD is not tagged. Building from temporary worktree at $$_build_tag..."; \
-		git worktree add --detach "$$_worktree" "$$_build_tag" >/dev/null; \
+		if ! git worktree add --detach "$$_worktree" "$$_build_ref" >/dev/null; then \
+			echo "Failed to create worktree for ref '$$_build_ref'."; \
+			rm -rf "$$_worktree"; \
+			exit 1; \
+		fi; \
 		( cd "$$_worktree" && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
 		_exit=$$?; \
 		if [ $$_exit -eq 0 ]; then \
@@ -172,6 +228,10 @@ $(CHECKSUMS_FILE):
 		git worktree remove "$$_worktree" --force >/dev/null 2>&1 || true; \
 		rm -rf "$$_worktree"; \
 		exit $$_exit; \
+	else \
+		echo "Resolved BUILD_REF '$$_build_ref' does not exist (tag/branch/commit)."; \
+		echo "Hint: pass BUILD_REF=<valid-ref> explicitly to override auto-inference."; \
+		exit 1; \
 	fi
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Expected $(CHECKSUMS_FILE) was not generated" && exit 1)
 	@echo "Done. Artifacts and checksums in $(DIST)/"
@@ -235,12 +295,48 @@ release-local-github:
 publish-github:
 	@test -n "$(TAG)" || (echo "TAG is required. Example: make publish-github TAG=v0.5.12" && exit 1)
 	@$(MAKE) require-gh
-	@$(MAKE) -B $(CHECKSUMS_FILE) BUILD_REF="$(TAG)"
+	@$(MAKE) -B $(CHECKSUMS_FILE)
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
-	@echo "→ Ensuring GitHub release $(TAG) exists..."
-	@if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
-		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes "Local build artifacts"; \
-	fi
+	@echo "→ Ensuring GitHub release $(TAG) exists with changelog executive summary..."
+	@notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
+	: >| "$$notes_file"; \
+	awk -v version="$(RELEASE_VERSION)" ' \
+		BEGIN { section_header = "## [" version "] - " } \
+		index($$0, section_header) == 1 { in_version=1; next } \
+		in_version && index($$0, "## [") == 1 { in_version=0 } \
+		in_version && /^### TL;DR/ { in_tldr=1; next } \
+		in_tldr && /^### / { in_tldr=0 } \
+		in_tldr { print } \
+	' CHANGELOG.md >| "$$notes_file"; \
+	if [ ! -s "$$notes_file" ]; then \
+		echo "→ Missing TL;DR in CHANGELOG.md for $(RELEASE_VERSION); generating notes from commits between release versions..."; \
+		current_ref="$(TAG)"; \
+		if ! git rev-parse -q --verify "$$current_ref^{commit}" >/dev/null 2>&1; then \
+			current_ref=$$(git rev-parse HEAD); \
+		fi; \
+		prev_tag=$$(git tag --sort=-version:refname | awk -v cur="$(TAG)" '$$0 != cur { print; exit }'); \
+		if [ -n "$$prev_tag" ]; then \
+			git log --no-merges --pretty='- %s' "$$prev_tag..$$current_ref" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "Range: $$prev_tag..$$current_ref" >> "$$notes_file"; \
+		else \
+			git log --no-merges --pretty='- %s' "$$current_ref" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "Range: initial..$$current_ref" >> "$$notes_file"; \
+		fi; \
+		if [ ! -s "$$notes_file" ]; then \
+			echo "Release $(TAG)" >| "$$notes_file"; \
+			echo >> "$$notes_file"; \
+			echo "No commit descriptions were found for the selected range." >> "$$notes_file"; \
+		fi; \
+	fi; \
+	if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
+		target_commit=$$(git rev-parse HEAD); \
+		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --target "$$target_commit" --title "$(TAG)" --notes-file "$$notes_file"; \
+	else \
+		gh release edit "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
+	fi; \
+	rm -f "$$notes_file"
 	@$(MAKE) cleanup-release-assets RELEASE_TAG="$(TAG)"
 	@$(MAKE) upload-release-assets RELEASE_TAG="$(TAG)" RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "Done. GitHub release $(TAG) now hosts locally-built artifacts."
@@ -263,28 +359,32 @@ publish-homebrew: publish-github
 		{ print } \
 	' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
 	mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb
-	@echo "Done. Updated packaging/homebrew/gitflow-helper.rb for $(TAG)."
+	@[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
+	cp packaging/homebrew/gitflow-helper.rb "$(HOMEBREW_TAP_FORMULA)"
+	@echo "Done. Updated Homebrew formulas for $(TAG):"
+	@echo "  - packaging/homebrew/gitflow-helper.rb"
+	@echo "  - $(HOMEBREW_TAP_FORMULA)"
 
-## publish-winget: upload artifacts first, then update local Winget manifest to point at the current GitHub release artifact and checksum
+## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
 	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.yaml; \
-	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak
-	@echo "Done. Updated Winget manifest for $(TAG)."
+	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
+	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
+	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
+	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.version.yaml; \
+	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak packaging/winget/novaemx.gitflow-helper.installer.yaml.bak packaging/winget/novaemx.gitflow-helper.version.yaml.bak
+	@echo "Done. Updated Winget manifests for $(TAG)."
 
-## publish-choco: upload artifacts first, then update Chocolatey metadata to point at the current GitHub release artifact and checksum
-publish-choco: publish-github
-	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
-	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
-	sed -i.bak 's|<version>.*</version>|<version>$(RELEASE_VERSION)</version>|' packaging/chocolatey/gitflow-helper.nuspec; \
-	sed -i.bak "s|\$$version     = '.*'|\$$version     = '$(RELEASE_VERSION)'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	sed -i.bak "s|\$$url      = \".*\"|\$$url      = \"https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip\"|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	sed -i.bak "s|\$$checksum = '.*'|\$$checksum = '$$windows_sha'|" packaging/chocolatey/tools/chocolateyinstall.ps1; \
-	rm -f packaging/chocolatey/gitflow-helper.nuspec.bak packaging/chocolatey/tools/chocolateyinstall.ps1.bak
-	@echo "Done. Updated Chocolatey package metadata for $(TAG)."
+## push-winget: submit the current version to the winget community repository via wingetcreate
+push-winget: publish-winget
+	wingetcreate update \
+		--version $(RELEASE_VERSION) \
+		--urls https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip \
+		--submit \
+		NovaeMX.gitflow-helper
+	@echo "Winget submission done for $(TAG)."
 
 ## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
 publish-linux: publish-github
@@ -292,7 +392,7 @@ publish-linux: publish-github
 	@echo "Done. Linux amd64+arm64 package artifacts (.deb/.rpm/.pkg.tar.zst) are present for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
-publish-all: require-gh publish-homebrew publish-winget publish-choco publish-linux
+publish-all: require-gh publish-homebrew publish-winget publish-linux
 	@echo "All publish targets completed for $(TAG)."
 
 ## release-snapshot: test goreleaser locally without publishing
@@ -327,7 +427,7 @@ version:
 
 # ── Packaging Targets ─────────────────────────────────────
 
-## package-homebrew: build snapshot and prepare Homebrew cask via goreleaser
+## package-homebrew: build snapshot and prepare Homebrew formula artifacts via goreleaser
 package-homebrew:
 	@echo "→ Building Homebrew snapshot..."
 	goreleaser release --snapshot --clean

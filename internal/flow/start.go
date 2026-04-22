@@ -9,12 +9,33 @@ import (
 	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/git"
 	"github.com/novaemx/gitflow-helper/internal/output"
 	"github.com/novaemx/gitflow-helper/internal/version"
 )
 
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+var semverExtractPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+var (
+	tagExistsStart    = git.TagExists
+	branchExistsStart = git.BranchExists
+	execLinesStart    = git.ExecLines
+	latestTagStart    = git.LatestTag
+)
+
+type startResolutionDetails struct {
+	Requested   string
+	Resolved    string
+	BaseVersion string
+	Source      string
+	VersionFile string
+	LatestTag   string
+	Skipped     []string
+	Diagnostics []string
+	Hint        string
+}
 
 func bumpPatch(ver string) (string, error) {
 	parts := strings.Split(ver, ".")
@@ -36,19 +57,40 @@ func bumpPatch(ver string) (string, error) {
 	return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), nil
 }
 
-func nextAvailableStartVersion(cfg config.FlowConfig, start string) (string, error) {
+func nextAvailableStartVersion(cfg config.FlowConfig, branchType, start string) (string, []string, error) {
 	candidate := start
+	var skipped []string
 	for i := 0; i < 1000; i++ {
-		if !git.TagExists(cfg.TagPrefix + candidate) {
-			return candidate, nil
+		tagName := cfg.TagPrefix + candidate
+		branchName := branchType + "/" + candidate
+		if !tagExistsStart(tagName) && !branchExistsStart(branchName) {
+			return candidate, skipped, nil
+		}
+		if tagExistsStart(tagName) {
+			skipped = append(skipped, fmt.Sprintf("%s (tag %s already exists)", candidate, tagName))
+		} else {
+			skipped = append(skipped, fmt.Sprintf("%s (branch %s already exists)", candidate, branchName))
 		}
 		next, err := bumpPatch(candidate)
 		if err != nil {
-			return "", err
+			return "", skipped, err
 		}
 		candidate = next
 	}
-	return "", fmt.Errorf("unable to find available version after %s", start)
+	return "", skipped, fmt.Errorf("unable to find available version after %s", start)
+}
+
+func extractSemver(value string) string {
+	return semverExtractPattern.FindString(strings.TrimSpace(value))
+}
+
+func latestSemverTag() string {
+	for _, tag := range execLinesStart("tag", "--sort=-version:refname") {
+		if semver := extractSemver(tag); semver != "" {
+			return semver
+		}
+	}
+	return ""
 }
 
 func startFlowBranch(cfg config.FlowConfig, branchType, name string) error {
@@ -100,32 +142,69 @@ func StartHotfix(cfg config.FlowConfig, ver string) error {
 	return startFlowBranch(cfg, "hotfix", git.FlowVersion(ver))
 }
 
-func resolveStartVersion(cfg config.FlowConfig, branchType, requested string) (string, error) {
+func resolveStartVersion(cfg config.FlowConfig, branchType, requested string) (string, startResolutionDetails, error) {
 	resolved := git.FlowVersion(strings.TrimSpace(requested))
+	details := startResolutionDetails{
+		Requested:   requested,
+		Resolved:    resolved,
+		VersionFile: cfg.VersionFile,
+		LatestTag:   latestTagStart(),
+	}
 
 	if branchType != "release" && branchType != "hotfix" {
-		return resolved, nil
+		return resolved, details, nil
 	}
 
 	if resolved == "" || strings.EqualFold(resolved, "auto") {
-		auto := git.FlowVersion(version.ReadVersion(cfg))
-		if auto == "" || auto == "0.0.0" {
-			return "", fmt.Errorf("could not auto-detect %s version from %s", branchType, cfg.VersionFile)
+		versionFileValue := git.FlowVersion(version.ReadVersion(cfg))
+		if semverPattern.MatchString(versionFileValue) {
+			details.BaseVersion = versionFileValue
+			details.Source = "version_file"
+		} else {
+			if strings.TrimSpace(cfg.VersionFile) != "" {
+				details.Diagnostics = append(details.Diagnostics, fmt.Sprintf("version_file=%s value=%s", cfg.VersionFile, strings.TrimSpace(versionFileValue)))
+			} else {
+				details.Diagnostics = append(details.Diagnostics, "version_file=unset")
+			}
 		}
-		resolved = auto
 
-		next, err := nextAvailableStartVersion(cfg, resolved)
-		if err != nil {
-			return "", err
+		if details.BaseVersion == "" {
+			if semverTag := latestSemverTag(); semverTag != "" {
+				details.BaseVersion = semverTag
+				details.Source = "latest_semver_tag"
+			} else {
+				details.Diagnostics = append(details.Diagnostics, fmt.Sprintf("latest_tag=%s", details.LatestTag))
+			}
 		}
+
+		if details.BaseVersion == "" {
+			details.Hint = fmt.Sprintf("Pass an explicit %s version like 'gitflow start %s 1.2.3' or configure a VERSION file / semver tag.", branchType, branchType)
+			return "", details, fmt.Errorf("could not auto-detect %s version", branchType)
+		}
+
+		debug.Logf("Auto-resolving %s version from %s=%s", branchType, details.Source, details.BaseVersion)
+		next, skipped, err := nextAvailableStartVersion(cfg, branchType, details.BaseVersion)
+		if err != nil {
+			return "", details, err
+		}
+		details.Skipped = skipped
 		resolved = next
 	}
 
 	if !semverPattern.MatchString(resolved) {
-		return "", fmt.Errorf("invalid %s version %q (expected x.y.z)", branchType, resolved)
+		details.Hint = fmt.Sprintf("Use a semantic version like 'gitflow start %s 1.2.3'.", branchType)
+		return "", details, fmt.Errorf("invalid %s version %q (expected x.y.z)", branchType, resolved)
 	}
 
-	return resolved, nil
+	if details.Source == "" {
+		details.Source = "explicit"
+		details.BaseVersion = resolved
+	}
+	details.Resolved = resolved
+	if len(details.Skipped) > 0 && details.Hint == "" {
+		details.Hint = fmt.Sprintf("Reused the next available %s version after detecting existing tags or branches.", branchType)
+	}
+	return resolved, details, nil
 }
 
 func bumpVersionOnBranch(cfg config.FlowConfig, branchType, ver string) {
@@ -164,25 +243,48 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	}
 	originalRequested := strings.TrimSpace(name)
 
-	resolvedName, err := resolveStartVersion(cfg, branchType, name)
+	resolvedName, details, err := resolveStartVersion(cfg, branchType, name)
 	if err != nil {
 		result["result"] = "error"
 		result["error"] = err.Error()
+		if details.Hint != "" {
+			result["hint"] = details.Hint
+		}
+		if len(details.Diagnostics) > 0 {
+			result["diagnostics"] = details.Diagnostics
+		}
 		return 1, result
 	}
 	if resolvedName != "" {
 		name = resolvedName
 		result["name"] = name
 	}
+	if details.Source != "" && details.Source != "explicit" {
+		result["resolution_source"] = details.Source
+	}
+	if details.BaseVersion != "" && details.BaseVersion != name {
+		result["base_version"] = details.BaseVersion
+	}
+	if len(details.Skipped) > 0 {
+		result["skipped_versions"] = details.Skipped
+	}
 	if strings.EqualFold(originalRequested, "auto") || originalRequested == "" {
 		result["resolved_name"] = name
 	}
 
+	if branchExistsStart(branchType + "/" + name) {
+		result["result"] = "error"
+		result["error"] = fmt.Sprintf("branch %s/%s already exists", branchType, name)
+		result["hint"] = fmt.Sprintf("Switch to the existing %s/%s branch or finish/delete it before starting a new one.", branchType, name)
+		return 1, result
+	}
+
 	if branchType == "release" || branchType == "hotfix" {
 		tagName := cfg.TagPrefix + name
-		if git.TagExists(tagName) {
+		if tagExistsStart(tagName) {
 			result["result"] = "error"
 			result["error"] = fmt.Sprintf("tag %s already exists", tagName)
+			result["hint"] = fmt.Sprintf("Use 'auto' or pass the next available semantic version after %s.", name)
 			return 1, result
 		}
 	}

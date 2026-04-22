@@ -224,6 +224,16 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		if s.Dirty {
 			label += dirtyNote
 		}
+		if s.Dirty {
+			high = append(high, action{
+				Label:       "Commit all changes",
+				Tag:         "commit",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Commit message:",
+				Command:     `gitflow commit "%s"`,
+			})
+		}
 		if s.HasDefaultRemote {
 			high = append(high, action{
 				Label:       "Push current branch",
@@ -247,6 +257,16 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 		}
 		if s.Dirty {
 			label += dirtyNote
+		}
+		if s.Dirty {
+			high = append(high, action{
+				Label:       "Commit all changes",
+				Tag:         "commit",
+				Recommended: true,
+				NeedsInput:  true,
+				InputPrompt: "Commit message:",
+				Command:     `gitflow commit "%s"`,
+			})
 		}
 		if s.HasDefaultRemote {
 			high = append(high, action{
@@ -457,7 +477,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	// Utilities
 	low = append(low,
-		action{Label: "List tags / releases", Tag: "tags", Command: "git tag --sort=-version:refname -n1"},
+		action{Label: "List tags / releases", Tag: "tags", Command: "git for-each-ref --sort=-version:refname --format='%(refname:short)|%(creatordate:short)|%(subject)' refs/tags | awk -F'|' 'BEGIN { printf \"%-12s %-12s %s\\n\\n\", \"Tag\", \"Date\", \"Release\" } { printf \"%-12s %-12s %s\\n\", $$1, $$2, $$3 }'"},
 		action{Label: "View commit log", Tag: "log", Command: "git --no-pager log --all --decorate --oneline -n 40"},
 		action{Label: "Repo health check", Tag: "health", Command: "gitflow health"},
 		action{Label: "Clean up merged branches", Tag: "cleanup", Command: "gitflow cleanup"},

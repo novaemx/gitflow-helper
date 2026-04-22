@@ -138,6 +138,37 @@ func TestDetectVSCode_TERM_PROGRAM(t *testing.T) {
 	}
 }
 
+func TestDetectVSCode_CursorMarkersDoNotMisclassifyAsVSCode(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "vscode")
+	t.Setenv("VSCODE_GIT_ASKPASS_NODE", "/Applications/Cursor.app/Contents/Frameworks/Cursor Helper (Plugin).app/Contents/MacOS/Cursor Helper (Plugin)")
+	dir := t.TempDir()
+
+	if detectVSCode(dir) {
+		t.Error("expected detectVSCode to return false when Cursor runtime markers are present")
+	}
+}
+
+func TestDetectCursor_CursorAskpassPath(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "vscode")
+	t.Setenv("VSCODE_GIT_ASKPASS_MAIN", "/Applications/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass-main.js")
+	dir := t.TempDir()
+
+	if !detectCursor(dir) {
+		t.Error("expected detectCursor to return true with Cursor-specific askpass path")
+	}
+}
+
+func TestDetectPrimary_PrefersCursorWhenBothVSCodeAndCursorSignalsExist(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "vscode")
+	t.Setenv("VSCODE_GIT_ASKPASS_MAIN", "/Applications/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass-main.js")
+	t.Setenv("VSCODE_IPC_HOOK", "/tmp/vscode-ipc.sock")
+
+	got := DetectPrimary(t.TempDir())
+	if got.ID != IDECursor {
+		t.Fatalf("expected primary IDE %q in mixed Cursor/VSCode env, got %q", IDECursor, got.ID)
+	}
+}
+
 func TestMatchProcessInAncestry_FindsInChain(t *testing.T) {
 	type node struct {
 		name string

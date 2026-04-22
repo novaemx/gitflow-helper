@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -323,3 +324,126 @@ func TestBuildActions_RecommendsFinishForCleanBugfixWithoutAheadCommits(t *testi
 		t.Fatal("expected finish to be recommended for a clean bugfix branch")
 	}
 }
+
+func TestBuildActions_TagsActionIncludesReleaseColumns(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            cfg.DevelopBranch,
+		HasDefaultRemote:   true,
+		GitFlowInitialized: true,
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	tags, ok := actionByTag(actions, "tags")
+	if !ok {
+		t.Fatal("expected tags action")
+	}
+	if !strings.Contains(tags.Command, "for-each-ref") {
+		t.Fatalf("expected tags command to use for-each-ref table output, got %q", tags.Command)
+	}
+	if !strings.Contains(tags.Command, "Date") || !strings.Contains(tags.Command, "Release") {
+		t.Fatalf("expected tags command to include Date/Release columns, got %q", tags.Command)
+	}
+}
+
+func TestBuildActions_DirtyFeatureBranchHasCommitAction(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            "feature/my-work",
+		HasDefaultRemote:   false,
+		GitFlowInitialized: true,
+		Dirty:              true,
+		UncommittedCount:   3,
+		Features:           []state.BranchInfo{},
+		Bugfixes:           []state.BranchInfo{},
+		Releases:           []state.BranchInfo{},
+		Hotfixes:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	commit, ok := actionByTag(actions, "commit")
+	if !ok {
+		t.Fatal("expected commit action for dirty feature branch")
+	}
+	if !commit.Recommended {
+		t.Fatal("expected commit action to be recommended when branch is dirty")
+	}
+	if !commit.NeedsInput {
+		t.Fatal("expected commit action to require input (commit message)")
+	}
+	if commit.InputPrompt != "Commit message:" {
+		t.Fatalf("unexpected input prompt: %q", commit.InputPrompt)
+	}
+
+	// commit action must precede finish so user sees it first
+	commitIdx := actionIndexByLabel(actions, "Commit all changes")
+	finishIdx := actionIndexByLabel(actions, "Finish feature 'my-work' ⚠ commit changes first")
+	if commitIdx == -1 {
+		t.Fatal("expected commit label in actions")
+	}
+	if finishIdx == -1 {
+		t.Fatal("expected finish label with dirty warning in actions")
+	}
+	if commitIdx > finishIdx {
+		t.Fatalf("expected commit action before finish, got commit=%d finish=%d", commitIdx, finishIdx)
+	}
+}
+
+func TestBuildActions_CleanFeatureBranchNoCommitAction(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            "feature/clean-feature",
+		HasDefaultRemote:   false,
+		GitFlowInitialized: true,
+		Dirty:              false,
+		Features:           []state.BranchInfo{},
+		Bugfixes:           []state.BranchInfo{},
+		Releases:           []state.BranchInfo{},
+		Hotfixes:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	_, ok := actionByTag(actions, "commit")
+	if ok {
+		t.Fatal("expected no commit action for clean feature branch")
+	}
+}
+
+func TestBuildActions_DirtyBugfixBranchHasCommitAction(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            "bugfix/my-fix",
+		HasDefaultRemote:   false,
+		GitFlowInitialized: true,
+		Dirty:              true,
+		UncommittedCount:   1,
+		Features:           []state.BranchInfo{},
+		Bugfixes:           []state.BranchInfo{},
+		Releases:           []state.BranchInfo{},
+		Hotfixes:           []state.BranchInfo{},
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	commit, ok := actionByTag(actions, "commit")
+	if !ok {
+		t.Fatal("expected commit action for dirty bugfix branch")
+	}
+	if !commit.Recommended {
+		t.Fatal("expected commit action to be recommended when bugfix is dirty")
+	}
+
+	// commit action must precede finish
+	commitIdx := actionIndexByLabel(actions, "Commit all changes")
+	finishIdx := actionIndexByLabel(actions, "Finish bugfix 'my-fix' ⚠ commit changes first")
+	if commitIdx == -1 || finishIdx == -1 {
+		t.Fatalf("expected both commit and finish labels; commit=%d finish=%d", commitIdx, finishIdx)
+	}
+	if commitIdx > finishIdx {
+		t.Fatalf("expected commit before finish, got commit=%d finish=%d", commitIdx, finishIdx)
+	}
+}
+

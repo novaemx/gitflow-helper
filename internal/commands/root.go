@@ -17,8 +17,10 @@ import (
 )
 
 var (
-	jsonFlag bool
-	GF       *gitflow.Logic
+	jsonFlag  bool
+	logFlag   bool
+	debugFlag bool
+	GF        *gitflow.Logic
 )
 
 func logCLIActivity(cmd *cobra.Command, args []string) {
@@ -107,6 +109,7 @@ func NewRootCmd(version string) *cobra.Command {
 		Short: "Git Flow helper — interactive TUI + CLI subcommands",
 		Long:  "A comprehensive Git Flow workflow helper with an interactive TUI and CLI subcommands for agent and human use.",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			debug.Configure(gfconfig.FindProjectRoot(), logFlag, debugFlag)
 			deferTotal := debug.Start("root.PersistentPreRun.total")
 			defer deferTotal()
 
@@ -236,6 +239,9 @@ func NewRootCmd(version string) *cobra.Command {
 	}
 
 	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Machine-readable JSON output (for agents)")
+	root.PersistentFlags().BoolVar(&logFlag, "log", false, "Write workflow troubleshooting logs to .gitflow/logs/gitflow.log")
+	root.PersistentFlags().BoolVar(&debugFlag, "debug", false, "Include verbose debug entries in .gitflow/logs/gitflow.log")
+	root.SetVersionTemplate("gitflow version {{.Version}}\nAuthor Luis Lozano\n")
 
 	root.AddCommand(
 		newStatusCmd(),
@@ -243,6 +249,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newPushCmd(),
 		newInitCmd(),
 		newStartCmd(),
+		newCommitCmd(),
 		newFinishCmd(),
 		newFastReleaseCmd(),
 		newSyncCmd(),

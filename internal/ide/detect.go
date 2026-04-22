@@ -40,11 +40,11 @@ var ideRegistry = []struct {
 	display string
 	detect  func(string) bool
 }{
-	// Check environment and TERM_PROGRAM signals first (fast)
+	// Check most specific IDE terminals first to avoid VS Code-compatible
+	// env vars masking Cursor when both apps are running.
+	{IDECursor, "Cursor", detectCursor},
 	{IDECopilot, "VS Code + Copilot", detectCopilot},
 	{IDEVSCode, "VS Code", detectVSCode},
-	// Then terminal-specific signals (medium)
-	{IDECursor, "Cursor", detectCursor},
 	{IDEClaudeCode, "Claude Code", detectClaudeCode},
 	{IDEWindsurf, "Windsurf", detectWindsurf},
 	{IDECline, "Cline", detectCline},
@@ -175,6 +175,10 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 // --- Individual IDE detectors ---
 
 func detectCursor(projectRoot string) bool {
+	if hasCursorRuntimeMarkers() {
+		return true
+	}
+
 	envVars := []string{"CURSOR_TRACE_ID", "CURSOR_SESSION", "CURSOR_CHANNEL"}
 	for _, v := range envVars {
 		if os.Getenv(v) != "" {
@@ -191,7 +195,24 @@ func detectCursor(projectRoot string) bool {
 	return matchParentProcess("cursor")
 }
 
+func hasCursorRuntimeMarkers() bool {
+	for _, key := range []string{"GIT_ASKPASS", "VSCODE_GIT_ASKPASS_MAIN", "VSCODE_GIT_ASKPASS_NODE", "BUNDLED_DEBUGPY_PATH", "VSCODE_DEBUGPY_ADAPTER_ENDPOINTS", "TERM_PROGRAM_VERSION", "XPC_SERVICE_NAME", "__CFBundleIdentifier"} {
+		v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+		if v == "" {
+			continue
+		}
+		if strings.Contains(v, "cursor") || strings.Contains(v, ".cursor/") || strings.Contains(v, "com.todesktop") {
+			return true
+		}
+	}
+	return false
+}
+
 func detectVSCode(projectRoot string) bool {
+	if hasCursorRuntimeMarkers() {
+		return false
+	}
+
 	envVars := []string{"VSCODE_GIT_ASKPASS_NODE", "VSCODE_GIT_ASKPASS_MAIN", "VSCODE_IPC_HOOK", "VSCODE_CWD"}
 	for _, v := range envVars {
 		if os.Getenv(v) != "" {

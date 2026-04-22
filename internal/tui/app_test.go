@@ -30,6 +30,47 @@ func TestResolveGitDir_DirectoryDotGit(t *testing.T) {
 	}
 }
 
+func TestShouldPollProtectedBranchState_Develop(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		gf: &gitflow.Logic{
+			Config: cfg,
+			State:  state.RepoState{Current: cfg.DevelopBranch},
+		},
+	}
+
+	if !m.shouldPollProtectedBranchState() {
+		t.Fatal("expected develop to force protected-branch polling")
+	}
+}
+
+func TestShouldPollProtectedBranchState_Main(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		gf: &gitflow.Logic{
+			Config: cfg,
+			State:  state.RepoState{Current: cfg.MainBranch},
+		},
+	}
+
+	if !m.shouldPollProtectedBranchState() {
+		t.Fatal("expected main to force protected-branch polling")
+	}
+}
+
+func TestShouldPollProtectedBranchState_Feature(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := model{
+		gf: &gitflow.Logic{
+			Config: cfg,
+			State:  state.RepoState{Current: "feature/auto-refresh"},
+		},
+	}
+
+	if m.shouldPollProtectedBranchState() {
+		t.Fatal("expected feature branch to keep metadata-only polling")
+	}
+}
 func TestResolveGitDir_GitdirFile(t *testing.T) {
 	root := t.TempDir()
 	realGitDir := filepath.Join(root, ".worktrees", "wt1")
@@ -717,6 +758,43 @@ func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
 	}
 }
 
+func TestSlashShortcut_DoesNotEnterPalette(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{spinner: s, mode: viewDashboard}
+	m.gf = &gitflow.Logic{Config: config.FlowConfig{ProjectRoot: t.TempDir()}}
+
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model type")
+	}
+	if updated.mode != viewDashboard {
+		t.Fatalf("expected mode to remain dashboard after '/', got %v", updated.mode)
+	}
+}
+
+func TestRenderActivityPanel_NarrowWidthKeepsBottomBorder(t *testing.T) {
+	m := model{
+		mcpActivity: []mcpserver.ActivityEntry{{
+			Tool:      "interactive-tui",
+			Args:      "gitflow finish --json --with-a-very-long-argument-to-force-panel-truncation-on-narrow-layout",
+			Result:    "ok",
+			Source:    "cli",
+			Timestamp: "2026-04-19T20:36:00Z",
+		}},
+	}
+
+	rendered := stripANSI(m.renderActivityPanel(30, 10))
+	rows := strings.Split(rendered, "\n")
+	if len(rows) == 0 {
+		t.Fatal("expected panel rows")
+	}
+	if !strings.Contains(rows[len(rows)-1], "╰") {
+		t.Fatalf("expected panel bottom border to be visible, got %q", rows[len(rows)-1])
+	}
+}
+
 // TestRenderOutputOverlay_BoxCoversOwnArea verifies that the overlay box
 // replaces base content within its boundaries.
 func TestRenderOutputOverlay_BoxCoversOwnArea(t *testing.T) {
@@ -836,7 +914,6 @@ func TestAllOverlays_BackgroundVisibleOutsideBox(t *testing.T) {
 	}{
 		{"output", func() string { return m.renderOutputOverlay(base) }},
 		{"help", func() string { return m.renderHelpOverlay(base) }},
-		{"palette", func() string { return m.renderPaletteOverlay(base) }},
 		{"input", func() string { return m.renderInputOverlay(base) }},
 	}
 	for _, tc := range tests {
@@ -897,5 +974,21 @@ func TestOutputStatusBar_ShowsActionName(t *testing.T) {
 	plain := stripANSI(bar)
 	if !strings.Contains(plain, "Repo health check") {
 		t.Fatalf("status bar should show action title, got: %q", plain)
+	}
+}
+
+func TestNormalizeActionInput_SlugifiesBugfixBranchNames(t *testing.T) {
+	a := action{Command: "gitflow start bugfix %s"}
+	got := normalizeActionInput(a, " Fix login crash #42 ")
+	if got != "fix-login-crash-42" {
+		t.Fatalf("normalizeActionInput() = %q, want %q", got, "fix-login-crash-42")
+	}
+}
+
+func TestNormalizeActionInput_PreservesCommitMessages(t *testing.T) {
+	a := action{Command: "gitflow commit %s"}
+	got := normalizeActionInput(a, "Fix login crash")
+	if got != "Fix login crash" {
+		t.Fatalf("normalizeActionInput() = %q, want original value", got)
 	}
 }
