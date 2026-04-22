@@ -161,7 +161,43 @@ $(CHECKSUMS_FILE):
 		fi; \
 	fi; \
 	if [ "$$_build_ref" = "HEAD" ]; then \
-		goreleaser release --clean --skip=publish; \
+		_current_branch=$$(git branch --show-current 2>/dev/null || true); \
+		if [ "$$_current_branch" = "release/$(RELEASE_VERSION)" ] || [ "$$_current_branch" = "hotfix/$(RELEASE_VERSION)" ]; then \
+			if ! git diff --quiet || ! git diff --cached --quiet; then \
+				echo "Working tree is dirty; commit/stash changes before publishing $(TAG)."; \
+				exit 1; \
+			fi; \
+			if git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}" >/dev/null; then \
+				_tag_commit=$$(git rev-list -n 1 "$(TAG)"); \
+				_head_commit=$$(git rev-parse HEAD); \
+				if [ "$$_tag_commit" != "$$_head_commit" ]; then \
+					echo "Tag $(TAG) exists but does not point to HEAD."; \
+					echo "Tag commit:  $$_tag_commit"; \
+					echo "HEAD commit: $$_head_commit"; \
+					echo "Hint: move/create the release tag to HEAD or pass BUILD_REF explicitly."; \
+					exit 1; \
+				fi; \
+				goreleaser release --clean --skip=publish; \
+			else \
+				_clone=$$(mktemp -d 2>/dev/null || mktemp -d -t gitflow-release.XXXXXX); \
+				echo "→ Auto BUILD_REF: no $(TAG) tag yet; building from an ephemeral clone tagged at HEAD."; \
+				if ! git clone --quiet --no-hardlinks . "$$_clone"; then \
+					echo "Failed to create ephemeral clone for release build."; \
+					rm -rf "$$_clone"; \
+					exit 1; \
+				fi; \
+				( cd "$$_clone" && git checkout --detach HEAD >/dev/null && git tag "$(TAG)" HEAD && goreleaser release --clean --skip=publish --config "$(CURDIR)/.goreleaser.yml" ); \
+				_exit=$$?; \
+				if [ $$_exit -eq 0 ]; then \
+					rm -rf "$(DIST)"; \
+					cp -R "$$_clone/$(DIST)" "$(DIST)"; \
+				fi; \
+				rm -rf "$$_clone"; \
+				exit $$_exit; \
+			fi; \
+		else \
+			goreleaser release --clean --skip=publish; \
+		fi; \
 	elif git describe --exact-match --tags HEAD 2>/dev/null | grep -qx "$$_build_ref"; then \
 		goreleaser release --clean --skip=publish; \
 	elif git rev-parse --verify --quiet "$$_build_ref^{commit}" >/dev/null; then \
@@ -265,7 +301,8 @@ publish-github:
 		exit 1; \
 	fi; \
 	if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
-		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
+		target_commit=$$(git rev-parse HEAD); \
+		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --target "$$target_commit" --title "$(TAG)" --notes-file "$$notes_file"; \
 	else \
 		gh release edit "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \
 	fi; \
