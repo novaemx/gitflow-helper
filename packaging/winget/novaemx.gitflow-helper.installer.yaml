@@ -2,7 +2,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 
 PackageIdentifier: NovaeMX.gitflow-helper
-PackageVersion: 0.5.40
+PackageVersion: 0.5.41
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
@@ -10,7 +10,7 @@ NestedInstallerFiles:
     PortableCommandAlias: gitflow
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/novaemx/gitflow-helper/releases/download/v0.5.40/gitflow-0.5.40-windows-amd64.zip
-    InstallerSha256: 00629BBC43159A8EC200DA1E19CFAEA37CB250ADF93CD55202265647EDF6F326
+    InstallerUrl: https://github.com/novaemx/gitflow-helper/releases/download/v0.5.41/gitflow-0.5.41-windows-amd64.zip
+    InstallerSha256: c2b516ba046b78fa56d0af64bb088e3e767ba4610539bf75754a3f7d4a948ced
 ManifestType: installer
 ManifestVersion: 1.12.0

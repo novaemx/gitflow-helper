@@ -4,11 +4,11 @@
 class GitflowHelper < Formula
   desc "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
   homepage "https://github.com/novaemx/gitflow-helper"
-  version "0.5.40"
+  version "0.5.41"
   license "MIT"
 
-  url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.40/gitflow-0.5.40-darwin-universal.tar.gz"
-  sha256 "1b8b62f54590cba5d5f9a3ccf0de043a5c48e3f95f74919a2023ba37d0d120cd"
+  url "https://github.com/novaemx/gitflow-helper/releases/download/v0.5.41/gitflow-0.5.41-darwin-universal.tar.gz"
+  sha256 "18ebd0ca3e5a5a0853b03895b98da6d4e101bc022ff87ba04307fb55b9a1cf64"
 
   depends_on "git"
 
