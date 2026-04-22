@@ -5,7 +5,25 @@ COMMIT   ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'
 DIST     := dist
-TAG      ?= v$(VERSION)
+TAG      ?= $(shell \
+	branch=$$(git branch --show-current 2>/dev/null || true); \
+	if echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
+		ver=$${branch#*/}; \
+		ver=$${ver#v}; \
+		echo "v$$ver"; \
+	else \
+		head_tag=$$(git describe --exact-match --tags HEAD 2>/dev/null || true); \
+		if [ -n "$$head_tag" ]; then \
+			echo "$$head_tag"; \
+		else \
+			latest_tag=$$(git tag --sort=-version:refname | head -1); \
+			if [ -n "$$latest_tag" ]; then \
+				echo "$$latest_tag"; \
+			else \
+				echo "v$(VERSION)"; \
+			fi; \
+		fi; \
+	fi)
 RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
