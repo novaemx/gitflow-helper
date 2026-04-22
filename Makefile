@@ -5,7 +5,25 @@ COMMIT   ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 BUILD    := CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)'
 DIST     := dist
-TAG      ?= v$(VERSION)
+TAG      ?= $(shell \
+	branch=$$(git branch --show-current 2>/dev/null || true); \
+	if echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
+		ver=$${branch#*/}; \
+		ver=$${ver#v}; \
+		echo "v$$ver"; \
+	else \
+		head_tag=$$(git describe --exact-match --tags HEAD 2>/dev/null || true); \
+		if [ -n "$$head_tag" ]; then \
+			echo "$$head_tag"; \
+		else \
+			latest_tag=$$(git tag --sort=-version:refname | head -1); \
+			if [ -n "$$latest_tag" ]; then \
+				echo "$$latest_tag"; \
+			else \
+				echo "v$(VERSION)"; \
+			fi; \
+		fi; \
+	fi)
 RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
@@ -23,7 +41,7 @@ COVER_DIR := test
 .PHONY: publish-github publish-homebrew publish-winget publish-linux publish-all
 .PHONY: push-winget
 .PHONY: upload-release-assets cleanup-release-assets validate-release-assets validate-linux-packages
-.PHONY: require-gh
+.PHONY: require-gh validate-publish-context
 
 # ── OS/arch detection ────────────────────────────────────────
 UNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -242,6 +260,35 @@ release-local: $(CHECKSUMS_FILE)
 require-gh:
 	@command -v gh >/dev/null 2>&1 || { echo "GitHub CLI (gh) is required"; exit 1; }
 
+## validate-publish-context: enforce gitflow release prerequisites before publish
+## Best practice: publish only from a finished release/hotfix tag that exists on origin and points into origin/main.
+validate-publish-context:
+	@test -n "$(TAG)" || (echo "TAG is required" && exit 1)
+	@tag_commit=$$(git rev-parse --verify --quiet "refs/tags/$(TAG)^{commit}"); \
+	if [ -z "$$tag_commit" ]; then \
+		echo "Publish blocked: local tag $(TAG) does not exist."; \
+		echo "Hint: finish release/hotfix first (gitflow finish), then push the tag."; \
+		exit 1; \
+	fi
+	@remote_tag=$$(git ls-remote --tags origin "refs/tags/$(TAG)" "refs/tags/$(TAG)^{}" 2>/dev/null); \
+	if [ -z "$$remote_tag" ]; then \
+		echo "Publish blocked: remote tag $(TAG) does not exist on origin."; \
+		echo "Hint: git push origin $(TAG)"; \
+		exit 1; \
+	fi
+	@branch=$$(git branch --show-current 2>/dev/null || true); \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+		echo "Publish blocked: current branch '$$branch' is not a release context."; \
+		echo "Allowed contexts: release/*, hotfix/*, or main with a finished release tag."; \
+		exit 1; \
+	fi
+	@git fetch origin main --quiet >/dev/null 2>&1 || true
+	@if ! git branch -r --contains "$$(git rev-parse --verify "refs/tags/$(TAG)^{commit}")" | grep -q 'origin/main'; then \
+		echo "Publish blocked: $(TAG) is not reachable from origin/main."; \
+		echo "Hint: publish only after finishing release/hotfix into main and pushing main + tag."; \
+		exit 1; \
+	fi
+
 validate-release-assets:
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz$$' || { echo "Missing darwin checksum for $(RELEASE_VERSION)"; exit 1; }
@@ -295,10 +342,12 @@ release-local-github:
 publish-github:
 	@test -n "$(TAG)" || (echo "TAG is required. Example: make publish-github TAG=v0.5.12" && exit 1)
 	@$(MAKE) require-gh
+	@$(MAKE) validate-publish-context
 	@$(MAKE) -B $(CHECKSUMS_FILE)
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Ensuring GitHub release $(TAG) exists with changelog executive summary..."
-	@notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
+	@set -e; \
+	notes_file=$$(mktemp 2>/dev/null || mktemp -t gitflow-release-notes.XXXXXX); \
 	: >| "$$notes_file"; \
 	awk -v version="$(RELEASE_VERSION)" ' \
 		BEGIN { section_header = "## [" version "] - " } \
@@ -331,7 +380,7 @@ publish-github:
 		fi; \
 	fi; \
 	if ! gh release view "$(TAG)" --repo "$(GITHUB_REPO)" >/dev/null 2>&1; then \
-		target_commit=$$(git rev-parse HEAD); \
+		target_commit=$$(git rev-parse --verify "refs/tags/$(TAG)^{commit}"); \
 		gh release create "$(TAG)" --repo "$(GITHUB_REPO)" --target "$$target_commit" --title "$(TAG)" --notes-file "$$notes_file"; \
 	else \
 		gh release edit "$(TAG)" --repo "$(GITHUB_REPO)" --title "$(TAG)" --notes-file "$$notes_file"; \

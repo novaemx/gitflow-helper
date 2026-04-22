@@ -201,6 +201,31 @@ Release finish sequence must include:
 2. commit changelog on release branch
 3. run `gitflow --json finish`
 
+## Publish guardrails (required)
+
+Publish commands must be blocked unless a real finished release exists.
+
+Definition of "real finished release":
+
+1. Annotated/local release tag exists (`vX.Y.Z`)
+2. The same tag exists on `origin`
+3. Tag commit is reachable from `origin/main`
+4. Publish is executed from a release context branch (`release/*`, `hotfix/*`, or `main`)
+
+Required publish preflight:
+
+```bash
+git rev-parse --verify refs/tags/vX.Y.Z^{commit}
+git ls-remote --tags origin refs/tags/vX.Y.Z refs/tags/vX.Y.Z^{}
+git fetch origin main
+git branch -r --contains <tag-commit> | grep origin/main
+```
+
+If any check fails, STOP publish and print a human-actionable hint.
+
+Do not create GitHub releases targeting arbitrary local `HEAD` on non-release branches.
+Always target the resolved release tag commit.
+
 
 
 ## Commit message policy (required)
