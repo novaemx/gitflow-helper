@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.47] - 2026-04-29
+
+### TL;DR
+This release hardens the publish pipeline so releases can be rebuilt and republished more reliably. Homebrew token handling is now safe when optional credentials are absent, and GitHub asset uploads automatically retry transient failures instead of aborting the whole publish flow.
+
+### Changed
+- Defaulted and exported `HOMEBREW_TAP_GITHUB_TOKEN` in the Makefile so publish jobs always evaluate with a predictable environment.
+- Switched Homebrew cask token and upload gating templates to safe `index .Env ...` lookups in `.goreleaser.yml`.
+
+### Fixed
+- Added retry logic for release asset uploads so transient `gh release upload` failures no longer break the full publish step.
+- Improved upload diagnostics with per-asset retry messages and explicit failure reporting after the final attempt.
+
 ## [0.5.41] - 2026-04-22
 
 ### TL;DR
