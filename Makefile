@@ -28,6 +28,8 @@ RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
 HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow-helper.rb
+HOMEBREW_TAP_GITHUB_TOKEN ?=
+export HOMEBREW_TAP_GITHUB_TOKEN
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
 LINUX_ARCHIVE   := $(DIST)/$(BINARY)-$(VERSION)-linux-amd64.tar.gz
 LINUX_ARM64_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-linux-aarch64.tar.gz
@@ -350,9 +352,27 @@ upload-release-assets:
 		[ -n "$$asset" ] || continue; \
 		file="$(DIST)/$$asset"; \
 		[ -f "$$file" ] || { echo "Missing artifact: $$file"; exit 1; }; \
-		gh release upload "$(RELEASE_TAG)" "$$file" --repo "$(GITHUB_REPO)" --clobber; \
+		upload_ok=0; \
+		for attempt in 1 2 3; do \
+			if GH_PAGER=cat gh release upload "$(RELEASE_TAG)" "$$file" --repo "$(GITHUB_REPO)" --clobber; then \
+				upload_ok=1; \
+				break; \
+			fi; \
+			echo "  upload failed ($$attempt/3): $$asset"; \
+			sleep 1; \
+		done; \
+		[ $$upload_ok -eq 1 ] || { echo "Failed to upload $$asset after 3 attempts"; exit 1; }; \
 	done
-	@gh release upload "$(RELEASE_TAG)" "$(CHECKSUMS_FILE)" --repo "$(GITHUB_REPO)" --clobber
+	@checksums_ok=0; \
+	for attempt in 1 2 3; do \
+		if GH_PAGER=cat gh release upload "$(RELEASE_TAG)" "$(CHECKSUMS_FILE)" --repo "$(GITHUB_REPO)" --clobber; then \
+			checksums_ok=1; \
+			break; \
+		fi; \
+		echo "  upload failed ($$attempt/3): $(CHECKSUMS_FILE)"; \
+		sleep 1; \
+	done; \
+	[ $$checksums_ok -eq 1 ] || { echo "Failed to upload $(CHECKSUMS_FILE) after 3 attempts"; exit 1; }
 	@echo "Done. Uploaded archives + checksums to $(RELEASE_TAG)."
 
 ## release-local-github: build locally and upload artifacts to the latest GitHub release tag

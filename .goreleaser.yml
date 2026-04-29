@@ -155,9 +155,9 @@ homebrew_casks:
     repository:
       owner: novaemx
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      token: "{{ index .Env \"HOMEBREW_TAP_GITHUB_TOKEN\" }}"
     homepage: "https://github.com/novaemx/gitflow-helper"
     description: "Git Flow workflow helper — interactive TUI + CLI. Only requires git."
     license: "MIT"
     # Upload only when token exists; otherwise keep local generation behavior.
-    skip_upload: "{{ if .Env.HOMEBREW_TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}"
+    skip_upload: "{{ if (index .Env \"HOMEBREW_TAP_GITHUB_TOKEN\") }}false{{ else }}true{{ end }}"
