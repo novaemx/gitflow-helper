@@ -276,6 +276,58 @@ func TestEnsureRulesWithAIConsent_ReprovisionsOnVersionUpgrade(t *testing.T) {
 	}
 }
 
+func TestEnsureRulesWithAIConsent_SkipsWhenStoredVersionIsNewer(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	// Simulate running an older binary after rules were already stamped by a
+	// newer one. This should not force re-provision.
+	p := config.ProjectConfigPath(dir)
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"ai_integration":{"enabled":true,"version":"1.2.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.1.9")
+	if err != nil {
+		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("expected zero files when stored version is newer, got %d", len(created))
+	}
+}
+
+func TestShouldReprovisionRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		stored  string
+		app     string
+		want    bool
+	}{
+		{name: "empty_app_reprovisions", stored: "1.0.0", app: "", want: true},
+		{name: "empty_stored_reprovisions", stored: "", app: "1.0.0", want: true},
+		{name: "equal_versions_skip", stored: "1.0.0", app: "1.0.0", want: false},
+		{name: "upgrade_reprovisions", stored: "1.0.0", app: "1.0.1", want: true},
+		{name: "downgrade_skips", stored: "1.2.0", app: "1.1.9", want: false},
+		{name: "accept_v_prefix", stored: "v1.0.0", app: "v1.0.1", want: true},
+		{name: "invalid_version_falls_back_to_mismatch", stored: "latest", app: "1.0.0", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldReprovisionRules(tc.stored, tc.app)
+			if got != tc.want {
+				t.Fatalf("stored=%q app=%q: expected %v, got %v", tc.stored, tc.app, tc.want, got)
+			}
+		})
+	}
+}
+
 // TestEnsureRulesWithAIConsent_DifferentProjectsAskedSeparately verifies that
 // consent stored in project A does not suppress the prompt in project B.
 func TestEnsureRulesWithAIConsent_DifferentProjectsAskedSeparately(t *testing.T) {

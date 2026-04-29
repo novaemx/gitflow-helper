@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -45,6 +46,66 @@ func askAIIntegration(detected DetectedIDE) (bool, error) {
 	return false, nil
 }
 
+func parseSemverParts(version string) ([3]int, bool) {
+	v := strings.TrimSpace(version)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	if v == "" {
+		return [3]int{}, false
+	}
+
+	if idx := strings.IndexAny(v, "-+"); idx >= 0 {
+		v = v[:idx]
+	}
+
+	parts := strings.Split(v, ".")
+	if len(parts) == 0 || len(parts) > 3 {
+		return [3]int{}, false
+	}
+
+	var out [3]int
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "" {
+			return [3]int{}, false
+		}
+		n, err := strconv.Atoi(parts[i])
+		if err != nil || n < 0 {
+			return [3]int{}, false
+		}
+		out[i] = n
+	}
+
+	return out, true
+}
+
+// shouldReprovisionRules reports whether IDE rules/skills should be refreshed
+// based on stored and running versions.
+func shouldReprovisionRules(storedVersion, appVersion string) bool {
+	if strings.TrimSpace(appVersion) == "" {
+		return true
+	}
+	if strings.TrimSpace(storedVersion) == "" {
+		return true
+	}
+
+	running, runningOK := parseSemverParts(appVersion)
+	stored, storedOK := parseSemverParts(storedVersion)
+	if !runningOK || !storedOK {
+		return appVersion != storedVersion
+	}
+
+	for i := 0; i < 3; i++ {
+		if running[i] > stored[i] {
+			return true
+		}
+		if running[i] < stored[i] {
+			return false
+		}
+	}
+
+	return false
+}
+
 // EnsureRulesWithAIConsent installs IDE-specific instructions and embedded
 // skill only when user consent for AI integration is enabled.
 //
@@ -53,9 +114,9 @@ func askAIIntegration(detected DetectedIDE) (bool, error) {
 // it skips provisioning when no prior consent exists, preserving explicit
 // user opt-in.
 //
-// When consent exists and the stored version matches appVersion, provisioning
-// is skipped entirely (zero file I/O). On version mismatch, rules are
-// re-provisioned idempotently and the stored version is updated.
+// When consent exists, provisioning runs only when appVersion is unknown, no
+// stored version exists yet, or the running appVersion is newer than the
+// stored version. Otherwise, file I/O is skipped.
 func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interactive bool, appVersion string) ([]string, error) {
 	choice, exists, err := loadAIIntegrationChoice(projectRoot)
 	if err != nil {
@@ -84,9 +145,9 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 		return []string{}, nil
 	}
 
-	// If the stored version matches the running binary, all rules are
-	// already up-to-date — skip all file I/O.
-	if appVersion != "" && choice.Version == appVersion {
+	// Refresh only on first stamp, explicit unknown version, or when the
+	// running version is newer than the stored one.
+	if !shouldReprovisionRules(choice.Version, appVersion) {
 		return []string{}, nil
 	}
 
