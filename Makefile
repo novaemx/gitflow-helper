@@ -297,10 +297,31 @@ validate-publish-context:
 
 validate-release-assets:
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz$$' || { echo "Missing darwin checksum for $(RELEASE_VERSION)"; exit 1; }
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-windows-amd64.zip$$' || { echo "Missing windows checksum for $(RELEASE_VERSION)"; exit 1; }
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-linux-amd64.tar.gz$$' || { echo "Missing linux tarball checksum for $(RELEASE_VERSION)"; exit 1; }
-	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '^gitflow-$(RELEASE_VERSION)-linux-aarch64.tar.gz$$' || { echo "Missing linux aarch64 tarball checksum for $(RELEASE_VERSION)"; exit 1; }
+	@for artifact in \
+		gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz \
+		gitflow-$(RELEASE_VERSION)-windows-amd64.zip \
+		gitflow-$(RELEASE_VERSION)-linux-amd64.tar.gz \
+		gitflow-$(RELEASE_VERSION)-linux-aarch64.tar.gz; do \
+		awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q "^$$artifact$$" || { echo "Missing checksum entry for $$artifact"; exit 1; }; \
+		file="$(DIST)/$$artifact"; \
+		[ -f "$$file" ] || { echo "Missing artifact file $$file"; exit 1; }; \
+		expected_sha=$$(awk -v f="$$artifact" '$$2 == f { print $$1 }' "$(CHECKSUMS_FILE)"); \
+		[ -n "$$expected_sha" ] || { echo "Missing expected sha for $$artifact"; exit 1; }; \
+		if command -v sha256sum >/dev/null 2>&1; then \
+			actual_sha=$$(sha256sum "$$file" | awk '{print $$1}'); \
+		elif command -v shasum >/dev/null 2>&1; then \
+			actual_sha=$$(shasum -a 256 "$$file" | awk '{print $$1}'); \
+		else \
+			echo "No SHA256 tool found (sha256sum or shasum required)"; \
+			exit 1; \
+		fi; \
+		if [ "$$actual_sha" != "$$expected_sha" ]; then \
+			echo "Checksum mismatch for $$artifact"; \
+			echo "  expected: $$expected_sha"; \
+			echo "  actual:   $$actual_sha"; \
+			exit 1; \
+		fi; \
+	done
 
 validate-linux-packages:
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
