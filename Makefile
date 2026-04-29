@@ -36,6 +36,8 @@ LINUX_ARM64_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-linux-aarch64.tar.gz
 DARWIN_ARCHIVE  := $(DIST)/$(BINARY)-$(VERSION)-darwin-universal.tar.gz
 CHECKSUMS_FILE  := $(DIST)/checksums.txt
 COVER_DIR := test
+LINUX_REPO_DIST_DIR := $(DIST)/linux-repo
+LINUX_REPO_ASSET_FILES := $(LINUX_REPO_DIST_DIR)/apt/Packages $(LINUX_REPO_DIST_DIR)/apt/Packages.gz $(LINUX_REPO_DIST_DIR)/apt/Release $(LINUX_REPO_DIST_DIR)/apt/gitflow-helper.sources $(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
@@ -43,6 +45,7 @@ COVER_DIR := test
 .PHONY: publish-github publish-homebrew publish-winget publish-linux publish-all
 .PHONY: push-winget
 .PHONY: upload-release-assets cleanup-release-assets validate-release-assets validate-linux-packages
+.PHONY: generate-linux-release-assets generate-linux-repo-metadata
 .PHONY: require-gh validate-publish-context
 
 # ── OS/arch detection ────────────────────────────────────────
@@ -334,11 +337,30 @@ validate-linux-packages:
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_amd64\\.pkg\\.tar\\.zst$$' || { echo "Missing amd64 Arch package (.pkg.tar.zst) in checksums"; exit 1; }
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | grep -q '_linux_arm64\\.pkg\\.tar\\.zst$$' || { echo "Missing arm64 Arch package (.pkg.tar.zst) in checksums"; exit 1; }
 
+generate-linux-release-assets:
+	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@./scripts/generate-linux-repo-metadata.sh \
+		--version "$(RELEASE_VERSION)" \
+		--repo "$(GITHUB_REPO)" \
+		--dist "$(DIST)" \
+		--apt-assets-dir "$(LINUX_REPO_DIST_DIR)/apt" \
+		--yum-repo-file "$(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo"
+
+generate-linux-repo-metadata:
+	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
+	@./scripts/generate-linux-repo-metadata.sh \
+		--version "$(RELEASE_VERSION)" \
+		--repo "$(GITHUB_REPO)" \
+		--dist "$(DIST)" \
+		--apt-source-file "packaging/linux/apt/gitflow-helper.sources" \
+		--yum-repo-file "packaging/linux/yum/gitflow-helper-rocky.repo" \
+		--yum-root "packaging/linux/yum/rocky/9"
+
 cleanup-release-assets:
 	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
 	@echo "→ Removing previously published assets from $(RELEASE_TAG) (if present)..."
-	@{ awk '{print $$2}' "$(CHECKSUMS_FILE)"; echo "checksums.txt"; } | while read -r asset; do \
+	@{ awk '{print $$2}' "$(CHECKSUMS_FILE)"; echo "checksums.txt"; printf '%s\n' $(notdir $(LINUX_REPO_ASSET_FILES)); } | while read -r asset; do \
 		[ -n "$$asset" ] || continue; \
 		gh release delete-asset "$(RELEASE_TAG)" "$$asset" --repo "$(GITHUB_REPO)" --yes >/dev/null 2>&1 || true; \
 	done
@@ -347,6 +369,7 @@ upload-release-assets:
 	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
 	@$(MAKE) validate-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
+	@$(MAKE) generate-linux-release-assets RELEASE_VERSION="$(RELEASE_VERSION)"
 	@echo "→ Uploading release assets from $(CHECKSUMS_FILE) to $(RELEASE_TAG)..."
 	@awk '{print $$2}' "$(CHECKSUMS_FILE)" | while read -r asset; do \
 		[ -n "$$asset" ] || continue; \
@@ -373,6 +396,20 @@ upload-release-assets:
 		sleep 1; \
 	done; \
 	[ $$checksums_ok -eq 1 ] || { echo "Failed to upload $(CHECKSUMS_FILE) after 3 attempts"; exit 1; }
+	@for file in $(LINUX_REPO_ASSET_FILES); do \
+		asset=$$(basename "$$file"); \
+		[ -f "$$file" ] || { echo "Missing Linux repo asset: $$file"; exit 1; }; \
+		asset_ok=0; \
+		for attempt in 1 2 3; do \
+			if GH_PAGER=cat gh release upload "$(RELEASE_TAG)" "$$file" --repo "$(GITHUB_REPO)" --clobber; then \
+				asset_ok=1; \
+				break; \
+			fi; \
+			echo "  upload failed ($$attempt/3): $$asset"; \
+			sleep 1; \
+		done; \
+		[ $$asset_ok -eq 1 ] || { echo "Failed to upload $$asset after 3 attempts"; exit 1; }; \
+	done
 	@echo "Done. Uploaded archives + checksums to $(RELEASE_TAG)."
 
 ## release-local-github: build locally and upload artifacts to the latest GitHub release tag
@@ -496,8 +533,15 @@ push-winget: publish-winget
 
 ## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
 publish-linux: publish-github
+	@branch=$$(git branch --show-current 2>/dev/null || true); \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+		echo "→ Skipping local Linux repository metadata updates on '$$branch' (protected release metadata)."; \
+		echo "  Run this target from main/release/hotfix if you want tracked packaging files updated."; \
+		exit 0; \
+	fi
 	@$(MAKE) validate-linux-packages
-	@echo "Done. Linux amd64+arm64 package artifacts (.deb/.rpm/.pkg.tar.zst) are present for $(TAG)."
+	@$(MAKE) generate-linux-repo-metadata RELEASE_VERSION="$(RELEASE_VERSION)"
+	@echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky repo metadata are ready for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
 publish-all: require-gh publish-homebrew publish-winget publish-linux
