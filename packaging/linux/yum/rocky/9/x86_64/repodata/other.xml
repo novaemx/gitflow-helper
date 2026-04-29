@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<otherdata xmlns="http://linux.duke.edu/metadata/other" packages="1">
+  <package pkgid="200715936aa0d360d86ee30c0796db2163d9bf8a0b620bcb13e74d6e53e83184" name="gitflow-helper" arch="x86_64">
+    <version epoch="0" ver="0.5.48" rel="1"/>
+    <changelog author="Luis Lozano" date="1777499424">GitHub release 0.5.48</changelog>
+  </package>
+</otherdata>

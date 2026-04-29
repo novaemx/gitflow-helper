@@ -28,24 +28,79 @@ brew install gitflow-helper
 
 The formula installs shell completions for `bash`, `zsh`, and `fish` automatically.
 
+### Debian / Ubuntu (APT)
+
+The project ships a flat APT source file that installs the `.deb` packages directly from GitHub Releases.
+
+Supported CPU architectures:
+
+- `amd64` for `x86_64`
+- `arm64` for `aarch64`
+
+Check your Debian-family architecture with:
+
+```bash
+dpkg --print-architecture
+```
+
+Add the source and install:
+
+```bash
+sudo curl -fsSL https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-helper.sources \
+  -o /etc/apt/sources.list.d/gitflow-helper.sources
+sudo apt update
+sudo apt install gitflow-helper
+```
+
+### Rocky Linux 9 (DNF / YUM)
+
+Rocky Linux uses a DNF/YUM repository definition plus static `repodata` tracked in this repository.
+
+Supported CPU architectures:
+
+- `x86_64`
+- `aarch64`
+
+Check your RPM-family architecture with:
+
+```bash
+uname -m
+```
+
+Add the repository and install:
+
+```bash
+sudo curl -fsSL https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-helper-rocky.repo \
+  -o /etc/yum.repos.d/gitflow-helper.repo
+sudo dnf makecache
+sudo dnf install gitflow-helper
+```
+
 ### From GitHub Releases
 
 Download the latest binary for your platform from the [Releases](../../releases) page.
 
 ```bash
-# macOS (universal binary — works on Intel and Apple Silicon)
-curl -Lo gitflow https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-darwin-universal
-chmod +x gitflow
-sudo mv gitflow /usr/local/bin/
+# macOS (Intel + Apple Silicon)
+curl -LO https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-<version>-darwin-universal.tar.gz
+tar -xzf gitflow-<version>-darwin-universal.tar.gz
+sudo install -m 755 gitflow /usr/local/bin/gitflow
 
-# Linux x86_64
-curl -Lo gitflow https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-linux-amd64
-chmod +x gitflow
-sudo mv gitflow /usr/local/bin/
+# Linux x86_64 (tarball fallback)
+curl -LO https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-<version>-linux-amd64.tar.gz
+tar -xzf gitflow-<version>-linux-amd64.tar.gz
+sudo install -m 755 gitflow /usr/local/bin/gitflow
+
+# Linux arm64 / aarch64 (tarball fallback)
+curl -LO https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-<version>-linux-aarch64.tar.gz
+tar -xzf gitflow-<version>-linux-aarch64.tar.gz
+sudo install -m 755 gitflow /usr/local/bin/gitflow
 
 # Windows x86_64
-# Download gitflow-windows-amd64.exe and add to PATH
+# Download gitflow-<version>-windows-amd64.zip and add gitflow.exe to PATH
 ```
+
+If you prefer native Linux packages instead of tarballs, use the APT or DNF/YUM repo setup above.
 
 ### From Source
 

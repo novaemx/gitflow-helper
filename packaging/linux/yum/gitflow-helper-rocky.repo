@@ -1,0 +1,8 @@
+[gitflow-helper]
+name=gitflow-helper
+baseurl=https://raw.githubusercontent.com/novaemx/gitflow-helper/main/packaging/linux/yum/rocky/9/$basearch
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+metadata_expire=300
+skip_if_unavailable=False

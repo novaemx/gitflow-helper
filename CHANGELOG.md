@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.48] - 2026-04-29
+
+### TL;DR
+This release adds Linux repository onboarding for native package installation. Debian and Ubuntu can now use a ready-to-install `.sources` file backed by GitHub Release `.deb` assets, and Rocky Linux now has a dedicated YUM/DNF `.repo` plus tracked `repodata` for `x86_64` and `aarch64`.
+
+### Added
+- Added Linux repository metadata generator script to build APT and Rocky YUM repository files from release artifacts.
+- Added tracked Debian/Ubuntu source definition at `packaging/linux/apt/gitflow-helper.sources`.
+- Added tracked Rocky Linux repository definition at `packaging/linux/yum/gitflow-helper-rocky.repo`.
+- Added tracked Rocky Linux `repodata` files for `x86_64` and `aarch64` under `packaging/linux/yum/rocky/9/`.
+
+### Changed
+- Extended the Makefile publish pipeline to generate Linux repository assets (`Packages`, `Packages.gz`, `Release`, `.sources`, `.repo`) as part of release uploads.
+- Updated README installation guidance with Debian/Ubuntu and Rocky Linux repository setup and architecture-specific commands.
+
 ## [0.5.47] - 2026-04-29
 
 ### TL;DR
