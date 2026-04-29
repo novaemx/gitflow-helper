@@ -275,7 +275,7 @@ make vet          # run go vet
 make release-local                    # build release artifacts locally (no publish)
 make release-local-github             # upload local artifacts to the latest existing GitHub release tag
 make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts
-make publish-homebrew TAG=v0.5.12     # upload artifacts, update packaging/homebrew and ../homebrew-tap/Formula
+make publish-homebrew TAG=v0.5.12     # upload artifacts and sync ../homebrew-tap/Formula (also updates packaging/homebrew on main/release/hotfix)
 make publish-winget TAG=v0.5.12       # upload artifacts, then update Winget version/installer/defaultLocale manifests
 make push-winget TAG=v0.5.12          # submit/update Winget package in microsoft/winget-pkgs via wingetcreate
 make publish-all TAG=v0.5.12          # upload once and update all package manifests
@@ -324,6 +324,9 @@ make publish-github TAG=v0.5.12
 make publish-homebrew TAG=v0.5.12
 make publish-winget TAG=v0.5.12
 make push-winget TAG=v0.5.12
+
+# Note: when run from develop/feature/bugfix branches, publish-homebrew keeps
+# tracked release metadata protected and only syncs ../homebrew-tap/Formula.
 
 # Or do everything in one shot
 make publish-all TAG=v0.5.12
