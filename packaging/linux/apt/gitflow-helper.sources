@@ -1,0 +1,5 @@
+Types: deb
+URIs: https://github.com/novaemx/gitflow-helper/releases/latest/download/
+Suites: ./
+Architectures: amd64 arm64
+Trusted: yes
