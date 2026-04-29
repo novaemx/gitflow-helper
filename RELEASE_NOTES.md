@@ -1,4 +1,4 @@
-# Release 0.5.48
+# Release 0.5.49
 
 **Date:** 2026-04-29
 
@@ -6,9 +6,9 @@
 
 - Merge feature 'linux-package-repo-sources' into develop
 - Add linux repo metadata generator
-- Add release notes for 0.5.47
 
 ## Bug Fixes
 
-- Squash(bugfix): publish-flow-stability
+- Merge bugfix 'homebrew-tap-sync-flow' into develop
+- Sync homebrew tap formula reliably
 
