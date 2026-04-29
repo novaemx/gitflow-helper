@@ -124,6 +124,22 @@ gitflow --json pull
 gitflow --json finish
 ```
 
+## Test gate before commit (required)
+
+Before any agent-authored commit that touches tracked files:
+
+1. run the relevant automated tests for the scope of changes
+2. if scope is broad or cross-package, run full suite: `go test ./...`
+3. commit only when tests pass with zero failures
+4. if tests fail, do not commit partial success; fix failures or report blocker
+
+Commit behavior when tests pass:
+
+1. stage intended files (`git add`)
+2. verify staged diff (`git diff --cached`)
+3. create a Conventional Commit on the active flow branch
+4. do not end the task with tested tracked changes left uncommitted unless user explicitly requests no commit
+
 ## Post-finish invariant stabilization (required)
 
 After finishing a `release/*` or `hotfix/*`, immediately verify and stabilize the invariant before ending the task:

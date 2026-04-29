@@ -274,3 +274,48 @@ func TestInvariantCheckResult_HasActionRequired(t *testing.T) {
 		t.Fatalf("expected action_required=backmerge, got %v", result["action_required"])
 	}
 }
+
+func TestResolveHotfixBackTarget_DefaultsToDevelopWhenNoRelease(t *testing.T) {
+	prev := activeReleaseBranchesFinish
+	defer func() { activeReleaseBranchesFinish = prev }()
+
+	activeReleaseBranchesFinish = func() []string { return nil }
+
+	target, err := resolveHotfixBackTarget(config.FlowConfig{DevelopBranch: "develop"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target != "develop" {
+		t.Fatalf("expected develop target, got %q", target)
+	}
+}
+
+func TestResolveHotfixBackTarget_UsesSingleReleaseBranch(t *testing.T) {
+	prev := activeReleaseBranchesFinish
+	defer func() { activeReleaseBranchesFinish = prev }()
+
+	activeReleaseBranchesFinish = func() []string { return []string{"release/1.2.0"} }
+
+	target, err := resolveHotfixBackTarget(config.FlowConfig{DevelopBranch: "develop"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target != "release/1.2.0" {
+		t.Fatalf("expected release/1.2.0 target, got %q", target)
+	}
+}
+
+func TestResolveHotfixBackTarget_FailsWithMultipleReleaseBranches(t *testing.T) {
+	prev := activeReleaseBranchesFinish
+	defer func() { activeReleaseBranchesFinish = prev }()
+
+	activeReleaseBranchesFinish = func() []string { return []string{"release/1.2.0", "release/1.3.0"} }
+
+	_, err := resolveHotfixBackTarget(config.FlowConfig{DevelopBranch: "develop"})
+	if err == nil {
+		t.Fatal("expected error when multiple release branches are active")
+	}
+	if !strings.Contains(err.Error(), "multiple active release branches") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

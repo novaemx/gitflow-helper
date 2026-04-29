@@ -4,8 +4,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/git"
 	"github.com/novaemx/gitflow-helper/internal/output"
 )
+
+type stubGitClient struct {
+	execResultFn func(args ...string) (int, string, string)
+}
+
+func (s stubGitClient) Exec(args ...string) error { return nil }
+func (s stubGitClient) ExecResult(args ...string) (int, string, string) {
+	if s.execResultFn != nil {
+		return s.execResultFn(args...)
+	}
+	return 0, "", ""
+}
+func (s stubGitClient) ExecQuiet(args ...string) string {
+	_, stdout, _ := s.ExecResult(args...)
+	return stdout
+}
+func (s stubGitClient) ExecLines(args ...string) []string { return nil }
 
 func TestBuildMergeConflictResult_JSONAbortFailure(t *testing.T) {
 	prevJSON := output.IsJSONMode()
@@ -83,5 +102,30 @@ func TestSync_ReleaseBranchUsesMergeResult(t *testing.T) {
 	result := map[string]any{"strategy": "merge", "result": "ok"}
 	if result["strategy"] != "merge" {
 		t.Fatalf("expected strategy=merge for release branch, got %v", result["strategy"])
+	}
+}
+
+func TestBackmerge_InvalidDivergenceCountReturnsError(t *testing.T) {
+	prevClient := git.DefaultClient()
+	defer git.SetDefaultClient(prevClient)
+
+	git.SetDefaultClient(stubGitClient{
+		execResultFn: func(args ...string) (int, string, string) {
+			if len(args) >= 1 && args[0] == "rev-list" {
+				return 0, "not-a-number", ""
+			}
+			return 0, "", ""
+		},
+	})
+
+	code, result := Backmerge(config.FlowConfig{DevelopBranch: "develop", MainBranch: "main"})
+	if code == 0 {
+		t.Fatalf("expected error code on invalid divergence count, got %d", code)
+	}
+	if result["result"] != "error" {
+		t.Fatalf("expected result=error, got %v", result["result"])
+	}
+	if !strings.Contains(result["error"].(string), "failed to parse divergence count") {
+		t.Fatalf("expected parse error detail, got %v", result["error"])
 	}
 }

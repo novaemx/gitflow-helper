@@ -272,15 +272,21 @@ validate-publish-context:
 	fi
 	@remote_tag=$$(git ls-remote --tags origin "refs/tags/$(TAG)" "refs/tags/$(TAG)^{}" 2>/dev/null); \
 	if [ -z "$$remote_tag" ]; then \
-		echo "Publish blocked: remote tag $(TAG) does not exist on origin."; \
-		echo "Hint: git push origin $(TAG)"; \
-		exit 1; \
+		echo "→ Remote tag $(TAG) not found on origin; pushing it automatically..."; \
+		if ! git push origin "$(TAG)" >/dev/null; then \
+			echo "Publish blocked: failed to push tag $(TAG) to origin."; \
+			echo "Hint: verify permissions/auth and run: git push origin $(TAG)"; \
+			exit 1; \
+		fi; \
+		remote_tag=$$(git ls-remote --tags origin "refs/tags/$(TAG)" "refs/tags/$(TAG)^{}" 2>/dev/null); \
+		if [ -z "$$remote_tag" ]; then \
+			echo "Publish blocked: tag $(TAG) is still missing on origin after push attempt."; \
+			exit 1; \
+		fi; \
 	fi
 	@branch=$$(git branch --show-current 2>/dev/null || true); \
 	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
-		echo "Publish blocked: current branch '$$branch' is not a release context."; \
-		echo "Allowed contexts: release/*, hotfix/*, or main with a finished release tag."; \
-		exit 1; \
+		echo "→ Publish note: running from '$$branch'; validation will use tag ancestry on origin/main."; \
 	fi
 	@git fetch origin main --quiet >/dev/null 2>&1 || true
 	@if ! git branch -r --contains "$$(git rev-parse --verify "refs/tags/$(TAG)^{commit}")" | grep -q 'origin/main'; then \
@@ -392,6 +398,12 @@ publish-github:
 
 ## publish-homebrew: upload artifacts first, then update local Homebrew formula to point at the current GitHub release
 publish-homebrew: publish-github
+	@branch=$$(git branch --show-current 2>/dev/null || true); \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+		echo "→ Skipping local Homebrew manifest updates on '$$branch' (protected release metadata)."; \
+		echo "  Run this target from main/release/hotfix if you want tracked packaging files updated."; \
+		exit 0; \
+	fi
 	@darwin_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
 	awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
@@ -416,6 +428,12 @@ publish-homebrew: publish-github
 
 ## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
+	@branch=$$(git branch --show-current 2>/dev/null || true); \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+		echo "→ Skipping local Winget manifest updates on '$$branch' (protected release metadata)."; \
+		echo "  Run this target from main/release/hotfix if you want tracked packaging files updated."; \
+		exit 0; \
+	fi
 	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \

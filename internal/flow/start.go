@@ -23,6 +23,17 @@ var (
 	branchExistsStart = git.BranchExists
 	execLinesStart    = git.ExecLines
 	latestTagStart    = git.LatestTag
+	workingTreeStatusStart = git.WorkingTreeStatus
+	stashSaveStart         = git.StashSave
+	stashPopStart          = git.StashPop
+	execResultStart        = git.ExecResult
+)
+
+var (
+	startFeatureFn = StartFeature
+	startBugfixFn  = StartBugfix
+	startReleaseFn = StartRelease
+	startHotfixFn  = StartHotfix
 )
 
 type startResolutionDetails struct {
@@ -289,10 +300,10 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 		}
 	}
 
-	wt := git.WorkingTreeStatus()
+	wt := workingTreeStatusStart()
 	stashed := false
 	if wt.Staged > 0 || wt.Unstaged > 0 {
-		if err := git.StashSave("gitflow: auto-stash before " + branchType + "/" + name); err != nil {
+		if err := stashSaveStart("gitflow: auto-stash before " + branchType + "/" + name); err != nil {
 			result["result"] = "error"
 			result["error"] = "failed to stash changes: " + err.Error()
 			return 1, result
@@ -303,18 +314,18 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	var startErr error
 	switch branchType {
 	case "feature":
-		startErr = StartFeature(cfg, name)
+		startErr = startFeatureFn(cfg, name)
 	case "bugfix":
-		startErr = StartBugfix(cfg, name)
+		startErr = startBugfixFn(cfg, name)
 	case "release":
-		startErr = StartRelease(cfg, name)
+		startErr = startReleaseFn(cfg, name)
 	case "hotfix":
-		startErr = StartHotfix(cfg, name)
+		startErr = startHotfixFn(cfg, name)
 	}
 
 	if startErr != nil {
 		if stashed {
-			_ = git.StashPop()
+			_ = stashPopStart()
 		}
 		result["result"] = "error"
 		result["error"] = startErr.Error()
@@ -322,11 +333,17 @@ func StartBranch(cfg config.FlowConfig, branchType, name string) (int, map[strin
 	}
 
 	if stashed {
-		popCode, _, _ := git.ExecResult("stash", "pop")
+		popCode, _, popErr := execResultStart("stash", "pop")
 		if popCode != 0 {
-			_ = git.Exec("checkout", "--theirs", ".")
-			_ = git.Exec("add", ".")
-			result["stash_restore"] = "resolved"
+			result["result"] = "conflict"
+			result["needs_human"] = true
+			result["stash_restore"] = "conflict"
+			if strings.TrimSpace(popErr) != "" {
+				result["error"] = "failed to restore stashed changes: " + strings.TrimSpace(popErr)
+			} else {
+				result["error"] = "failed to restore stashed changes: resolve stash conflicts manually"
+			}
+			return 2, result
 		} else {
 			result["stash_restore"] = "ok"
 		}

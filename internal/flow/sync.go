@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -175,8 +176,14 @@ func Sync(cfg config.FlowConfig) (int, map[string]any) {
 
 func Backmerge(cfg config.FlowConfig) (int, map[string]any) {
 	behind := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch)
-	behindCount := 0
-	fmt.Sscanf(behind, "%d", &behindCount)
+	behindCount, err := strconv.Atoi(strings.TrimSpace(behind))
+	if err != nil {
+		return 1, map[string]any{
+			"action": "backmerge",
+			"result": "error",
+			"error":  fmt.Sprintf("failed to parse divergence count %q: %v", strings.TrimSpace(behind), err),
+		}
+	}
 
 	if behindCount == 0 {
 		output.Infof("  %s%s already contains all commits from %s.%s",
