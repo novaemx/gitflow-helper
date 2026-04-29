@@ -476,14 +476,32 @@ publish-github:
 
 ## publish-homebrew: upload artifacts first, then update local Homebrew formula to point at the current GitHub release
 publish-homebrew: publish-github
-	@branch=$$(git branch --show-current 2>/dev/null || true); \
-	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
-		echo "→ Skipping local Homebrew manifest updates on '$$branch' (protected release metadata)."; \
-		echo "  Run this target from main/release/hotfix if you want tracked packaging files updated."; \
-		exit 0; \
-	fi
 	@darwin_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-darwin-universal.tar.gz/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
+	branch=$$(git branch --show-current 2>/dev/null || true); \
+	update_tracked=1; \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+		update_tracked=0; \
+		echo "→ Skipping tracked Homebrew manifest update on '$$branch' (protected release metadata)."; \
+		echo "  Continuing with tap formula sync only."; \
+	fi; \
+	if [ $$update_tracked -eq 1 ]; then \
+		awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
+			BEGIN { target_sha = "" } \
+			/^[[:space:]]*version "/ { sub(/version ".*"/, "version \"" version "\"") } \
+			/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/, "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") } \
+			/gitflow-[^"]*-darwin-universal.tar.gz/ { target_sha = darwin_sha } \
+			/^[[:space:]]*sha256 "/ { \
+				if (target_sha != "") { \
+					sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); \
+					target_sha = ""; \
+				} \
+			} \
+			{ print } \
+		' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
+		mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb; \
+	fi; \
+	[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
 	awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
 		BEGIN { target_sha = "" } \
 		/^[[:space:]]*version "/ { sub(/version ".*"/, "version \"" version "\"") } \
@@ -496,13 +514,11 @@ publish-homebrew: publish-github
 			} \
 		} \
 		{ print } \
-	' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
-	mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb
-	@[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
-	cp packaging/homebrew/gitflow-helper.rb "$(HOMEBREW_TAP_FORMULA)"
-	@echo "Done. Updated Homebrew formulas for $(TAG):"
-	@echo "  - packaging/homebrew/gitflow-helper.rb"
-	@echo "  - $(HOMEBREW_TAP_FORMULA)"
+	' "$(HOMEBREW_TAP_FORMULA)" > "$(HOMEBREW_TAP_FORMULA).tmp"; \
+	mv "$(HOMEBREW_TAP_FORMULA).tmp" "$(HOMEBREW_TAP_FORMULA)"; \
+	echo "Done. Updated Homebrew formula targets for $(TAG):"; \
+	if [ $$update_tracked -eq 1 ]; then echo "  - packaging/homebrew/gitflow-helper.rb"; fi; \
+	echo "  - $(HOMEBREW_TAP_FORMULA)"
 
 ## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
