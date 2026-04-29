@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -57,8 +58,12 @@ func FastRelease(cfg config.FlowConfig, featureName string) (int, map[string]any
 
 	// Invariant: main must not be ahead of develop
 	if raw := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch); true {
-		var n int
-		fmt.Sscanf(strings.TrimSpace(raw), "%d", &n)
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			result["result"] = "error"
+			result["error"] = fmt.Sprintf("failed to parse divergence count %q: %v", strings.TrimSpace(raw), err)
+			return 1, result
+		}
 		if n > 0 {
 			output.Infof("  %s✗ %s is %d commit(s) ahead of %s — run 'gitflow backmerge' first.%s",
 				output.Red, cfg.MainBranch, n, cfg.DevelopBranch, output.Reset)
@@ -154,6 +159,7 @@ func FastRelease(cfg config.FlowConfig, featureName string) (int, map[string]any
 		result["result"] = "conflict"
 		result["error"] = stderr
 		result["needs_human"] = true
+		result["action_required"] = "backmerge"
 		result["warning"] = fmt.Sprintf("feature was merged into %s and tagged %s; back-merge to %s failed", cfg.MainBranch, tagName, cfg.DevelopBranch)
 		if len(conflicts) > 0 {
 			result["conflicts"] = conflicts

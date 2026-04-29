@@ -13,6 +13,7 @@ import (
 
 var execResultFinish = git.ExecResult
 var remoteExistsFinish = git.RemoteExists
+var activeReleaseBranchesFinish = git.ActiveReleaseBranches
 var remoteBranchExistsFinish = func(remote, branch string) bool {
 	code, _, _ := execResultFinish("ls-remote", "--exit-code", "--heads", remote, branch)
 	return code == 0
@@ -277,10 +278,9 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 		return fmt.Errorf("tag creation failed for %s: %w", tagName, err)
 	}
 
-	releases := git.ActiveReleaseBranches()
-	backTarget := cfg.DevelopBranch
-	if len(releases) > 0 {
-		backTarget = releases[0]
+	backTarget, err := resolveHotfixBackTarget(cfg)
+	if err != nil {
+		return err
 	}
 
 	if err := git.Exec("checkout", backTarget); err != nil {
@@ -298,6 +298,17 @@ func finishHotfix(cfg config.FlowConfig, ver string) error {
 	output.Infof("  %s✓ hotfix/%s → %s (tagged %s) → %s%s",
 		output.Green, ver, cfg.MainBranch, tagName, backTarget, output.Reset)
 	return nil
+}
+
+func resolveHotfixBackTarget(cfg config.FlowConfig) (string, error) {
+	releases := activeReleaseBranchesFinish()
+	if len(releases) == 0 {
+		return cfg.DevelopBranch, nil
+	}
+	if len(releases) == 1 {
+		return releases[0], nil
+	}
+	return "", fmt.Errorf("multiple active release branches found (%s); finish hotfix manually by selecting explicit back-merge target", strings.Join(releases, ", "))
 }
 
 // nonAtomicCommitWarnings returns subjects that appear to mix multiple concerns
@@ -336,7 +347,10 @@ func remoteParentAheadCount(remote, parent string) int {
 		return 0
 	}
 	raw := git.ExecQuiet("rev-list", "--count", parent+".."+ref)
-	n, _ := strconv.Atoi(strings.TrimSpace(raw))
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0
+	}
 	return n
 }
 
@@ -523,7 +537,13 @@ func FinishCurrent(cfg config.FlowConfig, name string, opts ...FinishOptions) (i
 	// would leave develop permanently behind main (violates the nvie funnel).
 	if btype == "release" {
 		raw := git.ExecQuiet("rev-list", "--count", cfg.DevelopBranch+".."+cfg.MainBranch)
-		if n, _ := strconv.Atoi(strings.TrimSpace(raw)); n > 0 {
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			result["result"] = "error"
+			result["error"] = fmt.Sprintf("failed to parse divergence count %q: %v", strings.TrimSpace(raw), err)
+			return 1, result
+		}
+		if n > 0 {
 			output.Infof("  %s✗ %s is %d commit(s) ahead of %s — run 'gitflow backmerge' before finishing a release.%s",
 				output.Red, cfg.MainBranch, n, cfg.DevelopBranch, output.Reset)
 			result["result"] = "error"

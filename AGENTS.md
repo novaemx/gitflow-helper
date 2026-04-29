@@ -64,3 +64,18 @@ git checkout feature/<slug>
 ```
 
 Report the violation to the user.
+
+## Commit Gate — tests first (required)
+
+Before any commit authored by the agent on tracked files:
+
+1. Run relevant tests for the change scope.
+2. If the change spans multiple packages, run full suite: `go test ./...`.
+3. Commit only when tests pass with zero failures.
+4. If tests fail, do not commit; fix failures or report blocker.
+
+When tests pass:
+
+1. Stage files intentionally (`git add`).
+2. Validate staged diff (`git diff --cached`).
+3. Commit on active flow branch using Conventional Commits.

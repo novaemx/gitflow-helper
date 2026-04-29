@@ -2,6 +2,8 @@ package gitflow
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/novaemx/gitflow-helper/internal/flow"
 	"github.com/novaemx/gitflow-helper/internal/git"
@@ -37,8 +39,10 @@ func (gf *Logic) PreMergeCheck(autoSync bool) (*PreMergeReport, error) {
 	}
 
 	behindStr := git.ExecQuiet("rev-list", "--count", branch+".."+parent)
-	behind := 0
-	fmt.Sscanf(behindStr, "%d", &behind)
+	behind, err := strconv.Atoi(strings.TrimSpace(behindStr))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse divergence count %q: %w", strings.TrimSpace(behindStr), err)
+	}
 
 	report := &PreMergeReport{
 		Branch:       branch,

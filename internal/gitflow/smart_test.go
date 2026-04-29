@@ -3,11 +3,29 @@ package gitflow
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
 	"github.com/novaemx/gitflow-helper/internal/git"
 )
+
+type smartStubGitClient struct {
+	execResultFn func(args ...string) (int, string, string)
+}
+
+func (s smartStubGitClient) Exec(args ...string) error { return nil }
+func (s smartStubGitClient) ExecResult(args ...string) (int, string, string) {
+	if s.execResultFn != nil {
+		return s.execResultFn(args...)
+	}
+	return 0, "", ""
+}
+func (s smartStubGitClient) ExecQuiet(args ...string) string {
+	_, stdout, _ := s.ExecResult(args...)
+	return stdout
+}
+func (s smartStubGitClient) ExecLines(args ...string) []string { return nil }
 
 func setupSmartTestRepo(t *testing.T) (string, *Logic) {
 	t.Helper()
@@ -237,5 +255,31 @@ func TestSmartFinish_Feature(t *testing.T) {
 	cur := git.CurrentBranch()
 	if cur != "develop" {
 		t.Errorf("expected to be on develop after finish, got %q", cur)
+	}
+}
+
+func TestPreMergeCheck_InvalidDivergenceCountReturnsError(t *testing.T) {
+	prevClient := git.DefaultClient()
+	defer git.SetDefaultClient(prevClient)
+
+	git.SetDefaultClient(smartStubGitClient{
+		execResultFn: func(args ...string) (int, string, string) {
+			if len(args) >= 2 && args[0] == "branch" && args[1] == "--show-current" {
+				return 0, "feature/parse-check", ""
+			}
+			if len(args) >= 1 && args[0] == "rev-list" {
+				return 0, "bad", ""
+			}
+			return 0, "", ""
+		},
+	})
+
+	gf := NewFromConfig(config.FlowConfig{MainBranch: "main", DevelopBranch: "develop"})
+	_, err := gf.PreMergeCheck(false)
+	if err == nil {
+		t.Fatal("expected parse error from PreMergeCheck")
+	}
+	if !strings.Contains(err.Error(), "failed to parse divergence count") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
