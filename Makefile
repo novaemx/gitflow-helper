@@ -528,16 +528,16 @@ publish-winget: publish-github
 		echo "→ Skipping local Winget manifest updates on '$$branch' (protected release metadata)."; \
 		echo "  Run this target from release/hotfix if you want tracked packaging files updated."; \
 		exit 0; \
-	fi
-	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
+	fi; \
+	windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
 	[ -n "$$windows_sha" ] || { echo "Missing windows checksum"; exit 1; }; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.yaml; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
 	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
 	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.version.yaml; \
-	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak packaging/winget/novaemx.gitflow-helper.installer.yaml.bak packaging/winget/novaemx.gitflow-helper.version.yaml.bak
-	@echo "Done. Updated Winget manifests for $(TAG)."
+	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak packaging/winget/novaemx.gitflow-helper.installer.yaml.bak packaging/winget/novaemx.gitflow-helper.version.yaml.bak; \
+	echo "Done. Updated Winget manifests for $(TAG)."
 
 ## push-winget: submit the current version to the winget community repository via wingetcreate
 push-winget: publish-winget
@@ -555,10 +555,10 @@ publish-linux: publish-github
 		echo "→ Skipping local Linux repository metadata updates on '$$branch' (protected release metadata)."; \
 		echo "  Run this target from release/hotfix if you want tracked packaging files updated."; \
 		exit 0; \
-	fi
-	@$(MAKE) validate-linux-packages
-	@$(MAKE) generate-linux-repo-metadata RELEASE_VERSION="$(RELEASE_VERSION)"
-	@echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky repo metadata are ready for $(TAG)."
+	fi; \
+	$(MAKE) validate-linux-packages; \
+	$(MAKE) generate-linux-repo-metadata RELEASE_VERSION="$(RELEASE_VERSION)"; \
+	echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky repo metadata are ready for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
 publish-all: require-gh publish-homebrew publish-winget publish-linux
