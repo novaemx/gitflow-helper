@@ -480,9 +480,10 @@ publish-homebrew: publish-github
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
 	branch=$$(git branch --show-current 2>/dev/null || true); \
 	update_tracked=1; \
-	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
 		update_tracked=0; \
 		echo "→ Skipping tracked Homebrew manifest update on '$$branch' (protected release metadata)."; \
+		echo "  Tracked metadata is only updated from release/hotfix branches."; \
 		echo "  Continuing with tap formula sync only."; \
 	fi; \
 	if [ $$update_tracked -eq 1 ]; then \
@@ -523,9 +524,9 @@ publish-homebrew: publish-github
 ## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
 	@branch=$$(git branch --show-current 2>/dev/null || true); \
-	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
 		echo "→ Skipping local Winget manifest updates on '$$branch' (protected release metadata)."; \
-		echo "  Run this target from main/release/hotfix if you want tracked packaging files updated."; \
+		echo "  Run this target from release/hotfix if you want tracked packaging files updated."; \
 		exit 0; \
 	fi
 	@windows_sha=$$(awk '/gitflow-$(RELEASE_VERSION)-windows-amd64.zip/ {print $$1}' $(CHECKSUMS_FILE)); \
@@ -550,9 +551,9 @@ push-winget: publish-winget
 ## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
 publish-linux: publish-github
 	@branch=$$(git branch --show-current 2>/dev/null || true); \
-	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/|^main$$'; then \
+	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
 		echo "→ Skipping local Linux repository metadata updates on '$$branch' (protected release metadata)."; \
-		echo "  Run this target from main/release/hotfix if you want tracked packaging files updated."; \
+		echo "  Run this target from release/hotfix if you want tracked packaging files updated."; \
 		exit 0; \
 	fi
 	@$(MAKE) validate-linux-packages
