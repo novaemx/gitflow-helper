@@ -164,3 +164,16 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 
 	return created, nil
 }
+
+// EnsureRulesForSetup is the explicit setup entrypoint. For single IDE targets
+// it routes through the consent/version-stamping flow. For legacy fan-out
+// targets like "both" and "unknown", it preserves the existing Generate
+// behavior.
+func EnsureRulesForSetup(projectRoot string, detected DetectedIDE, interactive bool, appVersion string) ([]string, error) {
+	switch detected.ID {
+	case IDEBoth, IDEUnknown:
+		return Generate(projectRoot, detected.ID)
+	default:
+		return EnsureRulesWithAIConsent(projectRoot, detected, interactive, appVersion)
+	}
+}

@@ -91,3 +91,28 @@ func TestAIIntegrationChoice_UsesUnifiedProjectConfig(t *testing.T) {
 		t.Fatalf("expected no legacy ai config file, got err=%v", err)
 	}
 }
+
+func TestLoadAIIntegrationChoice_SupportsLegacyUnifiedRootShape(t *testing.T) {
+	dir := t.TempDir()
+	path := ProjectConfigPath(dir)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`{"enabled":true,"version":"1.2.3"}`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loaded, exists, err := LoadAIIntegrationChoice(dir)
+	if err != nil {
+		t.Fatalf("LoadAIIntegrationChoice: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected ai integration choice to exist")
+	}
+	if !loaded.Enabled {
+		t.Fatal("expected enabled=true")
+	}
+	if loaded.Version != "1.2.3" {
+		t.Fatalf("expected version 1.2.3, got %q", loaded.Version)
+	}
+}

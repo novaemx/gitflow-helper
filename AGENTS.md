@@ -79,3 +79,13 @@ When tests pass:
 1. Stage files intentionally (`git add`).
 2. Validate staged diff (`git diff --cached`).
 3. Commit on active flow branch using Conventional Commits.
+
+## Auto-finish on test pass (required for feature/bugfix/hotfix)
+
+After all commits are done on a `feature/*`, `bugfix/*`, or `hotfix/*` branch:
+
+1. Run `gitflow --json finish --run-tests` (runs tests + finishes branch in one step).
+2. If tests fail → do NOT finish; fix failures first.
+3. If tests pass → the tool finishes the branch automatically.
+4. Do NOT manually merge or delete the branch; delegate to `gitflow finish`.
+5. `release/*` branches are excluded — they require explicit human sign-off.

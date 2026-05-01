@@ -2,6 +2,10 @@ package gitflow
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -198,4 +202,106 @@ func (gf *Logic) StatusWithHealing(autoHeal bool) map[string]any {
 	}
 
 	return result
+}
+
+// detectTestCommand returns the test command for the project, preferring the
+// configured value, then auto-detecting from project structure.
+func detectTestCommand(projectRoot, configured string) string {
+	if configured != "" {
+		return configured
+	}
+	// Go module
+	if _, err := os.Stat(filepath.Join(projectRoot, "go.mod")); err == nil {
+		return "go test ./..."
+	}
+	// Node.js
+	if _, err := os.Stat(filepath.Join(projectRoot, "package.json")); err == nil {
+		return "npm test"
+	}
+	// Python / pytest
+	if _, err := os.Stat(filepath.Join(projectRoot, "pyproject.toml")); err == nil {
+		return "pytest"
+	}
+	if _, err := os.Stat(filepath.Join(projectRoot, "setup.py")); err == nil {
+		return "pytest"
+	}
+	// Makefile with a test target
+	if _, err := os.Stat(filepath.Join(projectRoot, "Makefile")); err == nil {
+		return "make test"
+	}
+	return ""
+}
+
+// RunTestSuite executes the project test suite and returns whether all tests
+// passed, the resolved command used, and any execution output.
+func (gf *Logic) RunTestSuite() (passed bool, testCmd string, testOutput string) {
+	testCmd = detectTestCommand(gf.Config.ProjectRoot, gf.Config.TestCommand)
+	if testCmd == "" {
+		return false, "", "no test command configured or detected"
+	}
+
+	output.Infof("  %sRunning test suite: %s%s", output.Dim, testCmd, output.Reset)
+
+	var shell, flag string
+	if runtime.GOOS == "windows" {
+		shell = "cmd"
+		flag = "/C"
+	} else {
+		shell = "sh"
+		flag = "-c"
+	}
+
+	cmd := exec.Command(shell, flag, testCmd) //nolint:gosec // command is from trusted config
+	cmd.Dir = gf.Config.ProjectRoot
+	out, err := cmd.CombinedOutput()
+	testOutput = strings.TrimSpace(string(out))
+
+	if err != nil {
+		output.Infof("  %s✗ Tests failed: %s%s", output.Red, err.Error(), output.Reset)
+		return false, testCmd, testOutput
+	}
+	output.Infof("  %s✓ Tests passed%s", output.Green, output.Reset)
+	return true, testCmd, testOutput
+}
+
+// TestGatedFinish runs the test suite for the current flow branch and, when
+// all tests pass, automatically finishes the branch using SmartFinish (for
+// feature/bugfix) or SafeHotfixFinish (for hotfix).
+//
+// This is a no-op for release branches — releases require explicit human sign-off.
+func (gf *Logic) TestGatedFinish(name string) (int, map[string]any) {
+	branch := git.CurrentBranch()
+	btype := git.BranchTypeOf(branch)
+
+	if btype != "feature" && btype != "bugfix" && btype != "hotfix" {
+		return 1, map[string]any{
+			"action": "test-gated-finish",
+			"error":  fmt.Sprintf("test-gated-finish only applies to feature/bugfix/hotfix (current: %s)", branch),
+		}
+	}
+
+	passed, testCmd, testOut := gf.RunTestSuite()
+	if !passed {
+		return 1, map[string]any{
+			"action":       "test-gated-finish",
+			"result":       "tests_failed",
+			"branch":       branch,
+			"branch_type":  btype,
+			"test_command": testCmd,
+			"test_output":  testOut,
+			"error":        "tests failed — branch not finished",
+		}
+	}
+
+	var code int
+	var result map[string]any
+	if btype == "hotfix" {
+		code, result = gf.SafeHotfixFinish(name)
+	} else {
+		code, result = gf.SmartFinish(name)
+	}
+
+	result["test_command"] = testCmd
+	result["tests_passed"] = true
+	return code, result
 }

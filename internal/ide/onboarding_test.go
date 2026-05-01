@@ -157,6 +157,70 @@ func TestEnsureRulesWithAIConsent_NonInteractiveSkipsWithoutPriorConsent(t *test
 	}
 }
 
+func TestEnsureRulesForSetup_FirstRunPromptsAndStampsVersion(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	prevAsk := AskAIIntegrationFunc
+	prompted := false
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+		prompted = true
+		return true, nil
+	}
+	defer func() { AskAIIntegrationFunc = prevAsk }()
+
+	created, err := EnsureRulesForSetup(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesForSetup: %v", err)
+	}
+	if !prompted {
+		t.Fatal("expected explicit setup to prompt for AI integration")
+	}
+	if len(created) < 3 {
+		t.Fatalf("expected setup to provision files, got %d", len(created))
+	}
+
+	choice, exists, err := config.LoadAIIntegrationChoice(dir)
+	if err != nil {
+		t.Fatalf("LoadAIIntegrationChoice: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected consent to be stored")
+	}
+	if choice.Version != "1.0.0" {
+		t.Fatalf("expected stored version 1.0.0, got %q", choice.Version)
+	}
+}
+
+func TestEnsureRulesForSetup_BothPreservesFanOutGeneration(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) {
+		t.Fatal("did not expect prompt for legacy both target")
+		return false, nil
+	}
+	defer func() { AskAIIntegrationFunc = prevAsk }()
+
+	created, err := EnsureRulesForSetup(dir, DetectedIDE{ID: IDEBoth, DisplayName: "Cursor + Copilot"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesForSetup: %v", err)
+	}
+	if len(created) < 4 {
+		t.Fatalf("expected fan-out files for both target, got %d: %v", len(created), created)
+	}
+	if !cursorRuleExists(dir) {
+		t.Fatal("expected cursor rule for both target")
+	}
+}
+
 func TestAskAIIntegration_ParseAnswers(t *testing.T) {
 	prevRead := readAIAnswerFunc
 	defer func() { readAIAnswerFunc = prevRead }()

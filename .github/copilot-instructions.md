@@ -87,7 +87,9 @@ gitflow --json status
 3. Check `main_ahead_of_develop` → if > 0, run `gitflow --json backmerge`
 4. Check current branch — if `main` or `develop`: **CREATE FLOW BRANCH FIRST, then edit**
 5. NEVER modify code on main or develop directly — use flow branches
-6. When done: `gitflow --json finish`
+6. When done: `gitflow --json finish --run-tests` (runs test suite; finishes branch only if all tests pass)
+
+> For `release/*` branches, use plain `gitflow --json finish` — releases require explicit human sign-off.
 
 > **If you find yourself about to commit and `git branch --show-current` outputs `main` or `develop` → STOP.**
 > Create the flow branch first. Move uncommitted changes via `gitflow --json start feature <slug>` (auto-stash is built in).
