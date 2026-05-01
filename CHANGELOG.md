@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.52] - 2026-04-30
+
+### TL;DR
+This release makes `gitflow finish` safer for agent-driven workflows by adding an explicit test-gated finish path, fixes Cursor setup so AI integration consent is asked and version-stamped during explicit setup, and aligns the tracked Homebrew formula with the confirmed `gitflow.rb` tap format.
+
+### Added
+- Added a `gitflow finish --run-tests` flow that auto-detects the project test command, runs the suite, and only finishes feature, bugfix, and hotfix branches when tests pass.
+- Added regression coverage for explicit setup prompting, version stamping, and legacy AI integration config loading.
+
+### Changed
+- Updated embedded gitflow skill and instruction assets to direct feature, bugfix, and hotfix finishes through the new test-gated finish flow.
+- Updated Homebrew packaging references to use the tracked `packaging/homebrew/gitflow.rb` formula path and the confirmed tap formula name.
+
+### Fixed
+- Fixed `gitflow setup` so explicit setup in Cursor now goes through the AI consent flow instead of bypassing onboarding.
+- Fixed AI integration choice loading to recognize legacy consent data stored directly in `.gitflow/config.json`.
+
 ## [0.5.48] - 2026-04-29
 
 ### TL;DR
