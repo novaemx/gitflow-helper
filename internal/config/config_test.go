@@ -116,3 +116,52 @@ func TestLoadAIIntegrationChoice_SupportsLegacyUnifiedRootShape(t *testing.T) {
 		t.Fatalf("expected version 1.2.3, got %q", loaded.Version)
 	}
 }
+
+// TestFindProjectRootFrom_ReturnsGitRoot verifies the helper walks up and finds
+// the nearest .git ancestor.
+func TestFindProjectRootFrom_ReturnsGitRoot(t *testing.T) {
+	parent := t.TempDir()
+	child := filepath.Join(parent, "sub", "project")
+	if err := os.MkdirAll(child, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(parent, ".git"), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+
+	got := findProjectRootFrom(child)
+	if got != parent {
+		t.Fatalf("expected %q, got %q", parent, got)
+	}
+}
+
+// TestFindProjectRootFrom_NoGitReturnsEmpty verifies the helper returns ""
+// when no .git exists anywhere in the ancestor chain.
+func TestFindProjectRootFrom_NoGitReturnsEmpty(t *testing.T) {
+	// t.TempDir() creates a dir in os.TempDir() which has no .git ancestor
+	// (unless someone initialised git in /tmp, which would be very unusual).
+	freshDir := t.TempDir()
+	got := findProjectRootFrom(freshDir)
+	// If something in the system temp has a .git we can't help it, but at
+	// minimum the result must NOT be the freshDir itself (since we didn't
+	// create a .git there).
+	if got == freshDir {
+		t.Fatalf("unexpected .git found at %q", freshDir)
+	}
+}
+
+// TestFindProjectRoot_NeverFallsBackToExePath ensures FindProjectRoot returns
+// only CWD-based results and never the executable's install prefix. This guards
+// against the Homebrew regression: /opt/homebrew is a git repo, so the old
+// exe-candidate logic would use it as the project root for any fresh directory.
+func TestFindProjectRoot_NeverFallsBackToExePath(t *testing.T) {
+	// We test the exported function via t.Chdir so CWD is fresh and isolated.
+	freshDir := t.TempDir()
+	t.Chdir(freshDir)
+
+	got := FindProjectRoot()
+	// Must be the fresh dir (CWD fallback), not the executable's location.
+	if got != freshDir {
+		t.Fatalf("expected CWD fallback %q, got %q — exe-path candidate may have leaked", freshDir, got)
+	}
+}

@@ -248,28 +248,35 @@ func SaveAIIntegrationChoice(root string, choice AIIntegrationChoice) error {
 	return writeProjectConfigMap(root, decoded)
 }
 
-func FindProjectRoot() string {
-	candidates := []string{}
-	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, cwd)
-	}
-	if exe, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Dir(filepath.Dir(exe)))
-	}
-	for _, start := range candidates {
-		p := start
-		for {
-			if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
-				return p
-			}
-			parent := filepath.Dir(p)
-			if parent == p {
-				break
-			}
-			p = parent
+// findProjectRootFrom walks up from start looking for a .git directory.
+// Returns the directory containing .git, or "" if not found.
+func findProjectRootFrom(start string) string {
+	p := start
+	for {
+		if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
+			return p
 		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return ""
+		}
+		p = parent
 	}
-	cwd, _ := os.Getwd()
+}
+
+// FindProjectRoot returns the nearest ancestor directory (inclusive of CWD)
+// that contains a .git directory. Falls back to the current working directory
+// when no git repository is found. The binary's own location is intentionally
+// NOT considered — it would produce wrong results when the tool is installed
+// inside a foreign git repository (e.g. Homebrew at /opt/homebrew).
+func FindProjectRoot() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	if root := findProjectRootFrom(cwd); root != "" {
+		return root
+	}
 	return cwd
 }
 
