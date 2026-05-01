@@ -86,6 +86,14 @@ gitflow --json backmerge
 This is a gitflow invariant violation. Nothing else should happen until
 develop contains all of main.
 
+Immediately re-check after backmerge:
+
+```bash
+gitflow --json status
+```
+
+If `main_ahead_of_develop` is still `> 0`, STOP and escalate to the user.
+
 ### 1d. Are we on the right branch?
 
 Evaluate `current` (the active branch) against the user's intent:
@@ -161,7 +169,19 @@ While making code changes on the flow branch:
 
 ## Step 3 — Finishing Work
 
-When the user's task is complete and code is committed:
+When the user's task is complete and code is committed, run the test suite and finish in one step:
+
+For `feature/*`, `bugfix/*`, or `hotfix/*` branches:
+
+```bash
+gitflow --json finish --run-tests
+```
+
+- if tests **fail** → branch is NOT finished; fix failures first
+- if tests **pass** → the tool finishes the branch automatically (merges into target, deletes branch)
+- `release/*` branches are excluded — they require explicit human sign-off
+
+If tests were already verified manually, plain finish is also acceptable:
 
 ```bash
 gitflow --json finish
@@ -179,6 +199,17 @@ When finishing a release, the tool generates a `RELEASE_NOTES.md` file:
 gitflow --json releasenotes           # from last tag to HEAD
 gitflow --json releasenotes v0.5.1    # from specific tag
 ```
+
+---
+
+## Step 5 — Task-end invariant gate (required)
+
+Before ending ANY task that touched tracked files (not only release/hotfix):
+
+1. Run `gitflow --json status`.
+2. If `main_ahead_of_develop > 0`, run `gitflow --json backmerge` immediately.
+3. Run `gitflow --json status` again and confirm `main_ahead_of_develop == 0`.
+4. If it is still `> 0`, STOP and report blocker; do not mark task complete.
 
 ---
 

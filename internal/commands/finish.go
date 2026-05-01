@@ -12,6 +12,7 @@ import (
 func newFinishCmd() *cobra.Command {
 	var squash bool
 	var rebase bool
+	var runTests bool
 
 	cmd := &cobra.Command{
 		Use:   "finish [name]",
@@ -29,7 +30,9 @@ func newFinishCmd() *cobra.Command {
 			var code int
 			var result map[string]any
 
-			if squash || rebase {
+			if runTests {
+				code, result = GF.TestGatedFinish(name)
+			} else if squash || rebase {
 				// When explicit flags are provided, bypass SmartFinish and call
 				// Finish directly with the user-requested options.
 				opts := flow.FinishOptions{
@@ -61,5 +64,6 @@ func newFinishCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&squash, "squash", false, "Squash all branch commits into a single commit on develop")
 	cmd.Flags().BoolVar(&rebase, "rebase", false, "Rebase the branch onto develop before the final merge")
+	cmd.Flags().BoolVarP(&runTests, "run-tests", "t", false, "Run the project test suite; finish only if all tests pass")
 	return cmd
 }

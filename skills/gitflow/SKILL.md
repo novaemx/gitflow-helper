@@ -42,7 +42,9 @@ Then execute this decision tree — **top to bottom, no skipping**:
    NO  → continue
 
 ③ main_ahead_of_develop > 0?
-   YES → gitflow --json backmerge   THEN continue
+   YES → gitflow --json backmerge
+         THEN run gitflow --json status again
+         IF main_ahead_of_develop still > 0 → STOP and escalate to user
    NO  → continue
 
 ④ current branch == "main" OR "develop"?
@@ -63,7 +65,8 @@ Then execute this decision tree — **top to bottom, no skipping**:
 1. if `git_flow_initialized=false` → `gitflow --json init`
 2. if `merge.in_merge=true` → STOP and report
 3. if `main_ahead_of_develop>0` → `gitflow --json backmerge`
-4. if current branch is `main` or `develop` → create flow branch BEFORE any edit
+4. re-run `gitflow --json status`; if `main_ahead_of_develop>0` still, STOP and escalate
+5. if current branch is `main` or `develop` → create flow branch BEFORE any edit
 
 Never edit code directly on `main` or `develop`.
 
@@ -124,6 +127,23 @@ gitflow --json pull
 gitflow --json finish
 ```
 
+## Auto-finish on test pass (required for feature/bugfix/hotfix)
+
+After all commits are done on a `feature/*`, `bugfix/*`, or `hotfix/*` branch:
+
+1. run `gitflow --json finish --run-tests` (delegates testing + finish in one step)
+2. if tests fail → do NOT finish; fix failures first
+3. if tests pass → the tool finishes the branch automatically (merges into `develop`/`main`, deletes branch)
+4. do NOT manually merge or delete the branch; delegate to `gitflow finish`
+5. `release/*` branches are excluded — they require explicit human sign-off
+
+Alternatively, run the suite manually then call plain finish:
+
+```bash
+go test ./...                  # or the project-specific test command
+gitflow --json finish           # proceeds with SmartFinish / SafeHotfixFinish
+```
+
 ## Post-finish invariant stabilization (required)
 
 After finishing a `release/*` or `hotfix/*`, immediately verify and stabilize the invariant before ending the task:
@@ -138,6 +158,15 @@ Decision rules:
 2. re-run `gitflow --json status` and confirm `main_ahead_of_develop == 0`
 3. if `develop_ahead_of_main > 0` with `main_only_files=[]` and `develop_only_files=[]`, treat it as merge-metadata divergence (non-semantic)
 4. do not report metadata-only divergence as a release blocker once step 2 passes
+
+## Task-end invariant gate (required)
+
+Before ending ANY task that touched tracked files (not only release/hotfix):
+
+1. run `gitflow --json status`
+2. if `main_ahead_of_develop > 0`, run `gitflow --json backmerge` immediately
+3. run `gitflow --json status` again and confirm `main_ahead_of_develop == 0`
+4. if still `> 0`, STOP and report blocker; do not mark task complete
 
 Release push policy after finish:
 

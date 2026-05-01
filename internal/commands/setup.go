@@ -13,14 +13,14 @@ func newSetupCmd() *cobra.Command {
 		Short: "Detect IDE and install gitflow rules, MCP config, and embedded skill",
 		Long:  "Detects which IDE is running, generates the appropriate rule/instruction files for gitflow preflight enforcement, and installs or updates the embedded gitflow skill in the project or ~/.agents fallback.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			detected := forceIDE
-			if detected == "" {
-				detected = ide.DetectPrimary(GF.Config.ProjectRoot).ID
+			detected := ide.DetectedIDE{ID: forceIDE, DisplayName: forceIDE}
+			if detected.ID == "" {
+				detected = ide.DetectPrimary(GF.Config.ProjectRoot)
 			}
 
-			output.Infof("  Detected IDE: %s%s%s", output.Cyan, detected, output.Reset)
+			output.Infof("  Detected IDE: %s%s%s", output.Cyan, detected.ID, output.Reset)
 
-			files, err := ide.Generate(GF.Config.ProjectRoot, detected)
+			files, err := ide.EnsureRulesForSetup(GF.Config.ProjectRoot, detected, !output.IsJSONMode(), GF.AppVersion)
 			if err != nil {
 				output.Infof("  %sError generating files: %v%s", output.Red, err, output.Reset)
 				if output.IsJSONMode() {
@@ -37,7 +37,7 @@ func newSetupCmd() *cobra.Command {
 				output.JSONOutput(map[string]any{
 					"action":       "setup",
 					"result":       "ok",
-					"ide_detected": detected,
+					"ide_detected": detected.ID,
 					"files":        files,
 				})
 			}

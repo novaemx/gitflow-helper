@@ -31,6 +31,7 @@ type FlowConfig struct {
 	BumpCommand      string `json:"bump_command"`
 	BuildBumpCommand string `json:"build_bump_command"`
 	TagPrefix        string `json:"tag_prefix"`
+	TestCommand      string `json:"test_command"`
 	ProjectRoot      string `json:"-"`
 	ModeConfigured   bool   `json:"-"`
 }
@@ -168,6 +169,9 @@ func applyFlowOverrides(cfg *FlowConfig, override map[string]any) {
 	if v, ok := readString(override, "tag_prefix"); ok {
 		cfg.TagPrefix = v
 	}
+	if v, ok := readString(override, "test_command"); ok {
+		cfg.TestCommand = v
+	}
 }
 
 func normalizeAIChoice(value any) (*AIIntegrationChoice, bool) {
@@ -185,13 +189,30 @@ func normalizeAIChoice(value any) (*AIIntegrationChoice, bool) {
 	return choice, true
 }
 
+func loadProjectAIIntegrationChoice(decoded map[string]any) (*AIIntegrationChoice, bool) {
+	if decoded == nil {
+		return nil, false
+	}
+	if choice, ok := normalizeAIChoice(decoded["ai_integration"]); ok {
+		return choice, true
+	}
+	// Older project configs could store the consent payload directly at the
+	// root of .gitflow/config.json before the unified ai_integration block.
+	if choice, ok := normalizeAIChoice(decoded); ok {
+		_, hasEnabled := decoded["enabled"]
+		_, hasVersion := decoded["version"]
+		if hasEnabled || hasVersion {
+			return choice, true
+		}
+	}
+	return nil, false
+}
+
 func LoadAIIntegrationChoice(root string) (AIIntegrationChoice, bool, error) {
 	if decoded, _, err := loadProjectConfigMap(root); err != nil {
 		return AIIntegrationChoice{}, false, err
-	} else if decoded != nil {
-		if choice, ok := normalizeAIChoice(decoded["ai_integration"]); ok {
+	} else if choice, ok := loadProjectAIIntegrationChoice(decoded); ok {
 			return *choice, true, nil
-		}
 	}
 
 	data, err := os.ReadFile(legacyAIIntegrationPath(root))
