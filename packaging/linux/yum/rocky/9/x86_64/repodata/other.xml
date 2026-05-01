@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <otherdata xmlns="http://linux.duke.edu/metadata/other" packages="1">
-  <package pkgid="bf859f924072e2ad2cd86942064d4b5483f9b0af530aa13151474bfc2002acd2" name="gitflow-helper" arch="x86_64">
+  <package pkgid="bf1ac178947e452a8322c5ed2d3135d2ad6fb24c8164b4d88513a1f0fd0ce6eb" name="gitflow-helper" arch="x86_64">
     <version epoch="0" ver="0.5.52" rel="1"/>
-    <changelog author="Luis Lozano" date="1777600452">GitHub release 0.5.52</changelog>
+    <changelog author="Luis Lozano" date="1777600670">GitHub release 0.5.52</changelog>
   </package>
 </otherdata>

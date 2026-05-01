@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <filelists xmlns="http://linux.duke.edu/metadata/filelists" packages="1">
-  <package pkgid="bf859f924072e2ad2cd86942064d4b5483f9b0af530aa13151474bfc2002acd2" name="gitflow-helper" arch="x86_64">
+  <package pkgid="bf1ac178947e452a8322c5ed2d3135d2ad6fb24c8164b4d88513a1f0fd0ce6eb" name="gitflow-helper" arch="x86_64">
     <version epoch="0" ver="0.5.52" rel="1"/>
     <file>/usr/bin/gitflow</file>
     <file>/usr/share/licenses/gitflow-helper/LICENSE</file>

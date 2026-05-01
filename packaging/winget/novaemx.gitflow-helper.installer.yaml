@@ -11,6 +11,6 @@ NestedInstallerFiles:
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/novaemx/gitflow-helper/releases/download/v0.5.52/gitflow-0.5.52-windows-amd64.zip
-    InstallerSha256: 40454d865bcbe3348cd97bca0d1dce863e8f91029566873b5a7e90f8d92204dd
+    InstallerSha256: 526f9f616dd554ca7dc4fea00ce07015c708c47c0627687fd530cba09338137e
 ManifestType: installer
 ManifestVersion: 1.12.0

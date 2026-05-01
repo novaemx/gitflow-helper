@@ -4,13 +4,13 @@
     <name>gitflow-helper</name>
     <arch>x86_64</arch>
     <version epoch="0" ver="0.5.52" rel="1"/>
-    <checksum type="sha256" pkgid="YES">bf859f924072e2ad2cd86942064d4b5483f9b0af530aa13151474bfc2002acd2</checksum>
+    <checksum type="sha256" pkgid="YES">bf1ac178947e452a8322c5ed2d3135d2ad6fb24c8164b4d88513a1f0fd0ce6eb</checksum>
     <summary>Git Flow workflow helper with interactive TUI and CLI.</summary>
     <description>Git Flow workflow helper with interactive TUI and CLI.</description>
     <packager>Luis Lozano</packager>
     <url>https://github.com/novaemx/gitflow-helper</url>
-    <time file="1777600452" build="1777600452"/>
-    <size package="3840769" installed="10114273" archive="3840769"/>
+    <time file="1777600670" build="1777600670"/>
+    <size package="3840775" installed="10114273" archive="3840775"/>
     <location xml:base="https://github.com/novaemx/gitflow-helper/releases/latest/download/" href="gitflow-helper_0.5.52_linux_amd64.rpm"/>
     <format>
       <rpm:license>MIT</rpm:license>
