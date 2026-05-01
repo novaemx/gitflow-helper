@@ -3,15 +3,15 @@
   <package type="rpm">
     <name>gitflow-helper</name>
     <arch>x86_64</arch>
-    <version epoch="0" ver="0.5.52" rel="1"/>
-    <checksum type="sha256" pkgid="YES">bf1ac178947e452a8322c5ed2d3135d2ad6fb24c8164b4d88513a1f0fd0ce6eb</checksum>
+    <version epoch="0" ver="0.6.0" rel="1"/>
+    <checksum type="sha256" pkgid="YES">bdf824085dc207e997b0b7cdcaf838d62f93ade07e28c650cb5e60d3b3b0a674</checksum>
     <summary>Git Flow workflow helper with interactive TUI and CLI.</summary>
     <description>Git Flow workflow helper with interactive TUI and CLI.</description>
     <packager>Luis Lozano</packager>
     <url>https://github.com/novaemx/gitflow-helper</url>
-    <time file="1777600670" build="1777600670"/>
-    <size package="3840775" installed="10114273" archive="3840775"/>
-    <location xml:base="https://github.com/novaemx/gitflow-helper/releases/latest/download/" href="gitflow-helper_0.5.52_linux_amd64.rpm"/>
+    <time file="1777664858" build="1777664858"/>
+    <size package="3840509" installed="10114273" archive="3840509"/>
+    <location xml:base="https://github.com/novaemx/gitflow-helper/releases/latest/download/" href="gitflow-helper_0.6.0_linux_amd64.rpm"/>
     <format>
       <rpm:license>MIT</rpm:license>
       <rpm:vendor>NovaeMX</rpm:vendor>
@@ -19,7 +19,7 @@
       <rpm:buildhost>github.com</rpm:buildhost>
       <rpm:header-range start="0" end="0"/>
       <rpm:provides>
-        <rpm:entry name="gitflow-helper" flags="EQ" epoch="0" ver="0.5.52" rel="1"/>
+        <rpm:entry name="gitflow-helper" flags="EQ" epoch="0" ver="0.6.0" rel="1"/>
       </rpm:provides>
     </format>
   </package>
