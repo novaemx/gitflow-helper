@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-01
+
+### TL;DR
+Critical bugfix: running `gitflow` in a fresh empty directory now correctly initializes git and creates all files in the user's directory. Previously, when installed via Homebrew, the tool would mistake `/opt/homebrew` (Homebrew's own git repo) as the project root, leaving the user's directory completely empty. Arch Linux / CachyOS repo support is also added with a full pacman database generator, PKGBUILD template, and `.conf` snippet.
+
+### Fixed
+- Fixed `FindProjectRoot()` to only consider the current working directory ancestry when looking for a `.git` directory. The binary's own install location (e.g. `/opt/homebrew/bin/gitflow`) was previously used as a fallback candidate, causing Homebrew-installed binaries to detect the Homebrew git repository as the project root for any fresh empty directory. All git operations (init, VERSION, IDE rules, workspace commit) now run in the user's actual directory.
+
+### Added
+- Added Arch Linux / CachyOS custom pacman repository support:
+  - `packaging/linux/arch/PKGBUILD` — AUR-compatible build file, auto-updated by the release script with current version and SHA256 checksums.
+  - `packaging/linux/arch/gitflow-helper-arch.conf` — pacman repo config snippet for `/etc/pacman.conf`.
+  - `scripts/generate-linux-repo-metadata.sh` gains `--arch-pkgbuild`, `--arch-conf-file`, and `--arch-root` flags to generate a minimal pacman `.db.tar.gz` without requiring `repo-add` (pure bash, cross-platform).
+  - `make publish-linux` now generates Arch pacman database files for `x86_64` and `aarch64` alongside existing Debian/Rocky artifacts.
+
+### Tests
+- Added `TestFindProjectRootFrom_ReturnsGitRoot` — unit test for CWD ancestry walk-up.
+- Added `TestFindProjectRootFrom_NoGitReturnsEmpty` — unit test for empty dir fallback.
+- Added `TestFindProjectRoot_NeverFallsBackToExePath` — regression guard for the Homebrew bug.
+- Added `TestInitGitFlow_FreshDirectory` — integration test verifying VERSION is created in the user's actual directory after a full fresh-dir init.
+
 ## [0.5.52] - 2026-04-30
 
 ### TL;DR
