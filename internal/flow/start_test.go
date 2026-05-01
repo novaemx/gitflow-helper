@@ -148,3 +148,49 @@ func TestStartBranch_StashSaveError(t *testing.T) {
 		t.Fatalf("expected error result, got %v", result["result"])
 	}
 }
+
+// TestInitGitFlow_FreshDirectory verifies the full fresh-directory init path:
+// git init → InitGitFlow creates main + develop + VERSION.
+// This is the regression test for the Homebrew-path bug where FindProjectRoot
+// would return /opt/homebrew instead of the user's empty directory.
+func TestInitGitFlow_FreshDirectory(t *testing.T) {
+	dir := t.TempDir()
+
+	// Boot a real git repo in the temp dir (mirrors what root.go does).
+	prevRoot := git.ProjectRoot
+	defer func() { git.ProjectRoot = prevRoot }()
+	git.ProjectRoot = dir
+
+	c := git.NewLocalGitClient(dir)
+	if code, _, _ := c.ExecResult("init", "-b", "main"); code != 0 {
+		// Older git versions don't support -b; fall back.
+		c.ExecResult("init") //nolint:errcheck
+	}
+	// Configure identity so commits don't fail.
+	c.ExecResult("config", "user.email", "test@test.com") //nolint:errcheck
+	c.ExecResult("config", "user.name", "Test")           //nolint:errcheck
+
+	cfg := config.DefaultConfig()
+	cfg.ProjectRoot = dir
+
+	ok, msg := InitGitFlow(cfg)
+	if !ok {
+		t.Fatalf("InitGitFlow failed: %s", msg)
+	}
+
+	// VERSION must exist in the user's directory (not somewhere else).
+	versionPath := filepath.Join(dir, "VERSION")
+	data, err := os.ReadFile(versionPath)
+	if err != nil {
+		t.Fatalf("VERSION not created at %q: %v", versionPath, err)
+	}
+	if string(data) == "" {
+		t.Fatal("VERSION file is empty")
+	}
+
+	// The current branch must be develop.
+	branch := git.NewLocalGitClient(dir).ExecQuiet("branch", "--show-current")
+	if branch != cfg.DevelopBranch {
+		t.Fatalf("expected current branch %q, got %q", cfg.DevelopBranch, branch)
+	}
+}
