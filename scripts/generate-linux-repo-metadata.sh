@@ -11,6 +11,9 @@ Options:
   --apt-source-file <file>  Write the Debian/Ubuntu .sources file to a tracked location
   --yum-repo-file <file>    Write the Rocky Linux .repo file
   --yum-root <dir>          Generate YUM repodata under <dir>/<arch>/repodata
+  --arch-root <dir>         Generate pacman DB files under <dir>/{x86_64,aarch64}/
+  --arch-pkgbuild <file>    Update a tracked PKGBUILD with the current version and checksums
+  --arch-conf-file <file>   Write the Arch/CachyOS pacman .conf snippet to a tracked location
 EOF
 }
 
@@ -21,6 +24,9 @@ apt_assets_dir=""
 apt_source_file=""
 yum_repo_file=""
 yum_root=""
+arch_root=""
+arch_pkgbuild=""
+arch_conf_file=""
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -50,6 +56,18 @@ while [ $# -gt 0 ]; do
 			;;
 		--yum-root)
 			yum_root="$2"
+			shift 2
+			;;
+		--arch-root)
+			arch_root="$2"
+			shift 2
+			;;
+		--arch-pkgbuild)
+			arch_pkgbuild="$2"
+			shift 2
+			;;
+		--arch-conf-file)
+			arch_conf_file="$2"
 			shift 2
 			;;
 		-h|--help)
@@ -105,6 +123,15 @@ binary_file_for_arch() {
 	case "$1" in
 		amd64|x86_64) echo "${dist_dir}/linux-amd64_linux_amd64_v1/gitflow" ;;
 		arm64|aarch64) echo "${dist_dir}/linux-arm64_linux_arm64_v8.0/gitflow" ;;
+		*) return 1 ;;
+	esac
+}
+
+pkg_file_for_arch() {
+	# Returns the .pkg.tar.zst path for the given pacman arch (x86_64 or aarch64).
+	case "$1" in
+		x86_64)  echo "${dist_dir}/${package_name}_${version}_linux_amd64.pkg.tar.zst" ;;
+		aarch64) echo "${dist_dir}/${package_name}_${version}_linux_arm64.pkg.tar.zst" ;;
 		*) return 1 ;;
 	esac
 }
@@ -321,4 +348,156 @@ fi
 if [ -n "$yum_root" ]; then
 	generate_yum_arch x86_64 "$yum_root"
 	generate_yum_arch aarch64 "$yum_root"
+fi
+
+# ── Arch Linux / CachyOS support ────────────────────────────────────────────
+
+# update_arch_pkgbuild updates pkgver and sha256sums in a tracked PKGBUILD.
+update_arch_pkgbuild() {
+	local pkgbuild_file="$1"
+	local amd64_sha aarch64_sha amd64_file aarch64_file
+	amd64_file=$(pkg_file_for_arch x86_64)
+	aarch64_file=$(pkg_file_for_arch aarch64)
+	[ -f "$amd64_file" ]   || { echo "Missing Arch package: $amd64_file" >&2; exit 1; }
+	[ -f "$aarch64_file" ] || { echo "Missing Arch package: $aarch64_file" >&2; exit 1; }
+	amd64_sha=$(sha256sum "$amd64_file" | awk '{print $1}')
+	aarch64_sha=$(sha256sum "$aarch64_file" | awk '{print $1}')
+	sed \
+		-e "s|^pkgver=.*|pkgver=${version}|" \
+		-e "s|/releases/download/v[^/]*/gitflow-helper_[^/]*_linux_amd64.pkg.tar.zst|/releases/download/v${version}/gitflow-helper_${version}_linux_amd64.pkg.tar.zst|" \
+		-e "s|/releases/download/v[^/]*/gitflow-helper_[^/]*_linux_arm64.pkg.tar.zst|/releases/download/v${version}/gitflow-helper_${version}_linux_arm64.pkg.tar.zst|" \
+		"$pkgbuild_file" > "${pkgbuild_file}.tmp"
+	# Replace sha256sums_x86_64 and sha256sums_aarch64 placeholder or existing value.
+	awk \
+		-v amd64_sha="$amd64_sha" \
+		-v aarch64_sha="$aarch64_sha" \
+		"
+		/^sha256sums_x86_64=/ { print \"sha256sums_x86_64=(\" \"'\" amd64_sha \"'\" \")\"; next }
+		/^sha256sums_aarch64=/ { print \"sha256sums_aarch64=(\" \"'\" aarch64_sha \"'\" \")\"; next }
+		{ print }
+		" "${pkgbuild_file}.tmp" > "${pkgbuild_file}.tmp2"
+	mv "${pkgbuild_file}.tmp2" "$pkgbuild_file"
+	rm -f "${pkgbuild_file}.tmp"
+}
+
+# generate_arch_db creates a minimal pacman custom repo database (no repo-add needed).
+# The database is a gzipped tar archive with one entry per package containing a
+# "desc" file (standard pacman format). It is placed at <arch_root>/<arch>/
+generate_arch_db() {
+	local pacman_arch="$1"
+	local arch_dir="$2/$pacman_arch"
+	local pkg_file pkg_name pkg_size pkg_sha binary_file installed_bytes
+	pkg_file=$(pkg_file_for_arch "$pacman_arch")
+	binary_file=$(binary_file_for_arch "$pacman_arch")
+	[ -f "$pkg_file" ]    || { echo "Missing Arch package: $pkg_file" >&2; exit 1; }
+	[ -f "$binary_file" ] || { echo "Missing binary: $binary_file" >&2; exit 1; }
+	pkg_name=$(basename "$pkg_file")
+	pkg_size=$(stat -c '%s' "$pkg_file")
+	pkg_sha=$(sha256sum "$pkg_file" | awk '{print $1}')
+	installed_bytes=$(( $(stat -c '%s' "$binary_file") + license_size ))
+	mkdir -p "$arch_dir"
+
+	# Build pacman desc in a temp dir then tar it.
+	local tmp_db
+	tmp_db=$(mktemp -d)
+	local entry_dir="${tmp_db}/${package_name}-${version}-1"
+	mkdir -p "$entry_dir"
+
+	cat > "${entry_dir}/desc" <<EOF
+%FILENAME%
+${pkg_name}
+
+%NAME%
+${package_name}
+
+%BASE%
+${package_name}
+
+%VERSION%
+${version}-1
+
+%DESC%
+${description}
+
+%CSIZE%
+${pkg_size}
+
+%ISIZE%
+${installed_bytes}
+
+%SHA256SUM%
+${pkg_sha}
+
+%URL%
+${homepage}
+
+%LICENSE%
+MIT
+
+%ARCH%
+${pacman_arch}
+
+%BUILDDATE%
+${timestamp}
+
+%PACKAGER%
+${maintainer}
+
+EOF
+
+	cat > "${entry_dir}/files" <<EOF
+%FILES%
+usr/
+usr/bin/
+usr/bin/gitflow
+usr/share/
+usr/share/licenses/
+usr/share/licenses/${package_name}/
+usr/share/licenses/${package_name}/LICENSE
+
+EOF
+
+	# Create the .db.tar.gz and a .db symlink (pacman convention).
+	local db_tar="${arch_dir}/${package_name}.db.tar.gz"
+	local db_link="${arch_dir}/${package_name}.db"
+	tar -czf "$db_tar" -C "$tmp_db" .
+	cp -f "$db_tar" "$db_link"   # copy instead of symlink for cross-platform compatibility
+	rm -rf "$tmp_db"
+}
+
+write_arch_conf() {
+	local target_file="$1"
+	mkdir -p "$(dirname "$target_file")"
+	cat > "$target_file" <<EOF
+# gitflow-helper pacman custom repository
+# For Arch Linux, CachyOS, EndeavourOS, Garuda, and other Arch-based distros.
+#
+# Add this repository to /etc/pacman.conf:
+#
+#   [gitflow-helper]
+#   Server = https://github.com/novaemx/gitflow-helper/releases/latest/download
+#   SigLevel = Optional TrustAll
+#
+# Or use the AUR helper approach (recommended):
+#   yay -S gitflow-helper
+#   paru -S gitflow-helper
+#
+# --- pacman.conf snippet (copy/paste) ---
+[gitflow-helper]
+Server = https://github.com/novaemx/gitflow-helper/releases/latest/download
+SigLevel = Optional TrustAll
+EOF
+}
+
+if [ -n "$arch_pkgbuild" ]; then
+	update_arch_pkgbuild "$arch_pkgbuild"
+fi
+
+if [ -n "$arch_conf_file" ]; then
+	write_arch_conf "$arch_conf_file"
+fi
+
+if [ -n "$arch_root" ]; then
+	generate_arch_db x86_64 "$arch_root"
+	generate_arch_db aarch64 "$arch_root"
 fi

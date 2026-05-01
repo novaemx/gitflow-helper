@@ -37,7 +37,7 @@ DARWIN_ARCHIVE  := $(DIST)/$(BINARY)-$(VERSION)-darwin-universal.tar.gz
 CHECKSUMS_FILE  := $(DIST)/checksums.txt
 COVER_DIR := test
 LINUX_REPO_DIST_DIR := $(DIST)/linux-repo
-LINUX_REPO_ASSET_FILES := $(LINUX_REPO_DIST_DIR)/apt/Packages $(LINUX_REPO_DIST_DIR)/apt/Packages.gz $(LINUX_REPO_DIST_DIR)/apt/Release $(LINUX_REPO_DIST_DIR)/apt/gitflow-helper.sources $(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo
+LINUX_REPO_ASSET_FILES := $(LINUX_REPO_DIST_DIR)/apt/Packages $(LINUX_REPO_DIST_DIR)/apt/Packages.gz $(LINUX_REPO_DIST_DIR)/apt/Release $(LINUX_REPO_DIST_DIR)/apt/gitflow-helper.sources $(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo $(LINUX_REPO_DIST_DIR)/arch/x86_64/gitflow-helper.db $(LINUX_REPO_DIST_DIR)/arch/aarch64/gitflow-helper.db $(LINUX_REPO_DIST_DIR)/arch/x86_64/gitflow-helper.db.tar.gz $(LINUX_REPO_DIST_DIR)/arch/aarch64/gitflow-helper.db.tar.gz
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
@@ -344,7 +344,8 @@ generate-linux-release-assets:
 		--repo "$(GITHUB_REPO)" \
 		--dist "$(DIST)" \
 		--apt-assets-dir "$(LINUX_REPO_DIST_DIR)/apt" \
-		--yum-repo-file "$(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo"
+		--yum-repo-file "$(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo" \
+		--arch-root "$(LINUX_REPO_DIST_DIR)/arch"
 
 generate-linux-repo-metadata:
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
@@ -354,7 +355,10 @@ generate-linux-repo-metadata:
 		--dist "$(DIST)" \
 		--apt-source-file "packaging/linux/apt/gitflow-helper.sources" \
 		--yum-repo-file "packaging/linux/yum/gitflow-helper-rocky.repo" \
-		--yum-root "packaging/linux/yum/rocky/9"
+		--yum-root "packaging/linux/yum/rocky/9" \
+		--arch-pkgbuild "packaging/linux/arch/PKGBUILD" \
+		--arch-conf-file "packaging/linux/arch/gitflow-helper-arch.conf" \
+		--arch-root "$(LINUX_REPO_DIST_DIR)/arch"
 
 cleanup-release-assets:
 	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
@@ -548,7 +552,7 @@ push-winget: publish-winget
 		NovaeMX.gitflow-helper
 	@echo "Winget submission done for $(TAG)."
 
-## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
+## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64, including Arch/CachyOS
 publish-linux: publish-github
 	@branch=$$(git branch --show-current 2>/dev/null || true); \
 	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
@@ -558,7 +562,7 @@ publish-linux: publish-github
 	fi; \
 	$(MAKE) validate-linux-packages; \
 	$(MAKE) generate-linux-repo-metadata RELEASE_VERSION="$(RELEASE_VERSION)"; \
-	echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky repo metadata are ready for $(TAG)."
+	echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky/Arch repo metadata are ready for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
 publish-all: require-gh publish-homebrew publish-winget publish-linux

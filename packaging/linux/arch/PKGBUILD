@@ -1,0 +1,27 @@
+# Maintainer: Luis Lozano <info@novaemx.com>
+# This file is auto-updated by scripts/generate-linux-repo-metadata.sh during release.
+# To install manually: makepkg -si
+# To install via AUR helper: yay -S gitflow-helper
+
+pkgname=gitflow-helper
+pkgver=0.5.52
+pkgrel=1
+pkgdesc="Git Flow workflow helper with interactive TUI and CLI."
+arch=('x86_64' 'aarch64')
+url="https://github.com/novaemx/gitflow-helper"
+license=('MIT')
+provides=('gitflow')
+conflicts=()
+depends=('git')
+
+source_x86_64=("https://github.com/novaemx/gitflow-helper/releases/download/v${pkgver}/gitflow-helper_${pkgver}_linux_amd64.pkg.tar.zst")
+sha256sums_x86_64=('SKIP')
+
+source_aarch64=("https://github.com/novaemx/gitflow-helper/releases/download/v${pkgver}/gitflow-helper_${pkgver}_linux_arm64.pkg.tar.zst")
+sha256sums_aarch64=('SKIP')
+
+package() {
+    # The .pkg.tar.zst is already a pacman package; its contents are extracted
+    # by makepkg into $pkgdir automatically when using source[].
+    true
+}
