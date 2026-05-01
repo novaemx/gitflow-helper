@@ -4,7 +4,7 @@
 # To install via AUR helper: yay -S gitflow-helper
 
 pkgname=gitflow-helper
-pkgver=0.5.52
+pkgver=0.6.0
 pkgrel=1
 pkgdesc="Git Flow workflow helper with interactive TUI and CLI."
 arch=('x86_64' 'aarch64')
@@ -14,11 +14,11 @@ provides=('gitflow')
 conflicts=()
 depends=('git')
 
-source_x86_64=("https://github.com/novaemx/gitflow-helper/releases/download/v${pkgver}/gitflow-helper_${pkgver}_linux_amd64.pkg.tar.zst")
-sha256sums_x86_64=('SKIP')
+source_x86_64=("https://github.com/novaemx/gitflow-helper/releases/download/v0.6.0/gitflow-helper_0.6.0_linux_amd64.pkg.tar.zst")
+sha256sums_x86_64=('7857b210ef26baaa3e62ec38c0d2af6a6b496787988faedd7a2299d80f6127c6')
 
-source_aarch64=("https://github.com/novaemx/gitflow-helper/releases/download/v${pkgver}/gitflow-helper_${pkgver}_linux_arm64.pkg.tar.zst")
-sha256sums_aarch64=('SKIP')
+source_aarch64=("https://github.com/novaemx/gitflow-helper/releases/download/v0.6.0/gitflow-helper_0.6.0_linux_arm64.pkg.tar.zst")
+sha256sums_aarch64=('a6752f41b6731cb357eed5900aee0a82c48a35b7972e29987a2a0765208a0293')
 
 package() {
     # The .pkg.tar.zst is already a pacman package; its contents are extracted
