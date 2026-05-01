@@ -1,12 +1,12 @@
-# Release 0.5.51
+# Release 0.5.52
 
-**Date:** 2026-04-29
+**Date:** 2026-04-30
+
+## What's New
+
+- Squash(feature): prevent-main-ahead-skill-hardening
 
 ## Bug Fixes
 
 - Squash(bugfix): publish-guard-exit-regression
-- Merge bugfix 'publish-main-clean-flow' into develop
-- Restrict tracked metadata updates to release flows
-- Merge bugfix 'homebrew-tap-sync-flow' into develop
-- Sync homebrew tap formula reliably
 
