@@ -3,7 +3,7 @@ description: >-
   Conventional Commits / Semantic Versioning rule. Enforces structured commit
   messages so AI-generated commits trigger the correct SemVer bump.
 alwaysApply: true
-gitflow_version: "0.6.4"
+gitflow_version: "0.6.5"
 ---
 
 # Conventional Commits — Semantic Versioning

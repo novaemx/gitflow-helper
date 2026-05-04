@@ -3,7 +3,7 @@ description: >-
   MANDATORY pre-flight check before ANY code modification. Enforces gitflow
   discipline throughout the entire development cycle.
 alwaysApply: true
-gitflow_version: "0.6.4"
+gitflow_version: "0.6.5"
 ---
 
 ## Gitflow Pre-flight Check
