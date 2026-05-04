@@ -118,7 +118,7 @@ func needsReprovisionFromFileVersions(projectRoot string, detected DetectedIDE) 
 		}
 	} else if spec, ok := ideRuleRegistry[detected.ID]; ok {
 		// Append-style files: version stamp is sufficient.
-		if fileNeedsVersionRefresh(spec.path(projectRoot)) {
+		if fileNeedsVersionRefresh(spec.path(projectRoot)) || fileMissingHomologationSections(spec.path(projectRoot)) {
 			return true
 		}
 	}
@@ -131,7 +131,7 @@ func needsReprovisionFromFileVersions(projectRoot string, detected DetectedIDE) 
 		return true
 	}
 
-	if !projectScopedSkillIDEs[detected.ID] && fileNeedsVersionRefresh(agentsPath(projectRoot)) {
+	if !projectScopedSkillIDEs[detected.ID] && (fileNeedsVersionRefresh(agentsPath(projectRoot)) || fileMissingHomologationSections(agentsPath(projectRoot))) {
 		return true
 	}
 

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-05-04
+
+### TL;DR
+All generated AI instructions are now homologated to use the gitflow SKILL consistently, with standardized command-routing guidance by LLM interaction intent. Existing managed instruction files now self-refresh when homologation sections are missing, even if the version stamp has not changed.
+
+### Changed
+- Standardized shared instruction templates (`full` and `compact`) with:
+  - `Skill Activation (Homologated)`
+  - `LLM Activity Routing` command mapping
+- Added missing-section refresh logic for managed compact instruction files so minimal template updates are applied automatically.
+- Extended reprovision checks to trigger when homologation sections are missing (not only on version mismatch).
+- Updated tracked instruction artifacts to the new homologated format.
+
+### Tests
+- Added regression coverage to ensure existing Copilot/AGENTS instruction files receive homologation sections on refresh.
+- Updated generation tests to assert homologated sections in Cursor and Copilot outputs.
+
 ## [0.6.4] - 2026-05-04
 
 ### TL;DR

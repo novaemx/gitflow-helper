@@ -121,7 +121,7 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 			path, err = spec.generate(projectRoot)
 		} else {
 			rulePath := spec.path(projectRoot)
-			if !spec.exists(projectRoot) || fileNeedsVersionRefresh(rulePath) {
+			if !spec.exists(projectRoot) || fileNeedsVersionRefresh(rulePath) || fileMissingHomologationSections(rulePath) {
 				path, err = spec.generate(projectRoot)
 			}
 		}
@@ -143,12 +143,14 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 	// (i.e. IDEs not in projectScopedSkillIDEs). For those IDEs the embedded
 	// skill already lands in .agents/skills/gitflow/SKILL.md, making AGENTS.md
 	// redundant.
-	if !projectScopedSkillIDEs[detected.ID] && (!agentsRuleExists(projectRoot) || fileNeedsVersionRefresh(agentsPath(projectRoot))) {
+	if !projectScopedSkillIDEs[detected.ID] && (!agentsRuleExists(projectRoot) || fileNeedsVersionRefresh(agentsPath(projectRoot)) || fileMissingHomologationSections(agentsPath(projectRoot))) {
 		path, err := generateAgentsMD(projectRoot)
 		if err != nil {
 			return created, err
 		}
-		created = append(created, path)
+		if path != "" {
+			created = append(created, path)
+		}
 	}
 
 	// Auto-provision MCP config for IDEs that support it

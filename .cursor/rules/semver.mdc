@@ -1,50 +1,61 @@
 ---
-description: Semantic Versioning discipline for gitflow-helper
+description: >-
+  Conventional Commits / Semantic Versioning rule. Enforces structured commit
+  messages so AI-generated commits trigger the correct SemVer bump.
 alwaysApply: true
+gitflow_version: "0.6.5"
 ---
 
-# Semantic Versioning (SemVer) Discipline
+# Conventional Commits — Semantic Versioning
 
-This project follows **Semantic Versioning 2.0.0** (<https://semver.org>).
+## Commit Format
 
-## Version Format
+```
+<type>(<scope>): <subject>
 
-`MAJOR.MINOR.PATCH` — e.g. `1.4.2`
+[optional body]
 
-| Increment | When                                                                  |
-|-----------|-----------------------------------------------------------------------|
-| **MAJOR** | Breaking change in CLI flags, JSON output schema, or config format    |
-| **MINOR** | New subcommand, new flag, new IDE detection, new feature              |
-| **PATCH** | Bug fix, docs-only change, internal refactor with no behavior change  |
+[optional footer(s)]
+```
 
-## Source of Truth
+## Types
 
-- **`VERSION`** file at repo root — single line, e.g. `0.1.0`
-- Git tags use `v` prefix: `v0.1.0`
-- `main.version` is injected at build time via `-ldflags -X main.version=...`
+| Type       | SemVer bump | When to use                                   |
+|------------|-------------|-----------------------------------------------|
+| `feat`     | MINOR       | New feature                                   |
+| `fix`      | PATCH       | Bug fix                                       |
+| `perf`     | PATCH       | Performance improvement                       |
+| `chore`    | –           | Build tooling, maintenance, dependency bumps  |
+| `docs`     | –           | Documentation only                            |
+| `refactor` | –           | Code restructure without feature/fix          |
+| `test`     | –           | Adding or updating tests                      |
+| `ci`       | –           | CI/CD configuration                           |
+| `style`    | –           | Formatting, whitespace, semicolons            |
+| `revert`   | depends     | Reverts a previous commit                     |
+
+## Breaking Changes → MAJOR bump
+
+Two equivalent ways:
+1. Append `!` after type/scope: `feat!: remove legacy endpoint`
+2. Add `BREAKING CHANGE:` footer in the commit body
 
 ## Rules
 
-1. **Never** commit code that changes user-facing behavior without bumping `VERSION`.
-2. **Never** create a release tag that doesn't match the `VERSION` file.
-3. **Pre-release** identifiers are allowed: `0.2.0-rc.1`, `1.0.0-beta.3`.
-4. When starting a `release/` branch, bump `VERSION` to the target version.
-5. When starting a `hotfix/` branch, bump `VERSION` to the next patch.
-6. After merging a release or hotfix, the tag on `main` must equal `v` + `VERSION`.
+- Subject: imperative mood, no trailing period, ≤72 chars
+- Body: explain *why*, not *what* — wrap at 72 chars
+- Scope: optional noun describing the section (e.g. `auth`, `tui`, `api`)
+- Footers: `Fixes #123`, `Co-authored-by: Name <email>`, `BREAKING CHANGE: …`
 
-## Commit Messages (Conventional Commits)
+## Examples
 
-Use Conventional Commits to signal version impact:
+```
+feat(auth): add OAuth2 login support
 
-- `feat:` → at least MINOR bump
-- `fix:` → at least PATCH bump
-- `feat!:` or `BREAKING CHANGE:` → MAJOR bump
-- `chore:`, `docs:`, `test:`, `ci:` → no version bump needed
+fix(tui): snap overlay close to prevent ghost artifacts
 
-## Checklist Before Tagging
+chore: bump version to 1.2.3
 
-- [ ] `VERSION` file matches the intended release version
-- [ ] `CHANGELOG.md` or release notes are updated
-- [ ] All tests pass (`make test`)
-- [ ] `go vet ./...` is clean
-- [ ] No uncommitted changes on the release branch
+feat!: remove deprecated --legacy flag
+
+BREAKING CHANGE: --legacy is removed; use --mode instead
+```
