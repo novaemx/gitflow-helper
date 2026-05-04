@@ -164,3 +164,22 @@ Artifact scope per distribution channel:
    - Arch-compatible package artifacts for Arch/CachyOS ecosystems
 
 Before release finish, verify required channel artifacts exist and match release version/checksums.
+
+### Skill Activation (Homologated)
+
+- Use the gitflow skill before any code modifications.
+- Always begin with `gitflow --json status`.
+- Keep command selection aligned with task intent and branch type.
+
+### LLM Activity Routing (Compact)
+
+- discovery/state -> `gitflow --json status`
+- branch divergence -> `gitflow --json backmerge`
+- new work -> `gitflow --json start feature <name>`
+- bug fix -> `gitflow --json start bugfix <name>`
+- prod urgent fix -> `gitflow --json start hotfix <version>`
+- release prep -> `gitflow --json start release <version>`
+- branch sync/update -> `gitflow --json sync` / `gitflow --json pull`
+- diagnostics -> `gitflow --json health` / `gitflow --json doctor`
+- rollback last flow action -> `gitflow --json undo`
+- close flow branch -> `gitflow --json finish`

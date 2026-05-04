@@ -167,6 +167,26 @@ func fileContentDiffers(path, expected string) bool {
 	return string(data) != expected
 }
 
+// fileMissingHomologationSections reports whether a managed instruction file
+// lacks standardized skill-activation/LLM-routing sections.
+func fileMissingHomologationSections(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return true
+	}
+	content := string(data)
+	if !strings.Contains(content, "Gitflow Pre-flight Check") && !strings.Contains(content, "Gitflow Enforcement") {
+		return false
+	}
+	if !strings.Contains(content, "Skill Activation (Homologated)") {
+		return true
+	}
+	if !strings.Contains(content, "LLM Activity Routing (Command Selection)") && !strings.Contains(content, "LLM Activity Routing (Compact)") {
+		return true
+	}
+	return false
+}
+
 func fileNeedsVersionRefresh(path string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {

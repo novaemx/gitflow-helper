@@ -61,6 +61,32 @@ gitflow --json pull    # pull before pushing
 gitflow --json finish
 ` + "```" + `
 
+### Skill Activation (Homologated)
+
+- Use the gitflow skill before any code modifications.
+- Run ` + "`gitflow --json status`" + ` first and follow branch/merge checks.
+- Keep branch routing aligned with the skill decision tree.
+
+### LLM Activity Routing (Command Selection)
+
+Use this mapping to choose commands according to model interaction intent.
+
+| Interaction intent | Primary command(s) | Use when |
+|---|---|---|
+| Understand current gitflow state | ` + "`gitflow --json status`" + ` | Start of every coding task; validate branch/divergence/merge state |
+| Initialize git-flow in repo | ` + "`gitflow --json init`" + ` | ` + "`git_flow_initialized`" + ` is false |
+| Resolve main/develop divergence | ` + "`gitflow --json backmerge`" + ` | ` + "`main_ahead_of_develop > 0`" + ` |
+| Start feature work | ` + "`gitflow --json start feature <name>`" + ` | New capability or enhancement |
+| Start non-urgent bug fix | ` + "`gitflow --json start bugfix <name>`" + ` | Defect that is not production-emergency |
+| Start production fix | ` + "`gitflow --json start hotfix <version>`" + ` | Urgent issue in production/main |
+| Start release preparation | ` + "`gitflow --json start release <version>`" + ` | Cut release candidate and stabilize |
+| Sync active work branch | ` + "`gitflow --json sync`" + ` | Before big changes and before final validation |
+| Pull latest updates | ` + "`gitflow --json pull`" + ` | Keep branch current before push/finish |
+| Run health diagnostics | ` + "`gitflow --json health`" + `, ` + "`gitflow --json doctor`" + ` | User reports workflow inconsistency/conflicts |
+| Review timeline / history | ` + "`gitflow --json log`" + ` | Need operational trace or audit trail |
+| Undo last gitflow action | ` + "`gitflow --json undo`" + ` | Last operation was wrong and needs rollback |
+| Finish current flow branch | ` + "`gitflow --json finish`" + ` | Tests pass and branch is ready to merge |
+
 ### CLI Reference
 ` + "```" + `
 gitflow --json status|pull|init|sync|switch|backmerge|cleanup|health|doctor|log|undo|releasenotes|finish
@@ -98,6 +124,25 @@ gitflow --json status
 | Bugfix      | ` + "`gitflow --json start bugfix <name>`" + `       |
 | Hotfix      | ` + "`gitflow --json start hotfix <version>`" + `    |
 | Release     | ` + "`gitflow --json start release <version>`" + `   |
+
+### Skill Activation (Homologated)
+
+- Use the gitflow skill before any code modifications.
+- Always begin with ` + "`gitflow --json status`" + `.
+- Keep command selection aligned with task intent and branch type.
+
+### LLM Activity Routing (Compact)
+
+- discovery/state -> ` + "`gitflow --json status`" + `
+- branch divergence -> ` + "`gitflow --json backmerge`" + `
+- new work -> ` + "`gitflow --json start feature <name>`" + `
+- bug fix -> ` + "`gitflow --json start bugfix <name>`" + `
+- prod urgent fix -> ` + "`gitflow --json start hotfix <version>`" + `
+- release prep -> ` + "`gitflow --json start release <version>`" + `
+- branch sync/update -> ` + "`gitflow --json sync`" + ` / ` + "`gitflow --json pull`" + `
+- diagnostics -> ` + "`gitflow --json health`" + ` / ` + "`gitflow --json doctor`" + `
+- rollback last flow action -> ` + "`gitflow --json undo`" + `
+- close flow branch -> ` + "`gitflow --json finish`" + `
 
 ### Full CLI
 
