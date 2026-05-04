@@ -18,8 +18,7 @@ const (
 
 const (
 	logDirName  = ".gitflow"
-	logsDirName = "logs"
-	logFileName = "gitflow.log"
+	logFileName = "log.txt"
 )
 
 var (
@@ -73,7 +72,7 @@ func Configure(projectRoot string, logEnabled, debugEnabled bool) {
 		root = cwd
 	}
 
-	path := filepath.Join(root, logDirName, logsDirName, logFileName)
+	path := filepath.Join(root, logDirName, logFileName)
 	if logFile != nil && logFilePath == path {
 		configuredRoot = root
 		return
@@ -96,7 +95,7 @@ func Configure(projectRoot string, logEnabled, debugEnabled bool) {
 	logFile = file
 	logFilePath = path
 	configuredRoot = root
-	_, _ = logFile.WriteString(fmt.Sprintf("%s [LOG] logging enabled level=%s\n", time.Now().Format(time.RFC3339), level.String()))
+	_, _ = logFile.WriteString(fmt.Sprintf("\n===== Log capture started at %s (level=%s) =====\n", time.Now().Format(time.RFC3339), level.String()))
 }
 
 func (l Level) String() string {
@@ -177,13 +176,16 @@ func writeLine(minLevel Level, prefix, format string, args ...any) {
 	mu.Lock()
 	enabled := level >= minLevel
 	file := logFile
+	emitToStderr := level >= LevelDebug
 	mu.Unlock()
 
 	if !enabled {
 		return
 	}
 
-	_, _ = os.Stderr.WriteString(line)
+	if emitToStderr {
+		_, _ = os.Stderr.WriteString(line)
+	}
 	if file != nil {
 		mu.Lock()
 		if logFile != nil {

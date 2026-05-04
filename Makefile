@@ -27,7 +27,7 @@ TAG      ?= $(shell \
 RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
-HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow.rb
+HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow-helper.rb
 HOMEBREW_TAP_GITHUB_TOKEN ?=
 export HOMEBREW_TAP_GITHUB_TOKEN
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
@@ -37,7 +37,7 @@ DARWIN_ARCHIVE  := $(DIST)/$(BINARY)-$(VERSION)-darwin-universal.tar.gz
 CHECKSUMS_FILE  := $(DIST)/checksums.txt
 COVER_DIR := test
 LINUX_REPO_DIST_DIR := $(DIST)/linux-repo
-LINUX_REPO_ASSET_FILES := $(LINUX_REPO_DIST_DIR)/apt/Packages $(LINUX_REPO_DIST_DIR)/apt/Packages.gz $(LINUX_REPO_DIST_DIR)/apt/Release $(LINUX_REPO_DIST_DIR)/apt/gitflow-helper.sources $(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo $(LINUX_REPO_DIST_DIR)/arch/x86_64/gitflow-helper.db $(LINUX_REPO_DIST_DIR)/arch/aarch64/gitflow-helper.db $(LINUX_REPO_DIST_DIR)/arch/x86_64/gitflow-helper.db.tar.gz $(LINUX_REPO_DIST_DIR)/arch/aarch64/gitflow-helper.db.tar.gz
+LINUX_REPO_ASSET_FILES := $(LINUX_REPO_DIST_DIR)/apt/Packages $(LINUX_REPO_DIST_DIR)/apt/Packages.gz $(LINUX_REPO_DIST_DIR)/apt/Release $(LINUX_REPO_DIST_DIR)/apt/gitflow-helper.sources $(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo
 
 .PHONY: build build-all universal clean test vet lint release install uninstall
 .PHONY: release-local release-local-github
@@ -344,8 +344,7 @@ generate-linux-release-assets:
 		--repo "$(GITHUB_REPO)" \
 		--dist "$(DIST)" \
 		--apt-assets-dir "$(LINUX_REPO_DIST_DIR)/apt" \
-		--yum-repo-file "$(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo" \
-		--arch-root "$(LINUX_REPO_DIST_DIR)/arch"
+		--yum-repo-file "$(LINUX_REPO_DIST_DIR)/yum/gitflow-helper-rocky.repo"
 
 generate-linux-repo-metadata:
 	@test -f "$(CHECKSUMS_FILE)" || (echo "Missing $(CHECKSUMS_FILE). Run make $(CHECKSUMS_FILE) first." && exit 1)
@@ -355,10 +354,7 @@ generate-linux-repo-metadata:
 		--dist "$(DIST)" \
 		--apt-source-file "packaging/linux/apt/gitflow-helper.sources" \
 		--yum-repo-file "packaging/linux/yum/gitflow-helper-rocky.repo" \
-		--yum-root "packaging/linux/yum/rocky/9" \
-		--arch-pkgbuild "packaging/linux/arch/PKGBUILD" \
-		--arch-conf-file "packaging/linux/arch/gitflow-helper-arch.conf" \
-		--arch-root "$(LINUX_REPO_DIST_DIR)/arch"
+		--yum-root "packaging/linux/yum/rocky/9"
 
 cleanup-release-assets:
 	@test -n "$(RELEASE_TAG)" || (echo "RELEASE_TAG is required" && exit 1)
@@ -503,8 +499,8 @@ publish-homebrew: publish-github
 				} \
 			} \
 			{ print } \
-		' packaging/homebrew/gitflow.rb > packaging/homebrew/gitflow.rb.tmp; \
-		mv packaging/homebrew/gitflow.rb.tmp packaging/homebrew/gitflow.rb; \
+		' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
+		mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb; \
 	fi; \
 	[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
 	awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
@@ -522,7 +518,7 @@ publish-homebrew: publish-github
 	' "$(HOMEBREW_TAP_FORMULA)" > "$(HOMEBREW_TAP_FORMULA).tmp"; \
 	mv "$(HOMEBREW_TAP_FORMULA).tmp" "$(HOMEBREW_TAP_FORMULA)"; \
 	echo "Done. Updated Homebrew formula targets for $(TAG):"; \
-	if [ $$update_tracked -eq 1 ]; then echo "  - packaging/homebrew/gitflow.rb"; fi; \
+	if [ $$update_tracked -eq 1 ]; then echo "  - packaging/homebrew/gitflow-helper.rb"; fi; \
 	echo "  - $(HOMEBREW_TAP_FORMULA)"
 
 ## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
@@ -552,7 +548,7 @@ push-winget: publish-winget
 		NovaeMX.gitflow-helper
 	@echo "Winget submission done for $(TAG)."
 
-## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64, including Arch/CachyOS
+## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
 publish-linux: publish-github
 	@branch=$$(git branch --show-current 2>/dev/null || true); \
 	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
@@ -562,7 +558,7 @@ publish-linux: publish-github
 	fi; \
 	$(MAKE) validate-linux-packages; \
 	$(MAKE) generate-linux-repo-metadata RELEASE_VERSION="$(RELEASE_VERSION)"; \
-	echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky/Arch repo metadata are ready for $(TAG)."
+	echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky repo metadata are ready for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
 publish-all: require-gh publish-homebrew publish-winget publish-linux
@@ -604,8 +600,8 @@ version:
 package-homebrew:
 	@echo "→ Building Homebrew snapshot..."
 	goreleaser release --snapshot --clean
-	@echo "Homebrew snapshot generated in dist/."
-	@echo "Test locally: brew install --formula ./packaging/homebrew/gitflow.rb"
+	@echo "Homebrew cask generated in dist/."
+	@echo "Test locally: brew install --cask dist/homebrew/Casks/gitflow-helper.rb"
 
 ## package-choco: package Chocolatey nupkg (requires choco CLI on Windows/Mono)
 package-choco: build-all
