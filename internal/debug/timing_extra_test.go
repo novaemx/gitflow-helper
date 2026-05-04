@@ -2,7 +2,6 @@ package debug
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -170,7 +169,7 @@ func TestConfigure_ReopensExistingLogFile(t *testing.T) {
 	Configure(root, true, false)
 	Logf("second line")
 
-	path := filepath.Join(root, ".gitflow", "log.txt")
+	path := currentLogPathForTest(t, root)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
@@ -201,7 +200,7 @@ func TestLogf_LogOnly_WritesFileNotStderr(t *testing.T) {
 		t.Fatalf("expected no stderr output in log-only mode, got %q", string(buf[:n]))
 	}
 
-	path := filepath.Join(root, ".gitflow", "log.txt")
+	path := currentLogPathForTest(t, root)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)

@@ -17,8 +17,10 @@ const (
 )
 
 const (
-	logDirName  = ".gitflow"
-	logFileName = "log.txt"
+	logDirName         = ".gitflow"
+	logFilePrefix      = "log"
+	logFileExt         = ".txt"
+	logFileTimePattern = "20060102-150405"
 )
 
 var (
@@ -72,11 +74,14 @@ func Configure(projectRoot string, logEnabled, debugEnabled bool) {
 		root = cwd
 	}
 
-	path := filepath.Join(root, logDirName, logFileName)
-	if logFile != nil && logFilePath == path {
+	if logFile != nil && configuredRoot == root {
 		configuredRoot = root
 		return
 	}
+
+	now := time.Now()
+	fileName := fmt.Sprintf("%s-%s%s", logFilePrefix, now.Format(logFileTimePattern), logFileExt)
+	path := filepath.Join(root, logDirName, fileName)
 
 	closeLogFileLocked()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -95,7 +100,7 @@ func Configure(projectRoot string, logEnabled, debugEnabled bool) {
 	logFile = file
 	logFilePath = path
 	configuredRoot = root
-	_, _ = logFile.WriteString(fmt.Sprintf("\n===== Log capture started at %s (level=%s) =====\n", time.Now().Format(time.RFC3339), level.String()))
+	_, _ = logFile.WriteString(fmt.Sprintf("\n===== Log capture started at %s (level=%s) =====\n", now.Format(time.RFC3339), level.String()))
 }
 
 func (l Level) String() string {
