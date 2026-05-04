@@ -109,14 +109,26 @@ var ideRuleRegistry = map[string]ideRuleSpec{
 func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
 	var created []string
 
-	// Generate IDE-specific rules
+	// Generate IDE-specific rules.
+	// Cursor rules are fully-generated: always call generate (idempotent — skips
+	// write when content matches). Other IDEs use append-style generation gated
+	// on existence + version stamp.
 	if spec, ok := ideRuleRegistry[detected.ID]; ok {
-		rulePath := spec.path(projectRoot)
-		if !spec.exists(projectRoot) || fileNeedsVersionRefresh(rulePath) {
-			path, err := spec.generate(projectRoot)
-			if err != nil {
-				return created, err
+		var path string
+		var err error
+		if detected.ID == IDECursor {
+			// Idempotent: writes only when content differs from expected.
+			path, err = spec.generate(projectRoot)
+		} else {
+			rulePath := spec.path(projectRoot)
+			if !spec.exists(projectRoot) || fileNeedsVersionRefresh(rulePath) {
+				path, err = spec.generate(projectRoot)
 			}
+		}
+		if err != nil {
+			return created, err
+		}
+		if path != "" {
 			created = append(created, path)
 		}
 	}
@@ -148,15 +160,16 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 	}
 
 	// Provision conventional-commits / semver rule:
-	//   Cursor        → .cursor/rules/semver.mdc
+	//   Cursor        → .cursor/rules/semver.mdc (fully-generated, idempotent)
 	//   VSCode/Copilot → appended section in .github/copilot-instructions.md
 	switch detected.ID {
 	case IDECursor, IDEBoth:
-		if !semverCursorRuleExists(projectRoot) || fileNeedsVersionRefresh(semverCursorRulePath(projectRoot)) {
-			path, err := generateSemverCursorRule(projectRoot)
-			if err != nil {
-				return created, err
-			}
+		// Idempotent: writes only when content differs from expected.
+		path, err := generateSemverCursorRule(projectRoot)
+		if err != nil {
+			return created, err
+		}
+		if path != "" {
 			created = append(created, path)
 		}
 	case IDEVSCode, IDECopilot:

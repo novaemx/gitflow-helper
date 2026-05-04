@@ -563,3 +563,79 @@ func TestEnsureRulesForIDE_Copilot_HasSemver(t *testing.T) {
 		t.Error("expected semver section in copilot-instructions.md for Copilot")
 	}
 }
+
+// TestGenerateCursorRule_Idempotent verifies that a second call returns "" when
+// the content is unchanged (no write is performed).
+func TestGenerateCursorRule_Idempotent(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+	dir := t.TempDir()
+
+	path1, err := generateCursorRule(dir)
+	if err != nil || path1 == "" {
+		t.Fatalf("first generateCursorRule: path=%q err=%v", path1, err)
+	}
+	path2, err := generateCursorRule(dir)
+	if err != nil {
+		t.Fatalf("second generateCursorRule: %v", err)
+	}
+	if path2 != "" {
+		t.Errorf("expected empty path on idempotent second call, got %q", path2)
+	}
+}
+
+// TestGenerateCursorRule_RefreshesOnContentChange verifies that a rule is
+// regenerated when its on-disk content differs from what the current binary
+// would produce — even if the stored version field matches.
+func TestGenerateCursorRule_RefreshesOnContentChange(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+	dir := t.TempDir()
+
+	path, err := generateCursorRule(dir)
+	if err != nil || path == "" {
+		t.Fatalf("first generate: %v", err)
+	}
+
+	// Corrupt the body (simulates a template update without a version bump).
+	data, _ := os.ReadFile(path)
+	corrupted := strings.Replace(string(data), "Gitflow Pre-flight Check", "OLD CONTENT", 1)
+	if err := os.WriteFile(path, []byte(corrupted), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// fileContentDiffers should detect the change.
+	if !fileContentDiffers(path, cursorRuleContent()) {
+		t.Fatal("expected fileContentDiffers to return true after body corruption")
+	}
+
+	// generate should overwrite and return path.
+	path2, err := generateCursorRule(dir)
+	if err != nil {
+		t.Fatalf("second generate: %v", err)
+	}
+	if path2 == "" {
+		t.Error("expected non-empty path when content was stale")
+	}
+
+	data2, _ := os.ReadFile(path)
+	if !strings.Contains(string(data2), "Gitflow Pre-flight Check") {
+		t.Error("expected restored content after regeneration")
+	}
+}
+
+// TestGenerateSemverCursorRule_Idempotent mirrors the cursor rule idempotency test.
+func TestGenerateSemverCursorRule_Idempotent(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+	dir := t.TempDir()
+
+	path1, err := generateSemverCursorRule(dir)
+	if err != nil || path1 == "" {
+		t.Fatalf("first generateSemverCursorRule: path=%q err=%v", path1, err)
+	}
+	path2, err := generateSemverCursorRule(dir)
+	if err != nil {
+		t.Fatalf("second generateSemverCursorRule: %v", err)
+	}
+	if path2 != "" {
+		t.Errorf("expected empty path on idempotent second call, got %q", path2)
+	}
+}

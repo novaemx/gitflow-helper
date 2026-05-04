@@ -98,6 +98,12 @@ alwaysApply: true
 
 `
 
+// semverCursorRuleContent returns the full content that generateSemverCursorRule
+// would write for the running version. Used for content-equality checks.
+func semverCursorRuleContent() string {
+	return withVersionHeaderFrontmatter(semverCursorRuleFrontmatter) + semverConventionalCommitsContent
+}
+
 // generateSemverCursorRule writes .cursor/rules/semver.mdc with conventional
 // commits guidance formatted as a Cursor agent rule.
 func generateSemverCursorRule(projectRoot string) (string, error) {
@@ -106,7 +112,11 @@ func generateSemverCursorRule(projectRoot string) (string, error) {
 		return "", err
 	}
 	path := semverCursorRulePath(projectRoot)
-	content := withVersionHeaderFrontmatter(semverCursorRuleFrontmatter) + semverConventionalCommitsContent
+	content := semverCursorRuleContent()
+	existing, err := os.ReadFile(path)
+	if err == nil && string(existing) == content {
+		return "", nil
+	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return "", err
 	}

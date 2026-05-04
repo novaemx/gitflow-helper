@@ -107,12 +107,25 @@ func shouldReprovisionRules(storedVersion, appVersion string) bool {
 }
 
 func needsReprovisionFromFileVersions(projectRoot string, detected DetectedIDE) bool {
-	if spec, ok := ideRuleRegistry[detected.ID]; ok {
+	// Cursor rule is fully-generated: use content equality so any body change
+	// (fix, new section, updated template) triggers refresh, not just version bumps.
+	if detected.ID == IDECursor || detected.ID == IDEBoth {
+		if fileContentDiffers(cursorRulePath(projectRoot), cursorRuleContent()) {
+			return true
+		}
+		if fileContentDiffers(semverCursorRulePath(projectRoot), semverCursorRuleContent()) {
+			return true
+		}
+	} else if spec, ok := ideRuleRegistry[detected.ID]; ok {
+		// Append-style files: version stamp is sufficient.
 		if fileNeedsVersionRefresh(spec.path(projectRoot)) {
 			return true
 		}
 	}
 
+	// SKILL.md is fully-generated; content equality is checked inside
+	// ensureEmbeddedSkill. Here we also version-check to trigger the
+	// EnsureRulesForIDE call that invokes ensureEmbeddedSkill.
 	skillPath, err := skillPathForIDE(projectRoot, detected.ID)
 	if err != nil || fileNeedsVersionRefresh(skillPath) {
 		return true
@@ -120,12 +133,6 @@ func needsReprovisionFromFileVersions(projectRoot string, detected DetectedIDE) 
 
 	if !projectScopedSkillIDEs[detected.ID] && fileNeedsVersionRefresh(agentsPath(projectRoot)) {
 		return true
-	}
-
-	if detected.ID == IDECursor || detected.ID == IDEBoth {
-		if fileNeedsVersionRefresh(semverCursorRulePath(projectRoot)) {
-			return true
-		}
 	}
 
 	return false
