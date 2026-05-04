@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-05-04
+
+### TL;DR
+This release hardens AI rule provisioning by stamping generated rules/skills/agents with the running gitflow version on the first line, and auto-refreshing outdated files when gitflow starts. Logging now creates timestamped files under `.gitflow` (for example `log-20260504-153210.txt`) while preserving capture-start timestamps in file content. Homebrew formula sync is aligned to `gitflow.rb` in both tracked packaging and tap sync paths.
+
+### Added
+- Added first-line version stamp to generated AI integration artifacts (rules/skills/agents) so generated file provenance can be compared against the running gitflow binary version.
+- Added startup-time stale-file detection that reprovisions IDE artifacts when their stamped version is missing or older than the running app version.
+
+### Changed
+- Updated generated debug log filename pattern from fixed `log.txt` to timestamped `log-YYYYMMDD-HHMMSS.txt` in `.gitflow`.
+- Updated Homebrew publish path to use `gitflow.rb` in both local tracked packaging and `../homebrew-tap/Formula` sync.
+- Updated `--log`/`--debug` flag help text to reflect timestamped log filename behavior.
+
+### Tests
+- Added coverage for version stamp parsing, header refresh, and stale-header reprovision behavior in IDE onboarding/generation.
+- Updated existing IDE generation tests to assert first-line version headers in generated files.
+
 ## [0.6.1] - 2026-05-04
 
 ### TL;DR
