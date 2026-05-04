@@ -1,9 +1,10 @@
-# Release 0.6.2
+# Release 0.6.3
 
 **Date:** 2026-05-04
 
 ## What's New
 
+- Merge feature 'fix-version-stamp-frontmatter-placement' into develop
 - Merge feature 'ersion-stamp-ide-rules-refresh' into develop
 - Stamp rule files with gitflow version
 - Merge feature 'log-file-timestamp-name' into develop
@@ -11,8 +12,7 @@
 
 ## Bug Fixes
 
+- Place version stamp inside YAML frontmatter
 - Include timestamp in log filename
 - Use gitflow.rb formula filename
-- Merge bugfix 'log-flag-write-file-not-console' into develop
-- Route --log output to .gitflow/log.txt, suppress console
 
