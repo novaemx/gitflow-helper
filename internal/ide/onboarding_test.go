@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/novaemx/gitflow-helper/internal/config"
@@ -220,6 +221,11 @@ func TestEnsureRulesWithAIConsent_SkipsWhenVersionMatches(t *testing.T) {
 	prevHome := UserHomeDirFunc
 	UserHomeDirFunc = func() (string, error) { return home, nil }
 	defer func() { UserHomeDirFunc = prevHome }()
+	SetGeneratorVersion("1.0.0")
+
+	if _, err := EnsureRulesForIDE(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}); err != nil {
+		t.Fatalf("EnsureRulesForIDE seed: %v", err)
+	}
 
 	// Pre-create project-scoped consent with version "1.0.0"
 	p := config.ProjectConfigPath(dir)
@@ -236,6 +242,53 @@ func TestEnsureRulesWithAIConsent_SkipsWhenVersionMatches(t *testing.T) {
 	}
 	if len(created) != 0 {
 		t.Fatalf("expected zero files when version matches, got %d: %v", len(created), created)
+	}
+}
+
+func TestEnsureRulesWithAIConsent_ReprovisionsWhenRuleHeaderOutdated(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	defer func() { UserHomeDirFunc = prevHome }()
+
+	SetGeneratorVersion("1.0.0")
+	if _, err := EnsureRulesForIDE(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}); err != nil {
+		t.Fatalf("EnsureRulesForIDE seed: %v", err)
+	}
+
+	// Downgrade header to simulate outdated generated file.
+	rulePath := cursorRulePath(dir)
+	data, err := os.ReadFile(rulePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rulePath, []byte(strings.Replace(string(data), "gitflow-version: 1.0.0", "gitflow-version: 0.9.0", 1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := config.ProjectConfigPath(dir)
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"ai_integration":{"enabled":true,"version":"1.0.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
+	}
+	if len(created) == 0 {
+		t.Fatal("expected reprovision when generated rule header is outdated")
+	}
+
+	updated, err := os.ReadFile(rulePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(firstLine(string(updated)), "gitflow-version: 1.0.0") {
+		t.Fatalf("expected refreshed rule header, got %q", firstLine(string(updated)))
 	}
 }
 

@@ -1,6 +1,7 @@
 package ide
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -31,7 +32,7 @@ func generateCursorRule(projectRoot string) (string, error) {
 		return "", err
 	}
 	path := cursorRulePath(projectRoot)
-	content := cursorRuleFrontmatter + GitflowInstructionsFull
+	content := fmt.Sprintf("--- # gitflow-version: %s\n", generatorVersion()) + cursorRuleFrontmatter[4:] + GitflowInstructionsFull
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return "", err
 	}

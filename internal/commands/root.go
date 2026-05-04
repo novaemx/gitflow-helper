@@ -104,6 +104,8 @@ func ensureIntegrationModeConfigured(cmd *cobra.Command) {
 }
 
 func NewRootCmd(version string) *cobra.Command {
+	ide.SetGeneratorVersion(version)
+
 	root := &cobra.Command{
 		Use:   "gitflow",
 		Short: "Git Flow helper — interactive TUI + CLI subcommands",
@@ -239,8 +241,8 @@ func NewRootCmd(version string) *cobra.Command {
 	}
 
 	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Machine-readable JSON output (for agents)")
-	root.PersistentFlags().BoolVar(&logFlag, "log", false, "Write workflow troubleshooting logs to .gitflow/logs/gitflow.log")
-	root.PersistentFlags().BoolVar(&debugFlag, "debug", false, "Include verbose debug entries in .gitflow/logs/gitflow.log")
+	root.PersistentFlags().BoolVar(&logFlag, "log", false, "Write workflow troubleshooting logs to .gitflow/log-<timestamp>.txt")
+	root.PersistentFlags().BoolVar(&debugFlag, "debug", false, "Include verbose debug entries in .gitflow/log-<timestamp>.txt")
 	root.SetVersionTemplate("gitflow version {{.Version}}\nAuthor Luis Lozano\n")
 
 	root.AddCommand(
