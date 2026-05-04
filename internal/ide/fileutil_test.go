@@ -7,7 +7,18 @@ import (
 	"testing"
 )
 
+func setTestGeneratorVersion(t *testing.T, version string) {
+	t.Helper()
+	prev := generatorVersion()
+	SetGeneratorVersion(version)
+	t.Cleanup(func() {
+		SetGeneratorVersion(prev)
+	})
+}
+
 func TestEnsureFileWithGitflow_CreateNew(t *testing.T) {
+	setTestGeneratorVersion(t, "1.2.3")
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "TEST.md")
 
@@ -24,6 +35,9 @@ func TestEnsureFileWithGitflow_CreateNew(t *testing.T) {
 		t.Fatalf("read generated file: %v", err)
 	}
 	content := string(data)
+	if firstLine(content) != "<!-- gitflow-version: 1.2.3 -->" {
+		t.Fatalf("expected version header as first line, got %q", firstLine(content))
+	}
 	if !strings.Contains(content, "Test Header") {
 		t.Error("missing header in new file")
 	}
@@ -58,6 +72,8 @@ func TestEnsureFileWithGitflow_AppendExisting(t *testing.T) {
 }
 
 func TestEnsureFileWithGitflow_Idempotent(t *testing.T) {
+	setTestGeneratorVersion(t, "1.2.3")
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "TEST.md")
 
@@ -75,6 +91,28 @@ func TestEnsureFileWithGitflow_Idempotent(t *testing.T) {
 
 	if string(data1) != string(data2) {
 		t.Error("second call should not modify file (idempotent)")
+	}
+}
+
+func TestEnsureFileWithGitflow_RefreshesOldVersionHeader(t *testing.T) {
+	setTestGeneratorVersion(t, "0.9.0")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "TEST.md")
+	_, _ = ensureFileWithGitflow(path, "# Header\n\n", "full")
+
+	SetGeneratorVersion("1.0.0")
+	_, err := ensureFileWithGitflow(path, "# Header\n\n", "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstLine(string(data)) != "<!-- gitflow-version: 1.0.0 -->" {
+		t.Fatalf("expected refreshed version header, got %q", firstLine(string(data)))
 	}
 }
 

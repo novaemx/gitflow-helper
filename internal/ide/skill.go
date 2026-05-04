@@ -47,6 +47,7 @@ func embeddedSkillContent() (string, error) {
 		return "", err
 	}
 	content := string(data)
+	content = withVersionHeader(content)
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}

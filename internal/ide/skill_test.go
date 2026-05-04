@@ -8,6 +8,8 @@ import (
 )
 
 func TestEnsureEmbeddedSkill_ProjectScopedIDE(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+
 	dir := t.TempDir()
 
 	path, err := ensureEmbeddedSkill(dir, IDECursor)
@@ -23,6 +25,9 @@ func TestEnsureEmbeddedSkill_ProjectScopedIDE(t *testing.T) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read skill: %v", err)
+	}
+	if firstLine(string(data)) != "<!-- gitflow-version: 1.2.3 -->" {
+		t.Fatalf("expected version header first line, got %q", firstLine(string(data)))
 	}
 	if !strings.Contains(string(data), "name: gitflow") {
 		t.Fatal("expected embedded skill frontmatter")
