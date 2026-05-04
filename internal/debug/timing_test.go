@@ -3,10 +3,13 @@ package debug
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
+
+var logFileNamePattern = regexp.MustCompile(`^log-\d{8}-\d{6}\.txt$`)
 
 func resetDebugStateForTest(t *testing.T) {
 	t.Helper()
@@ -25,6 +28,30 @@ func resetDebugStateForTest(t *testing.T) {
 	configuredRoot = ""
 }
 
+func currentLogPathForTest(t *testing.T, root string) string {
+	t.Helper()
+
+	mu.Lock()
+	path := logFilePath
+	mu.Unlock()
+
+	if path == "" {
+		t.Fatal("expected log file path to be set")
+	}
+
+	prefix := filepath.Join(root, ".gitflow") + string(os.PathSeparator)
+	if !strings.HasPrefix(path, prefix) {
+		t.Fatalf("expected log file under %q, got %q", prefix, path)
+	}
+
+	base := filepath.Base(path)
+	if !logFileNamePattern.MatchString(base) {
+		t.Fatalf("expected timestamped log filename, got %q", base)
+	}
+
+	return path
+}
+
 func TestConfigure_LogCreatesFileAndAppendsLogEntries(t *testing.T) {
 	resetDebugStateForTest(t)
 	defer resetDebugStateForTest(t)
@@ -33,7 +60,7 @@ func TestConfigure_LogCreatesFileAndAppendsLogEntries(t *testing.T) {
 	Configure(root, true, false)
 	Logf("hello %s", "world")
 
-	path := filepath.Join(root, ".gitflow", "log.txt")
+	path := currentLogPathForTest(t, root)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
@@ -62,7 +89,7 @@ func TestConfigure_DebugWritesDebugEntriesToLogFile(t *testing.T) {
 	Logf("workflow step")
 	Printf("git exit=%d", 0)
 
-	path := filepath.Join(root, ".gitflow", "log.txt")
+	path := currentLogPathForTest(t, root)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
