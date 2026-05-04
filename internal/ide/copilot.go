@@ -35,6 +35,9 @@ func generateCopilotInstructions(projectRoot string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if path == "" {
+		path = copilotPath(projectRoot)
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {

@@ -39,6 +39,15 @@ func TestGenerateCursorRule(t *testing.T) {
 	if !strings.Contains(content, "gitflow --json status") {
 		t.Error("expected gitflow CLI reference")
 	}
+	if !strings.Contains(content, "LLM Activity Routing (Command Selection)") {
+		t.Error("expected cursor-specific LLM activity routing section")
+	}
+	if !strings.Contains(content, "gitflow --json start feature <name>") {
+		t.Error("expected command mapping for feature interactions")
+	}
+	if !strings.Contains(content, "Skill Activation (Homologated)") {
+		t.Error("expected homologated skill activation section")
+	}
 	if strings.Count(content, "Gitflow Pre-flight Check") > 1 {
 		t.Error("expected no duplicate Gitflow Pre-flight Check heading")
 	}
@@ -84,6 +93,12 @@ func TestGenerateCopilotInstructions(t *testing.T) {
 	if !strings.Contains(content, "When to use the gitflow skill") {
 		t.Error("expected skill usage guidance section")
 	}
+	if !strings.Contains(content, "Skill Activation (Homologated)") {
+		t.Error("expected compact homologated skill activation section")
+	}
+	if !strings.Contains(content, "LLM Activity Routing (Compact)") {
+		t.Error("expected compact LLM activity routing section")
+	}
 }
 
 func TestCopilotIdempotent(t *testing.T) {
@@ -100,6 +115,35 @@ func TestCopilotIdempotent(t *testing.T) {
 	guidanceCount := strings.Count(string(data), "When to use the gitflow skill")
 	if guidanceCount != 1 {
 		t.Errorf("expected 1 occurrence of skill guidance, got %d", guidanceCount)
+	}
+}
+
+func TestGenerateCopilotInstructions_RefreshesHomologationSections(t *testing.T) {
+	dir := t.TempDir()
+	path := copilotPath(dir)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := "<!-- gitflow-version: 0.6.4 -->\n# Copilot Instructions\n\n## Gitflow Enforcement\n\nlegacy body\n"
+	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := generateCopilotInstructions(dir)
+	if err != nil {
+		t.Fatalf("generateCopilotInstructions: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "Skill Activation (Homologated)") {
+		t.Fatal("expected homologated skill activation section")
+	}
+	if !strings.Contains(content, "LLM Activity Routing (Compact)") {
+		t.Fatal("expected compact LLM activity routing section")
 	}
 }
 
@@ -140,6 +184,32 @@ func TestAgentsIdempotent(t *testing.T) {
 	count := strings.Count(string(data), "Gitflow Enforcement")
 	if count != 1 {
 		t.Errorf("expected 1 occurrence, got %d", count)
+	}
+}
+
+func TestGenerateAgentsMD_RefreshesHomologationSections(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "AGENTS.md")
+	legacy := "<!-- gitflow-version: 0.6.4 -->\n# Agent Instructions\n\n## Gitflow Enforcement\n\nlegacy body\n"
+	if err := os.WriteFile(path, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := generateAgentsMD(dir)
+	if err != nil {
+		t.Fatalf("generateAgentsMD: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "Skill Activation (Homologated)") {
+		t.Fatal("expected homologated skill activation section")
+	}
+	if !strings.Contains(content, "LLM Activity Routing (Compact)") {
+		t.Fatal("expected compact LLM activity routing section")
 	}
 }
 
