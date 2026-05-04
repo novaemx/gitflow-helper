@@ -156,6 +156,17 @@ func isOlderVersion(storedVersion, appVersion string) bool {
 	return false
 }
 
+// fileContentDiffers returns true when the file at path does not exactly match
+// expected. Use this for fully-generated files where any content change (body
+// or version field) should trigger regeneration.
+func fileContentDiffers(path, expected string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return true
+	}
+	return string(data) != expected
+}
+
 func fileNeedsVersionRefresh(path string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {

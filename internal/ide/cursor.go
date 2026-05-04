@@ -23,13 +23,23 @@ func cursorRuleExists(projectRoot string) bool {
 	return err == nil
 }
 
+// cursorRuleContent returns the full content that generateCursorRule would
+// write for the running version. Used for content-equality checks.
+func cursorRuleContent() string {
+	return withVersionHeaderFrontmatter(cursorRuleFrontmatter) + GitflowInstructionsFull
+}
+
 func generateCursorRule(projectRoot string) (string, error) {
 	dir := filepath.Join(projectRoot, ".cursor", "rules")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
 	path := cursorRulePath(projectRoot)
-	content := withVersionHeaderFrontmatter(cursorRuleFrontmatter) + GitflowInstructionsFull
+	content := cursorRuleContent()
+	existing, err := os.ReadFile(path)
+	if err == nil && string(existing) == content {
+		return "", nil
+	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return "", err
 	}
