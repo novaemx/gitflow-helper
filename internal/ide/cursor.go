@@ -1,7 +1,6 @@
 package ide
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -12,8 +11,6 @@ description: >-
   discipline throughout the entire development cycle.
 alwaysApply: true
 ---
-
-# Gitflow Pre-flight Check
 
 `
 
@@ -32,7 +29,7 @@ func generateCursorRule(projectRoot string) (string, error) {
 		return "", err
 	}
 	path := cursorRulePath(projectRoot)
-	content := fmt.Sprintf("--- # gitflow-version: %s\n", generatorVersion()) + cursorRuleFrontmatter[4:] + GitflowInstructionsFull
+	content := withVersionHeaderFrontmatter(cursorRuleFrontmatter) + GitflowInstructionsFull
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return "", err
 	}

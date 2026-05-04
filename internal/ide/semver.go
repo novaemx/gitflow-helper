@@ -1,7 +1,6 @@
 package ide
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +89,15 @@ func semverCursorRuleExists(projectRoot string) bool {
 	return err == nil
 }
 
+const semverCursorRuleFrontmatter = `---
+description: >-
+  Conventional Commits / Semantic Versioning rule. Enforces structured commit
+  messages so AI-generated commits trigger the correct SemVer bump.
+alwaysApply: true
+---
+
+`
+
 // generateSemverCursorRule writes .cursor/rules/semver.mdc with conventional
 // commits guidance formatted as a Cursor agent rule.
 func generateSemverCursorRule(projectRoot string) (string, error) {
@@ -98,14 +106,7 @@ func generateSemverCursorRule(projectRoot string) (string, error) {
 		return "", err
 	}
 	path := semverCursorRulePath(projectRoot)
-	frontmatter := fmt.Sprintf("--- # gitflow-version: %s\n", generatorVersion()) + `description: >-
-  Conventional Commits / Semantic Versioning rule. Enforces structured commit
-  messages so AI-generated commits trigger the correct SemVer bump.
-alwaysApply: true
----
-
-`
-	content := frontmatter + semverConventionalCommitsContent
+	content := withVersionHeaderFrontmatter(semverCursorRuleFrontmatter) + semverConventionalCommitsContent
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return "", err
 	}

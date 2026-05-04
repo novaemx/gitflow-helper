@@ -33,9 +33,69 @@ func versionHeaderLine() string {
 	return "<!-- " + versionHeaderKey + ": " + generatorVersion() + " -->"
 }
 
+func hasFrontmatter(content string) bool {
+	return strings.HasPrefix(content, "---\n")
+}
+
+// parseVersionFromFrontmatter extracts the gitflow_version field from within
+// a YAML frontmatter block (--- ... ---). CRLF line endings are normalized.
+func parseVersionFromFrontmatter(content string) (string, bool) {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	if !hasFrontmatter(content) {
+		return "", false
+	}
+	rest := content[4:] // skip opening "---\n"
+	closeIdx := strings.Index(rest, "\n---")
+	if closeIdx < 0 {
+		return "", false
+	}
+	for _, line := range strings.Split(rest[:closeIdx], "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "gitflow_version:") {
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "gitflow_version:"))
+			val = strings.Trim(val, `"'`)
+			if val != "" {
+				return val, true
+			}
+		}
+	}
+	return "", false
+}
+
+// withVersionHeaderFrontmatter injects a gitflow_version field inside the YAML
+// frontmatter block as the last field before the closing ---. If the content
+// does not start with YAML frontmatter it falls back to withVersionHeader.
+// CRLF line endings are normalized to LF.
+func withVersionHeaderFrontmatter(content string) string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	if !hasFrontmatter(content) {
+		return withVersionHeader(content)
+	}
+	rest := content[4:] // skip opening "---\n"
+	closeIdx := strings.Index(rest, "\n---")
+	if closeIdx < 0 {
+		return withVersionHeader(content)
+	}
+	lines := strings.Split(rest[:closeIdx], "\n")
+	filtered := lines[:0]
+	for _, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "gitflow_version:") {
+			filtered = append(filtered, line)
+		}
+	}
+	body := strings.Join(filtered, "\n")
+	afterFM := rest[closeIdx+1:] // skip the \n before closing ---
+	return "---\n" + body + "\ngitflow_version: \"" + generatorVersion() + "\"\n" + afterFM
+}
+
 func hasCurrentVersionHeader(content string) bool {
-	line := firstLine(content)
-	stored, ok := parseVersionFromLine(line)
+	var stored string
+	var ok bool
+	if hasFrontmatter(content) {
+		stored, ok = parseVersionFromFrontmatter(content)
+	} else {
+		stored, ok = parseVersionFromLine(firstLine(content))
+	}
 	if !ok {
 		return false
 	}
@@ -101,8 +161,14 @@ func fileNeedsVersionRefresh(path string) bool {
 	if err != nil {
 		return true
 	}
-	line := firstLine(string(data))
-	stored, ok := parseVersionFromLine(line)
+	content := string(data)
+	var stored string
+	var ok bool
+	if hasFrontmatter(content) {
+		stored, ok = parseVersionFromFrontmatter(content)
+	} else {
+		stored, ok = parseVersionFromLine(firstLine(content))
+	}
 	if !ok {
 		return true
 	}
