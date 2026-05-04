@@ -20,7 +20,7 @@ func newSetupCmd() *cobra.Command {
 
 			output.Infof("  Detected IDE: %s%s%s", output.Cyan, detected.ID, output.Reset)
 
-			files, err := ide.EnsureRulesForSetup(GF.Config.ProjectRoot, detected, !output.IsJSONMode(), GF.AppVersion)
+			files, err := ide.EnsureRulesWithAIConsent(GF.Config.ProjectRoot, detected, !output.IsJSONMode(), GF.AppVersion)
 			if err != nil {
 				output.Infof("  %sError generating files: %v%s", output.Red, err, output.Reset)
 				if output.IsJSONMode() {
