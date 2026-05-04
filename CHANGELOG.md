@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-05-04
+
+### TL;DR
+Cursor rules (`.cursor/rules/gitflow-preflight.mdc` and `semver.mdc`) are now refreshed whenever their on-disk content differs from what the current binary would generate — not just when the stored version is older. This means template fixes, new sections, or any body change trigger a refresh even without a version bump.
+
+### Changed
+- Cursor rule generators (`generateCursorRule`, `generateSemverCursorRule`) are now **idempotent**: they skip the write when on-disk content already matches the expected output. No spurious writes on every startup.
+- `EnsureRulesForIDE`: Cursor rules are now always passed through the (idempotent) generator instead of being gated on a version stamp comparison.
+- `needsReprovisionFromFileVersions`: Cursor and semver rules are now checked via **content equality** (`fileContentDiffers`) so any template or body change triggers reprovision, regardless of whether the version field changed.
+- Added `fileContentDiffers(path, expected)` helper to `version_stamp.go`.
+- Exposed `cursorRuleContent()` and `semverCursorRuleContent()` so the expected output for the running version is available without side effects.
+
+### Tests
+- Added `TestGenerateCursorRule_Idempotent`: second call returns `""` (no write) when content matches.
+- Added `TestGenerateCursorRule_RefreshesOnContentChange`: rule is regenerated when body differs even with same version.
+- Added `TestGenerateSemverCursorRule_Idempotent`.
+
 ## [0.6.3] - 2026-05-04
 
 ### TL;DR
