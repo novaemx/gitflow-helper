@@ -263,7 +263,7 @@ func TestEnsureRulesWithAIConsent_ReprovisionsWhenRuleHeaderOutdated(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(rulePath, []byte(strings.Replace(string(data), "gitflow-version: 1.0.0", "gitflow-version: 0.9.0", 1)), 0644); err != nil {
+	if err := os.WriteFile(rulePath, []byte(strings.Replace(string(data), `gitflow_version: "1.0.0"`, `gitflow_version: "0.9.0"`, 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,8 +287,8 @@ func TestEnsureRulesWithAIConsent_ReprovisionsWhenRuleHeaderOutdated(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(firstLine(string(updated)), "gitflow-version: 1.0.0") {
-		t.Fatalf("expected refreshed rule header, got %q", firstLine(string(updated)))
+	if !strings.Contains(string(updated), `gitflow_version: "1.0.0"`) {
+		t.Fatalf("expected refreshed rule header, got:\n%s", string(updated))
 	}
 }
 

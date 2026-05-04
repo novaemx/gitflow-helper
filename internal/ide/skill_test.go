@@ -26,8 +26,11 @@ func TestEnsureEmbeddedSkill_ProjectScopedIDE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read skill: %v", err)
 	}
-	if firstLine(string(data)) != "<!-- gitflow-version: 1.2.3 -->" {
-		t.Fatalf("expected version header first line, got %q", firstLine(string(data)))
+	if firstLine(string(data)) != "---" {
+		t.Fatalf("expected frontmatter opening on first line, got %q", firstLine(string(data)))
+	}
+	if !strings.Contains(string(data), `gitflow_version: "1.2.3"`) {
+		t.Fatalf("expected gitflow_version in frontmatter, got:\n%s", string(data))
 	}
 	if !strings.Contains(string(data), "name: gitflow") {
 		t.Fatal("expected embedded skill frontmatter")

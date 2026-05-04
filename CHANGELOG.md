@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-05-04
+
+### TL;DR
+Fixes improper version stamp placement in generated Cursor `.mdc` rules and `SKILL.md` files. Version is now injected as a proper YAML field (`gitflow_version: "X.Y.Z"`) inside the frontmatter block instead of corrupting the frontmatter opening delimiter or prepending an HTML comment before `---`. Also removes the redundant `# Gitflow Pre-flight Check` heading from the cursor rule (the template already provides `## Gitflow Pre-flight Check`).
+
+### Fixed
+- Cursor rule and semver `.mdc` files: version stamp is now placed as `gitflow_version: "X.Y.Z"` inside the YAML frontmatter block, not as an inline comment on `---` which produced invalid YAML.
+- `SKILL.md`: version stamp is now placed as `gitflow_version: "X.Y.Z"` inside the frontmatter block, not as an HTML comment prepended before `---` which broke frontmatter parsing.
+- Removed duplicate `# Gitflow Pre-flight Check` heading from cursor preflight rule.
+- CRLF line endings in embedded Windows assets are normalized before frontmatter injection.
+- Version detection (`fileNeedsVersionRefresh`, `hasCurrentVersionHeader`) now reads `gitflow_version:` from within frontmatter for `.mdc`/SKILL files and the HTML comment first-line for plain markdown files.
+
 ## [0.6.2] - 2026-05-04
 
 ### TL;DR

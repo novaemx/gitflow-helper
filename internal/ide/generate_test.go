@@ -27,14 +27,20 @@ func TestGenerateCursorRule(t *testing.T) {
 		t.Fatalf("read file: %v", err)
 	}
 	content := string(data)
-	if firstLine(content) != "--- # gitflow-version: 1.2.3" {
-		t.Fatalf("expected version in first line, got %q", firstLine(content))
+	if firstLine(content) != "---" {
+		t.Fatalf("expected frontmatter opening on first line, got %q", firstLine(content))
+	}
+	if !strings.Contains(content, `gitflow_version: "1.2.3"`) {
+		t.Fatalf("expected gitflow_version in frontmatter, got:\n%s", content)
 	}
 	if !strings.Contains(content, "alwaysApply: true") {
 		t.Error("expected Cursor frontmatter with alwaysApply")
 	}
 	if !strings.Contains(content, "gitflow --json status") {
 		t.Error("expected gitflow CLI reference")
+	}
+	if strings.Count(content, "Gitflow Pre-flight Check") > 1 {
+		t.Error("expected no duplicate Gitflow Pre-flight Check heading")
 	}
 }
 
@@ -459,8 +465,11 @@ func TestGenerateSemverCursorRule(t *testing.T) {
 		t.Fatalf("read file: %v", err)
 	}
 	content := string(data)
-	if firstLine(content) != "--- # gitflow-version: 1.2.3" {
-		t.Fatalf("expected version in first line, got %q", firstLine(content))
+	if firstLine(content) != "---" {
+		t.Fatalf("expected frontmatter opening on first line, got %q", firstLine(content))
+	}
+	if !strings.Contains(content, `gitflow_version: "1.2.3"`) {
+		t.Fatalf("expected gitflow_version in frontmatter, got:\n%s", content)
 	}
 	if !strings.Contains(content, "alwaysApply: true") {
 		t.Error("expected frontmatter with alwaysApply")
