@@ -84,20 +84,21 @@ func DetectPrimary(projectRoot string) DetectedIDE {
 
 // ideRuleSpec maps an IDE to its existence-check and generator functions.
 type ideRuleSpec struct {
+	path     func(string) string
 	exists   func(string) bool
 	generate func(string) (string, error)
 }
 
 var ideRuleRegistry = map[string]ideRuleSpec{
-	IDECursor:     {cursorRuleExists, generateCursorRule},
-	IDEVSCode:     {copilotRuleExists, generateCopilotInstructions},
-	IDECopilot:    {copilotRuleExists, generateCopilotInstructions},
-	IDEClaudeCode: {claudeCodeRuleExists, generateClaudeCodeRule},
-	IDEWindsurf:   {windsurfRuleExists, generateWindsurfRule},
-	IDECline:      {clineRuleExists, generateClineRule},
-	IDEZed:        {zedRuleExists, generateZedRule},
-	IDENeovim:     {neovimRuleExists, generateNeovimRule},
-	IDEJetBrains:  {jetbrainsRuleExists, generateJetBrainsRule},
+	IDECursor:     {cursorRulePath, cursorRuleExists, generateCursorRule},
+	IDEVSCode:     {copilotPath, copilotRuleExists, generateCopilotInstructions},
+	IDECopilot:    {copilotPath, copilotRuleExists, generateCopilotInstructions},
+	IDEClaudeCode: {claudeCodePath, claudeCodeRuleExists, generateClaudeCodeRule},
+	IDEWindsurf:   {windsurfRulePath, windsurfRuleExists, generateWindsurfRule},
+	IDECline:      {clineRulePath, clineRuleExists, generateClineRule},
+	IDEZed:        {zedRulePath, zedRuleExists, generateZedRule},
+	IDENeovim:     {neovimRulePath, neovimRuleExists, generateNeovimRule},
+	IDEJetBrains:  {jetbrainsRulePath, jetbrainsRuleExists, generateJetBrainsRule},
 }
 
 // EnsureRulesForIDE checks if rules exist for the detected IDE.
@@ -110,7 +111,8 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 
 	// Generate IDE-specific rules
 	if spec, ok := ideRuleRegistry[detected.ID]; ok {
-		if !spec.exists(projectRoot) {
+		rulePath := spec.path(projectRoot)
+		if !spec.exists(projectRoot) || fileNeedsVersionRefresh(rulePath) {
 			path, err := spec.generate(projectRoot)
 			if err != nil {
 				return created, err
@@ -129,7 +131,7 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 	// (i.e. IDEs not in projectScopedSkillIDEs). For those IDEs the embedded
 	// skill already lands in .agents/skills/gitflow/SKILL.md, making AGENTS.md
 	// redundant.
-	if !projectScopedSkillIDEs[detected.ID] && !agentsRuleExists(projectRoot) {
+	if !projectScopedSkillIDEs[detected.ID] && (!agentsRuleExists(projectRoot) || fileNeedsVersionRefresh(agentsPath(projectRoot))) {
 		path, err := generateAgentsMD(projectRoot)
 		if err != nil {
 			return created, err
@@ -150,7 +152,7 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 	//   VSCode/Copilot → appended section in .github/copilot-instructions.md
 	switch detected.ID {
 	case IDECursor, IDEBoth:
-		if !semverCursorRuleExists(projectRoot) {
+		if !semverCursorRuleExists(projectRoot) || fileNeedsVersionRefresh(semverCursorRulePath(projectRoot)) {
 			path, err := generateSemverCursorRule(projectRoot)
 			if err != nil {
 				return created, err

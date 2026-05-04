@@ -46,10 +46,17 @@ func ensureFileWithGitflow(path, headerIfNew, templateChoice string) (string, er
 		content := string(existing)
 		for _, marker := range gitflowMarkers {
 			if strings.Contains(content, marker) {
+				if !hasCurrentVersionHeader(content) {
+					updated := withVersionHeader(content)
+					if err := os.WriteFile(path, []byte(updated), 0600); err != nil {
+						return "", err
+					}
+				}
 				return path, nil
 			}
 		}
 		// Always use compact when appending to keep existing files concise
+		content = withVersionHeader(content)
 		content += "\n" + GitflowInstructionsCompact
 		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 			return "", err
@@ -57,7 +64,7 @@ func ensureFileWithGitflow(path, headerIfNew, templateChoice string) (string, er
 		return path, nil
 	}
 
-	content := headerIfNew + fullTemplate
+	content := withVersionHeader(headerIfNew + fullTemplate)
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return "", err
 	}

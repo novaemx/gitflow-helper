@@ -1,6 +1,7 @@
 package ide
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,8 +98,7 @@ func generateSemverCursorRule(projectRoot string) (string, error) {
 		return "", err
 	}
 	path := semverCursorRulePath(projectRoot)
-	frontmatter := `---
-description: >-
+	frontmatter := fmt.Sprintf("--- # gitflow-version: %s\n", generatorVersion()) + `description: >-
   Conventional Commits / Semantic Versioning rule. Enforces structured commit
   messages so AI-generated commits trigger the correct SemVer bump.
 alwaysApply: true

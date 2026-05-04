@@ -8,6 +8,8 @@ import (
 )
 
 func TestGenerateCursorRule(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+
 	dir := t.TempDir()
 
 	path, err := generateCursorRule(dir)
@@ -25,6 +27,9 @@ func TestGenerateCursorRule(t *testing.T) {
 		t.Fatalf("read file: %v", err)
 	}
 	content := string(data)
+	if firstLine(content) != "--- # gitflow-version: 1.2.3" {
+		t.Fatalf("expected version in first line, got %q", firstLine(content))
+	}
 	if !strings.Contains(content, "alwaysApply: true") {
 		t.Error("expected Cursor frontmatter with alwaysApply")
 	}
@@ -47,6 +52,8 @@ func TestCursorRuleExists(t *testing.T) {
 }
 
 func TestGenerateCopilotInstructions(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+
 	dir := t.TempDir()
 
 	path, err := generateCopilotInstructions(dir)
@@ -59,6 +66,9 @@ func TestGenerateCopilotInstructions(t *testing.T) {
 		t.Fatalf("read file: %v", err)
 	}
 	content := string(data)
+	if firstLine(content) != "<!-- gitflow-version: 1.2.3 -->" {
+		t.Fatalf("expected version header first line, got %q", firstLine(content))
+	}
 	if !strings.Contains(content, "Copilot Instructions") {
 		t.Error("expected Copilot Instructions header")
 	}
@@ -88,6 +98,8 @@ func TestCopilotIdempotent(t *testing.T) {
 }
 
 func TestGenerateAgentsMD(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+
 	dir := t.TempDir()
 
 	path, err := generateAgentsMD(dir)
@@ -101,6 +113,9 @@ func TestGenerateAgentsMD(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(path)
+	if firstLine(string(data)) != "<!-- gitflow-version: 1.2.3 -->" {
+		t.Fatalf("expected version header first line, got %q", firstLine(string(data)))
+	}
 	if !strings.Contains(string(data), "Agent Instructions") {
 		t.Error("expected Agent Instructions header")
 	}
@@ -427,6 +442,8 @@ func TestClaudeCodeAppendToExisting(t *testing.T) {
 }
 
 func TestGenerateSemverCursorRule(t *testing.T) {
+	SetGeneratorVersion("1.2.3")
+
 	dir := t.TempDir()
 
 	path, err := generateSemverCursorRule(dir)
@@ -442,6 +459,9 @@ func TestGenerateSemverCursorRule(t *testing.T) {
 		t.Fatalf("read file: %v", err)
 	}
 	content := string(data)
+	if firstLine(content) != "--- # gitflow-version: 1.2.3" {
+		t.Fatalf("expected version in first line, got %q", firstLine(content))
+	}
 	if !strings.Contains(content, "alwaysApply: true") {
 		t.Error("expected frontmatter with alwaysApply")
 	}
