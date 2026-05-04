@@ -27,7 +27,7 @@ TAG      ?= $(shell \
 RELEASE_VERSION ?= $(patsubst v%,%,$(TAG))
 LATEST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
 GITHUB_REPO ?= novaemx/gitflow-helper
-HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow-helper.rb
+HOMEBREW_TAP_FORMULA ?= ../homebrew-tap/Formula/gitflow.rb
 HOMEBREW_TAP_GITHUB_TOKEN ?=
 export HOMEBREW_TAP_GITHUB_TOKEN
 WINDOWS_ARCHIVE := $(DIST)/$(BINARY)-$(VERSION)-windows-amd64.zip
@@ -499,8 +499,8 @@ publish-homebrew: publish-github
 				} \
 			} \
 			{ print } \
-		' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
-		mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb; \
+		' packaging/homebrew/gitflow.rb > packaging/homebrew/gitflow.rb.tmp; \
+		mv packaging/homebrew/gitflow.rb.tmp packaging/homebrew/gitflow.rb; \
 	fi; \
 	[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
 	awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
@@ -518,7 +518,7 @@ publish-homebrew: publish-github
 	' "$(HOMEBREW_TAP_FORMULA)" > "$(HOMEBREW_TAP_FORMULA).tmp"; \
 	mv "$(HOMEBREW_TAP_FORMULA).tmp" "$(HOMEBREW_TAP_FORMULA)"; \
 	echo "Done. Updated Homebrew formula targets for $(TAG):"; \
-	if [ $$update_tracked -eq 1 ]; then echo "  - packaging/homebrew/gitflow-helper.rb"; fi; \
+	if [ $$update_tracked -eq 1 ]; then echo "  - packaging/homebrew/gitflow.rb"; fi; \
 	echo "  - $(HOMEBREW_TAP_FORMULA)"
 
 ## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
