@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-04
+
+### TL;DR
+Bugfix: `--log` flag was writing output to stderr (polluting the TUI) instead of a file. Log output now routes exclusively to `.gitflow/log.txt` with a timestamped capture-start header. The `setup` command now routes directly through `EnsureRulesWithAIConsent`. Homebrew formula renamed to `gitflow-helper.rb`.
+
+### Fixed
+- Fixed `--log` flag: log output now writes to `<project>/.gitflow/log.txt` only, never to stderr. Stderr output is reserved for `--debug` level only.
+- Added timestamped capture-start header to the log file on every new logging session.
+- Removed `EnsureRulesForSetup` indirection; `gitflow setup` now calls `EnsureRulesWithAIConsent` directly.
+
+### Changed
+- Homebrew tracked formula renamed from `gitflow.rb` to `gitflow-helper.rb` in Makefile and README.
+
+### Tests
+- Added `TestLogf_LogOnly_WritesFileNotStderr` — regression guard ensuring log-only mode produces zero stderr output and writes to `.gitflow/log.txt`.
+
 ## [0.6.0] - 2026-05-01
 
 ### TL;DR

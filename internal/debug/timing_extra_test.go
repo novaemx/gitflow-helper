@@ -170,7 +170,7 @@ func TestConfigure_ReopensExistingLogFile(t *testing.T) {
 	Configure(root, true, false)
 	Logf("second line")
 
-	path := filepath.Join(root, ".gitflow", "logs", "gitflow.log")
+	path := filepath.Join(root, ".gitflow", "log.txt")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
@@ -178,6 +178,36 @@ func TestConfigure_ReopensExistingLogFile(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "first line") || !strings.Contains(content, "second line") {
 		t.Fatalf("expected both log lines, got: %q", content)
+	}
+}
+
+func TestLogf_LogOnly_WritesFileNotStderr(t *testing.T) {
+	resetDebugStateForTest(t)
+	defer resetDebugStateForTest(t)
+
+	root := t.TempDir()
+	Configure(root, true, false)
+
+	r, w, _ := os.Pipe()
+	old := os.Stderr
+	os.Stderr = w
+	Logf("tui-safe log line")
+	w.Close()
+	os.Stderr = old
+
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	if n > 0 {
+		t.Fatalf("expected no stderr output in log-only mode, got %q", string(buf[:n]))
+	}
+
+	path := filepath.Join(root, ".gitflow", "log.txt")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	if !strings.Contains(string(data), "[LOG] tui-safe log line") {
+		t.Fatalf("expected log file to contain line, got %q", string(data))
 	}
 }
 

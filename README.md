@@ -19,11 +19,11 @@ A single static binary that enforces the [git-flow branching model](https://nvie
 
 ### Homebrew (Formula)
 
-`gitflow` is distributed as a Homebrew Formula (CLI tool), not a Cask.
+`gitflow-helper` is distributed as a Homebrew Formula (CLI tool), not a Cask.
 
 ```bash
 brew tap novaemx/tap
-brew install gitflow
+brew install gitflow-helper
 ```
 
 The formula installs shell completions for `bash`, `zsh`, and `fish` automatically.
@@ -275,7 +275,7 @@ make vet          # run go vet
 make release-local                    # build release artifacts locally (no publish)
 make release-local-github             # upload local artifacts to the latest existing GitHub release tag
 make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts
-make publish-homebrew TAG=v0.5.12     # upload artifacts and sync ../homebrew-tap/Formula/gitflow.rb (tracked packaging/homebrew updates only on release/hotfix)
+make publish-homebrew TAG=v0.5.12     # upload artifacts and sync ../homebrew-tap/Formula (tracked packaging/homebrew updates only on release/hotfix)
 make publish-winget TAG=v0.5.12       # upload artifacts, then update Winget version/installer/defaultLocale manifests
 make push-winget TAG=v0.5.12          # submit/update Winget package in microsoft/winget-pkgs via wingetcreate
 make publish-all TAG=v0.5.12          # upload once and update all package manifests

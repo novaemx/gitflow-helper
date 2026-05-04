@@ -33,12 +33,15 @@ func TestConfigure_LogCreatesFileAndAppendsLogEntries(t *testing.T) {
 	Configure(root, true, false)
 	Logf("hello %s", "world")
 
-	path := filepath.Join(root, ".gitflow", "logs", "gitflow.log")
+	path := filepath.Join(root, ".gitflow", "log.txt")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
 	}
 	content := string(data)
+	if !strings.Contains(content, "Log capture started at") {
+		t.Fatalf("expected log file to contain capture start header, got %q", content)
+	}
 	if !strings.Contains(content, "[LOG] hello world") {
 		t.Fatalf("expected log file to contain log line, got %q", content)
 	}
@@ -59,7 +62,7 @@ func TestConfigure_DebugWritesDebugEntriesToLogFile(t *testing.T) {
 	Logf("workflow step")
 	Printf("git exit=%d", 0)
 
-	path := filepath.Join(root, ".gitflow", "logs", "gitflow.log")
+	path := filepath.Join(root, ".gitflow", "log.txt")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read log file: %v", err)
