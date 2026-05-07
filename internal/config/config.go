@@ -189,30 +189,16 @@ func normalizeAIChoice(value any) (*AIIntegrationChoice, bool) {
 	return choice, true
 }
 
-func loadProjectAIIntegrationChoice(decoded map[string]any) (*AIIntegrationChoice, bool) {
-	if decoded == nil {
-		return nil, false
-	}
-	if choice, ok := normalizeAIChoice(decoded["ai_integration"]); ok {
-		return choice, true
-	}
-	// Older project configs could store the consent payload directly at the
-	// root of .gitflow/config.json before the unified ai_integration block.
-	if choice, ok := normalizeAIChoice(decoded); ok {
-		_, hasEnabled := decoded["enabled"]
-		_, hasVersion := decoded["version"]
-		if hasEnabled || hasVersion {
-			return choice, true
-		}
-	}
-	return nil, false
-}
-
 func LoadAIIntegrationChoice(root string) (AIIntegrationChoice, bool, error) {
 	if decoded, _, err := loadProjectConfigMap(root); err != nil {
 		return AIIntegrationChoice{}, false, err
-	} else if choice, ok := loadProjectAIIntegrationChoice(decoded); ok {
+	} else if decoded != nil {
+		if choice, ok := normalizeAIChoice(decoded["ai_integration"]); ok {
 			return *choice, true, nil
+		}
+		if choice, ok := normalizeAIChoice(decoded); ok {
+			return *choice, true, nil
+		}
 	}
 
 	data, err := os.ReadFile(legacyAIIntegrationPath(root))
@@ -248,31 +234,29 @@ func SaveAIIntegrationChoice(root string, choice AIIntegrationChoice) error {
 	return writeProjectConfigMap(root, decoded)
 }
 
-// findProjectRootFrom walks up from start looking for a .git directory.
-// Returns the directory containing .git, or "" if not found.
 func findProjectRootFrom(start string) string {
-	p := start
+	p := strings.TrimSpace(start)
+	if p == "" {
+		return ""
+	}
+
 	for {
 		if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
 			return p
 		}
 		parent := filepath.Dir(p)
 		if parent == p {
-			return ""
+			break
 		}
 		p = parent
 	}
+	return ""
 }
 
-// FindProjectRoot returns the nearest ancestor directory (inclusive of CWD)
-// that contains a .git directory. Falls back to the current working directory
-// when no git repository is found. The binary's own location is intentionally
-// NOT considered — it would produce wrong results when the tool is installed
-// inside a foreign git repository (e.g. Homebrew at /opt/homebrew).
 func FindProjectRoot() string {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return "."
+		return ""
 	}
 	if root := findProjectRootFrom(cwd); root != "" {
 		return root

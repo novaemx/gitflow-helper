@@ -250,6 +250,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newPullCmd(),
 		newPushCmd(),
 		newInitCmd(),
+		newDiagramCmd(),
 		newStartCmd(),
 		newCommitCmd(),
 		newFinishCmd(),

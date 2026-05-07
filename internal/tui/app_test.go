@@ -739,6 +739,92 @@ func TestPlaceOverlay_PadsBaseRowsToViewportWidth(t *testing.T) {
 	}
 }
 
+func TestDiagramView_KeyDismissesAndScrolls(t *testing.T) {
+	s := spinner.New()
+	s.Spinner = spinner.Pulse
+	m := model{
+		spinner:       s,
+		mode:          viewDiagram,
+		diagramScroll: 0,
+		width:         100,
+		height:        30,
+	}
+	m.gf = &gitflow.Logic{
+		Config: config.FlowConfig{
+			ProjectRoot:   t.TempDir(),
+			MainBranch:    "main",
+			DevelopBranch: "develop",
+		},
+		State: state.RepoState{
+			Current:  "feature/ui-polish",
+			Features: []state.BranchInfo{{Name: "feature/ui-polish", ShortName: "ui-polish", CommitsAhead: 3}},
+			Bugfixes: []state.BranchInfo{},
+			Releases: []state.BranchInfo{},
+			Hotfixes: []state.BranchInfo{},
+			Merge:    state.MergeState{ConflictedFiles: []string{}},
+		},
+	}
+
+	// renderDiagramFullscreen must contain timeline header and branch label
+	rendered := m.renderDiagramFullscreen()
+	if !strings.Contains(stripANSI(rendered), "Horizontal Timeline") {
+		t.Fatal("expected 'Horizontal Timeline' header in diagram view")
+	}
+	if !strings.Contains(stripANSI(rendered), "feature/ui-polish") {
+		t.Fatal("expected feature branch to appear in diagram overlay")
+	}
+
+	// horizontal scroll should move with 'l' and return with 'h'
+	next, _ := m.handleDiagramKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	updatedScroll, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model after horizontal scroll")
+	}
+	if updatedScroll.diagramHScroll <= 0 {
+		t.Fatal("expected diagramHScroll to increase after pressing 'l'")
+	}
+	next, _ = updatedScroll.handleDiagramKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	updatedBack, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model after horizontal scroll back")
+	}
+	if updatedBack.diagramHScroll != 0 {
+		t.Fatalf("expected diagramHScroll to return to 0 after pressing 'h', got %d", updatedBack.diagramHScroll)
+	}
+
+	// q/Esc should dismiss the view
+	next, _ = m.handleDiagramKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	updated, ok := next.(model)
+	if !ok {
+		t.Fatal("expected model")
+	}
+	if updated.mode != viewDashboard {
+		t.Fatalf("expected viewDashboard after close, got %v", updated.mode)
+	}
+}
+
+func TestBuildTimelineLines_ContainsMainAndDevelop(t *testing.T) {
+	s := state.RepoState{
+		Current: "develop",
+		Features: []state.BranchInfo{
+			{Name: "feature/x", ShortName: "x", CommitsAhead: 2},
+		},
+		Bugfixes: []state.BranchInfo{},
+		Releases: []state.BranchInfo{},
+		Hotfixes: []state.BranchInfo{},
+		Merge:    state.MergeState{ConflictedFiles: []string{}},
+	}
+	lines := buildTimelineLines(s, "main", "develop", 120)
+	joined := strings.Join(lines, "\n")
+	plain := stripANSI(joined)
+
+	for _, want := range []string{"main", "develop", "feature/x", "+2", "Horizontal Timeline"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("expected %q in diagram lines:\n%s", want, plain)
+		}
+	}
+}
+
 func TestIntegrationModeToggle_TogglesOnModeShortcut(t *testing.T) {
 	s := spinner.New()
 	s.Spinner = spinner.Pulse

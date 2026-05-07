@@ -89,7 +89,7 @@ Use this mapping to choose commands according to model interaction intent.
 
 ### CLI Reference
 ` + "```" + `
-gitflow --json status|pull|init|sync|switch|backmerge|cleanup|health|doctor|log|undo|releasenotes|finish
+gitflow --json status|pull|init|sync|switch|backmerge|cleanup|health|doctor|log|undo|releasenotes|diagram|finish
 gitflow --json start feature|bugfix|release|hotfix <name>
 gitflow setup [--ide cursor|copilot|both]
 ` + "```" + `
@@ -147,7 +147,7 @@ gitflow --json status
 ### Full CLI
 
 ` + "```" + `
-gitflow --json status|pull|init|sync|switch|backmerge|cleanup|health|doctor|log|undo|releasenotes|finish
+gitflow --json status|pull|init|sync|switch|backmerge|cleanup|health|doctor|log|undo|releasenotes|diagram|finish
 gitflow --json start feature|bugfix|release|hotfix <name>
 ` + "```" + `
 

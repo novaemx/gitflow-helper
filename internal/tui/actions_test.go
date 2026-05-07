@@ -347,6 +347,26 @@ func TestBuildActions_TagsActionIncludesReleaseColumns(t *testing.T) {
 	}
 }
 
+func TestBuildActions_IncludesDiagramAction(t *testing.T) {
+	cfg := config.DefaultConfig()
+	s := state.RepoState{
+		Current:            cfg.DevelopBranch,
+		HasDefaultRemote:   true,
+		GitFlowInitialized: true,
+		Merge:              state.MergeState{ConflictedFiles: []string{}},
+	}
+
+	actions := buildActions(s, cfg)
+	diagram, ok := actionByTag(actions, "diagram")
+	if !ok {
+		t.Fatal("expected diagram action")
+	}
+	// The diagram action opens a TUI view, not a shell command
+	if diagram.Command != "" {
+		t.Fatalf("expected diagram action to have no Command (opens TUI view), got %q", diagram.Command)
+	}
+}
+
 func TestBuildActions_DirtyFeatureBranchHasCommitAction(t *testing.T) {
 	cfg := config.DefaultConfig()
 	s := state.RepoState{

@@ -7,7 +7,7 @@ A single static binary that enforces the [git-flow branching model](https://nvie
 
 ## Features
 
-- **15 CLI commands** covering the full gitflow lifecycle: status, pull, push, start, finish, sync, switch, backmerge, cleanup, health, doctor, log, undo, releasenotes, init
+- **16 CLI commands** covering the full gitflow lifecycle: status, pull, push, start, finish, sync, switch, backmerge, cleanup, health, doctor, log, undo, releasenotes, init, diagram
 - **Interactive TUI** with dashboard, action menu, command palette, and help overlay
 - **JSON mode** (`--json`) for seamless integration with AI agents (Cursor, Copilot, Claude Code, etc.)
 - **IDE detection** — automatically generates `.cursor/rules/`, `.github/copilot-instructions.md`, or `AGENTS.md`
@@ -172,6 +172,8 @@ gitflow doctor                     # validate prerequisites
 gitflow log -n 20                  # gitflow-aware commit log
 gitflow undo                       # undo last operation (reflog)
 gitflow releasenotes               # generate RELEASE_NOTES.md
+gitflow diagram                    # print Mermaid branch topology diagram
+gitflow diagram -o graph.mmd       # write Mermaid diagram to file
 gitflow init                       # initialize git-flow
 gitflow setup                      # detect IDE & generate rules
 gitflow setup --ide cursor         # force Cursor rules only

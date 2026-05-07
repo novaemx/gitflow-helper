@@ -106,38 +106,6 @@ func shouldReprovisionRules(storedVersion, appVersion string) bool {
 	return false
 }
 
-func needsReprovisionFromFileVersions(projectRoot string, detected DetectedIDE) bool {
-	// Cursor rule is fully-generated: use content equality so any body change
-	// (fix, new section, updated template) triggers refresh, not just version bumps.
-	if detected.ID == IDECursor || detected.ID == IDEBoth {
-		if fileContentDiffers(cursorRulePath(projectRoot), cursorRuleContent()) {
-			return true
-		}
-		if fileContentDiffers(semverCursorRulePath(projectRoot), semverCursorRuleContent()) {
-			return true
-		}
-	} else if spec, ok := ideRuleRegistry[detected.ID]; ok {
-		// Append-style files: version stamp is sufficient.
-		if fileNeedsVersionRefresh(spec.path(projectRoot)) || fileMissingHomologationSections(spec.path(projectRoot)) {
-			return true
-		}
-	}
-
-	// SKILL.md is fully-generated; content equality is checked inside
-	// ensureEmbeddedSkill. Here we also version-check to trigger the
-	// EnsureRulesForIDE call that invokes ensureEmbeddedSkill.
-	skillPath, err := skillPathForIDE(projectRoot, detected.ID)
-	if err != nil || fileNeedsVersionRefresh(skillPath) {
-		return true
-	}
-
-	if !projectScopedSkillIDEs[detected.ID] && (fileNeedsVersionRefresh(agentsPath(projectRoot)) || fileMissingHomologationSections(agentsPath(projectRoot))) {
-		return true
-	}
-
-	return false
-}
-
 // EnsureRulesWithAIConsent installs IDE-specific instructions and embedded
 // skill only when user consent for AI integration is enabled.
 //
@@ -150,8 +118,6 @@ func needsReprovisionFromFileVersions(projectRoot string, detected DetectedIDE) 
 // stored version exists yet, or the running appVersion is newer than the
 // stored version. Otherwise, file I/O is skipped.
 func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interactive bool, appVersion string) ([]string, error) {
-	SetGeneratorVersion(appVersion)
-
 	choice, exists, err := loadAIIntegrationChoice(projectRoot)
 	if err != nil {
 		return nil, err
@@ -179,15 +145,9 @@ func EnsureRulesWithAIConsent(projectRoot string, detected DetectedIDE, interact
 		return []string{}, nil
 	}
 
-	// Never force file reprovision when this binary is older than the stored
-	// consent version.
-	if isOlderVersion(appVersion, choice.Version) {
-		return []string{}, nil
-	}
-
-	// Refresh on first stamp, explicit unknown version, newer binary version,
-	// or when managed files have missing/stale version headers.
-	if !shouldReprovisionRules(choice.Version, appVersion) && !needsReprovisionFromFileVersions(projectRoot, detected) {
+	// Refresh only on first stamp, explicit unknown version, or when the
+	// running version is newer than the stored one.
+	if !shouldReprovisionRules(choice.Version, appVersion) {
 		return []string{}, nil
 	}
 
