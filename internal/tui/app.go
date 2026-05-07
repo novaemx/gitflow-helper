@@ -18,6 +18,7 @@ import (
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
+	"github.com/novaemx/gitflow-helper/internal/state"
 )
 
 type viewMode int
@@ -27,6 +28,7 @@ const (
 	viewOutput
 	viewHelp
 	viewInput
+	viewDiagram
 )
 
 type activityPanelState int
@@ -77,6 +79,10 @@ type model struct {
 	// Output overlay animation state.
 	outputAnim    float64
 	outputClosing bool
+
+	// Diagram view scroll
+	diagramScroll  int
+	diagramHScroll int
 
 	// Git state watch
 	lastGitFingerprint      string
@@ -445,6 +451,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case viewInput:
 			return m.handleInputKey(msg)
+		case viewDiagram:
+			return m.handleDiagramKey(msg)
 		default:
 			return m.handleKey(msg)
 		}
@@ -496,6 +504,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if a.Tag == "exit" {
 				m.quitting = true
 				return m, tea.Quit
+			}
+			if a.Tag == "diagram" {
+				m.diagramScroll = 0
+				m.diagramHScroll = 0
+				m.mode = viewDiagram
+				return m, nil
 			}
 			if a.NeedsInput {
 				pending := a
@@ -703,6 +717,8 @@ func (m model) View() string {
 		return m.renderHelpOverlay(base)
 	case viewInput:
 		return m.renderInputOverlay(base)
+	case viewDiagram:
+		return m.renderDiagramFullscreen()
 	}
 
 	return base
@@ -1109,6 +1125,8 @@ func (m model) renderStatusBar() string {
 		hint = " " + m.spinner.View() + " Running: " + m.runningTitle + "  [q] quit"
 	case m.mode == viewOutput:
 		hint = " " + m.outputTitle + "  [j/k] scroll  [q/Esc/Enter] close"
+	case m.mode == viewDiagram:
+		hint = " Branch timeline  [j/k] vertical  [h/l or ←/→] horizontal  [g/G] top/end  [q] close"
 	default:
 		activityHint := "[a] activity"
 		switch m.activityPanel {
@@ -1377,6 +1395,242 @@ func (m model) renderInputOverlay(base string) string {
 
 	box := boxStyle.Render(strings.Join(lines, "\n"))
 	return placeOverlay(base, box, m.width, m.height)
+}
+
+func (m model) handleDiagramKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	lines := buildTimelineLines(m.gf.State, m.gf.Config.MainBranch, m.gf.Config.DevelopBranch, m.width)
+	maxScroll := len(lines) - (m.height - 3)
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	maxHScroll := maxLineWidth(lines) - m.width
+	if maxHScroll < 0 {
+		maxHScroll = 0
+	}
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("q", "esc", "enter"))):
+		m.mode = viewDashboard
+	case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
+		if m.diagramScroll < maxScroll {
+			m.diagramScroll++
+		}
+	case key.Matches(msg, key.NewBinding(key.WithKeys("k", "up"))):
+		if m.diagramScroll > 0 {
+			m.diagramScroll--
+		}
+	case key.Matches(msg, key.NewBinding(key.WithKeys("l", "right"))):
+		if m.diagramHScroll < maxHScroll {
+			m.diagramHScroll++
+		}
+	case key.Matches(msg, key.NewBinding(key.WithKeys("h", "left"))):
+		if m.diagramHScroll > 0 {
+			m.diagramHScroll--
+		}
+	case key.Matches(msg, key.NewBinding(key.WithKeys("g", "home"))):
+		m.diagramScroll = 0
+		m.diagramHScroll = 0
+	case key.Matches(msg, key.NewBinding(key.WithKeys("G", "end"))):
+		m.diagramScroll = maxScroll
+		m.diagramHScroll = maxHScroll
+	}
+	return m, nil
+}
+
+func fitLineWithANSI(line string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	plainW := lipgloss.Width(line)
+	if plainW == width {
+		return line
+	}
+	if plainW > width {
+		return truncateRunes(stripANSI(line), width)
+	}
+	return line + strings.Repeat(" ", width-plainW)
+}
+
+func maxLineWidth(lines []string) int {
+	maxW := 0
+	for _, line := range lines {
+		w := lipgloss.Width(stripANSI(line))
+		if w > maxW {
+			maxW = w
+		}
+	}
+	return maxW
+}
+
+func viewportSlice(line string, offset, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	plain := []rune(stripANSI(line))
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(plain) {
+		offset = len(plain)
+	}
+	end := offset + width
+	if end > len(plain) {
+		end = len(plain)
+	}
+	sliced := string(plain[offset:end])
+	w := lipgloss.Width(sliced)
+	if w < width {
+		sliced += strings.Repeat(" ", width-w)
+	}
+	return sliced
+}
+
+func timelineTrack(width int) string {
+	if width < 8 {
+		width = 8
+	}
+	return "●" + strings.Repeat("─", width-2) + "▶"
+}
+
+// buildTimelineLines builds a horizontal timeline-style topology for TUI view.
+func buildTimelineLines(s state.RepoState, mainBranch, developBranch string, viewportWidth int) []string {
+	var lines []string
+	labelW := 28
+	if viewportWidth < 100 {
+		labelW = 22
+	}
+	trackW := viewportWidth - labelW - 14
+	if trackW < 12 {
+		trackW = 12
+	}
+
+	formatBase := func(icon, name string, style lipgloss.Style, isCurrent bool) string {
+		label := fmt.Sprintf("%s %s", icon, name)
+		if isCurrent {
+			label += "  ◀ current"
+		}
+		label = truncateRunes(label, labelW)
+		return style.Bold(true).Render(label)
+	}
+
+	mainLine := formatBase("🛡", mainBranch, branchReleaseStyle, s.Current == mainBranch) + "  " + okStyle.Render(timelineTrack(trackW))
+	developLine := formatBase("🧪", developBranch, branchFeatureStyle, s.Current == developBranch) + "  " + branchFeatureStyle.Render(timelineTrack(trackW))
+
+	lines = append(lines, " "+mainLine)
+	lines = append(lines, " "+dimStyle.Render(strings.Repeat(" ", labelW+2)+"release -> main  |  backmerge -> develop"))
+	if s.MainAheadOfDevelop > 0 {
+		lines = append(lines, " "+warnStyle.Render(fmt.Sprintf("⚠ %s is %d commit(s) ahead of %s (run backmerge)", mainBranch, s.MainAheadOfDevelop, developBranch)))
+	} else if s.DevelopAheadOfMain > 0 {
+		lines = append(lines, " "+dimStyle.Render(fmt.Sprintf("↑ %d commit(s) ahead on %s", s.DevelopAheadOfMain, developBranch)))
+	}
+	lines = append(lines, " "+developLine)
+
+	type lane struct {
+		name     string
+		icon     string
+		branches []state.BranchInfo
+		target   string
+		style    lipgloss.Style
+	}
+	lanes := []lane{
+		{name: "features", icon: "✨", branches: s.Features, target: developBranch, style: branchFeatureStyle},
+		{name: "bugfixes", icon: "🔧", branches: s.Bugfixes, target: developBranch, style: branchBugfixStyle},
+		{name: "releases", icon: "📦", branches: s.Releases, target: mainBranch, style: branchReleaseStyle},
+		{name: "hotfixes", icon: "🚑", branches: s.Hotfixes, target: mainBranch, style: branchHotfixStyle},
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, " "+sectionStyle.Render("Horizontal Timeline"))
+
+	hasBranch := false
+	for _, ln := range lanes {
+		for _, br := range ln.branches {
+			hasBranch = true
+			marker := ""
+			if br.Name == s.Current {
+				marker = "  ◀ current"
+			}
+			pushed := ""
+			if br.HasRemote {
+				pushed = "  ↑ pushed"
+			}
+			label := truncateRunes(fmt.Sprintf("%s %s", ln.icon, br.Name), labelW)
+			track := timelineTrack(trackW - 4)
+			line := fmt.Sprintf("%s  %s  -> %s  (+%d)%s%s", label, track, ln.target, br.CommitsAhead, pushed, marker)
+			lines = append(lines, " "+ln.style.Render(line))
+		}
+	}
+
+	if !hasBranch {
+		lines = append(lines, " "+dimStyle.Render("No feature, bugfix, release, or hotfix branches in flight."))
+	}
+
+	if s.Merge.InMerge {
+		lines = append(lines, "")
+		lines = append(lines, " "+warnStyle.Render(fmt.Sprintf("⚠ Merge in progress: %d conflicted file(s)", len(s.Merge.ConflictedFiles))))
+	}
+
+	return lines
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	result := ""
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	for n > 0 {
+		result = string(rune('0'+n%10)) + result
+		n /= 10
+	}
+	if neg {
+		result = "-" + result
+	}
+	return result
+}
+
+func (m model) renderDiagramFullscreen() string {
+	sections := []string{m.renderTitleBar()}
+	contentHeight := m.height - 3
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	lines := buildTimelineLines(m.gf.State, m.gf.Config.MainBranch, m.gf.Config.DevelopBranch, m.width)
+	maxScroll := len(lines) - contentHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	maxHScroll := maxLineWidth(lines) - m.width
+	if maxHScroll < 0 {
+		maxHScroll = 0
+	}
+	if m.diagramScroll > maxScroll {
+		m.diagramScroll = maxScroll
+	}
+	if m.diagramHScroll > maxHScroll {
+		m.diagramHScroll = maxHScroll
+	}
+
+	end := m.diagramScroll + contentHeight
+	if end > len(lines) {
+		end = len(lines)
+	}
+	visible := lines[m.diagramScroll:end]
+
+	padded := make([]string, 0, contentHeight)
+	for _, line := range visible {
+		padded = append(padded, viewportSlice(line, m.diagramHScroll, m.width))
+	}
+	for len(padded) < contentHeight {
+		padded = append(padded, strings.Repeat(" ", m.width))
+	}
+
+	sections = append(sections, strings.Join(padded, "\n"))
+	sections = append(sections, m.renderStatusBar())
+	return strings.Join(sections, "\n")
 }
 
 func placeOverlay(base, overlay string, w, h int) string {

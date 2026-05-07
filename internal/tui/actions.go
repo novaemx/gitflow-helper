@@ -477,6 +477,7 @@ func buildActions(s state.RepoState, cfg config.FlowConfig) []action {
 
 	// Utilities
 	low = append(low,
+		action{Label: "View branch topology diagram", Tag: "diagram"},
 		action{Label: "List tags / releases", Tag: "tags", Command: "git for-each-ref --sort=-version:refname --format='%(refname:short)|%(creatordate:short)|%(subject)' refs/tags | awk -F'|' 'BEGIN { printf \"%-12s %-12s %s\\n\\n\", \"Tag\", \"Date\", \"Release\" } { printf \"%-12s %-12s %s\\n\", $$1, $$2, $$3 }'"},
 		action{Label: "View commit log", Tag: "log", Command: "git --no-pager log --all --decorate --oneline -n 40"},
 		action{Label: "Repo health check", Tag: "health", Command: "gitflow health"},
