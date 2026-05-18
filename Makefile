@@ -480,6 +480,7 @@ publish-homebrew: publish-github
 	[ -n "$$darwin_sha" ] || { echo "Missing darwin checksum"; exit 1; }; \
 	branch=$$(git branch --show-current 2>/dev/null || true); \
 	update_tracked=1; \
+	updated_tap=0; \
 	if [ -n "$$branch" ] && ! echo "$$branch" | grep -Eq '^(release|hotfix)/'; then \
 		update_tracked=0; \
 		echo "→ Skipping tracked Homebrew manifest update on '$$branch' (protected release metadata)."; \
@@ -502,24 +503,28 @@ publish-homebrew: publish-github
 		' packaging/homebrew/gitflow-helper.rb > packaging/homebrew/gitflow-helper.rb.tmp; \
 		mv packaging/homebrew/gitflow-helper.rb.tmp packaging/homebrew/gitflow-helper.rb; \
 	fi; \
-	[ -f "$(HOMEBREW_TAP_FORMULA)" ] || { echo "Missing Homebrew tap formula at $(HOMEBREW_TAP_FORMULA)"; exit 1; }; \
-	awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
-		BEGIN { target_sha = "" } \
-		/^[[:space:]]*version "/ { sub(/version ".*"/, "version \"" version "\"") } \
-		/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/, "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") } \
-		/gitflow-[^"]*-darwin-universal.tar.gz/ { target_sha = darwin_sha } \
-		/^[[:space:]]*sha256 "/ { \
-			if (target_sha != "") { \
-				sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); \
-				target_sha = ""; \
+	if [ -f "$(HOMEBREW_TAP_FORMULA)" ]; then \
+		awk -v version="$(RELEASE_VERSION)" -v tag="$(TAG)" -v darwin_sha="$$darwin_sha" ' \
+			BEGIN { target_sha = "" } \
+			/^[[:space:]]*version "/ { sub(/version ".*"/, "version \"" version "\"") } \
+			/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/ { sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal.tar.gz/, "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") } \
+			/gitflow-[^"]*-darwin-universal.tar.gz/ { target_sha = darwin_sha } \
+			/^[[:space:]]*sha256 "/ { \
+				if (target_sha != "") { \
+					sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); \
+					target_sha = ""; \
+				} \
 			} \
-		} \
-		{ print } \
-	' "$(HOMEBREW_TAP_FORMULA)" > "$(HOMEBREW_TAP_FORMULA).tmp"; \
-	mv "$(HOMEBREW_TAP_FORMULA).tmp" "$(HOMEBREW_TAP_FORMULA)"; \
+			{ print } \
+		' "$(HOMEBREW_TAP_FORMULA)" > "$(HOMEBREW_TAP_FORMULA).tmp"; \
+		mv "$(HOMEBREW_TAP_FORMULA).tmp" "$(HOMEBREW_TAP_FORMULA)"; \
+		updated_tap=1; \
+	else \
+		echo "→ Skipping external Homebrew tap sync: $(HOMEBREW_TAP_FORMULA) not found."; \
+	fi; \
 	echo "Done. Updated Homebrew formula targets for $(TAG):"; \
 	if [ $$update_tracked -eq 1 ]; then echo "  - packaging/homebrew/gitflow-helper.rb"; fi; \
-	echo "  - $(HOMEBREW_TAP_FORMULA)"
+	if [ $$updated_tap -eq 1 ]; then echo "  - $(HOMEBREW_TAP_FORMULA)"; fi
 
 ## publish-winget: upload artifacts first, then update local Winget manifests to point at the current GitHub release artifact and checksum
 publish-winget: publish-github
@@ -536,16 +541,19 @@ publish-winget: publish-github
 	sed -i.bak 's|InstallerUrl: .*|InstallerUrl: https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
 	sed -i.bak 's|InstallerSha256: .*|InstallerSha256: '"$$windows_sha"'|' packaging/winget/novaemx.gitflow-helper.installer.yaml; \
 	sed -i.bak 's|PackageVersion: .*|PackageVersion: $(RELEASE_VERSION)|' packaging/winget/novaemx.gitflow-helper.version.yaml; \
+	sed -i.bak 's|!\[Winget\](https://img.shields.io/badge/winget-v[^)]*-green)|![Winget](https://img.shields.io/badge/winget-v$(RELEASE_VERSION)-green)|' README.md; \
 	rm -f packaging/winget/novaemx.gitflow-helper.yaml.bak packaging/winget/novaemx.gitflow-helper.installer.yaml.bak packaging/winget/novaemx.gitflow-helper.version.yaml.bak; \
+	rm -f README.md.bak; \
 	echo "Done. Updated Winget manifests for $(TAG)."
 
 ## push-winget: submit the current version to the winget community repository via wingetcreate
 push-winget: publish-winget
+	@command -v wingetcreate >/dev/null 2>&1 || { echo "wingetcreate CLI is required to submit Winget updates"; exit 1; }
 	wingetcreate update \
+		NovaeMX.gitflow-helper \
 		--version $(RELEASE_VERSION) \
 		--urls https://github.com/$(GITHUB_REPO)/releases/download/$(TAG)/gitflow-$(RELEASE_VERSION)-windows-amd64.zip \
-		--submit \
-		NovaeMX.gitflow-helper
+		--submit
 	@echo "Winget submission done for $(TAG)."
 
 ## publish-linux: validate linux package artifacts for release channels (.deb/.rpm/.pkg.tar.zst) on amd64 + arm64
@@ -561,7 +569,7 @@ publish-linux: publish-github
 	echo "Done. Linux amd64+arm64 package artifacts and Debian/Rocky repo metadata are ready for $(TAG)."
 
 ## publish-all: build locally, upload artifacts to GitHub Releases, and stamp package manifests
-publish-all: require-gh publish-homebrew publish-winget publish-linux
+publish-all: require-gh publish-homebrew push-winget publish-linux
 	@echo "All publish targets completed for $(TAG)."
 
 ## release-snapshot: test goreleaser locally without publishing

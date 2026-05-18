@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 )
 
@@ -100,5 +101,32 @@ func TestHandleInputKey_EnterNormalizesFeatureInput(t *testing.T) {
 	}
 	if updated.pendingAction != nil {
 		t.Fatal("expected pending action cleared")
+	}
+}
+
+func TestAttachLoggingFlag_AddsLogWhenEnabled(t *testing.T) {
+	debug.Configure(t.TempDir(), true, false)
+	t.Cleanup(func() { debug.Configure("", false, false) })
+	got := attachLoggingFlag("gitflow status")
+	if got != "gitflow status --log" {
+		t.Fatalf("expected log flag to be added, got %q", got)
+	}
+}
+
+func TestAttachLoggingFlag_PrefersDebug(t *testing.T) {
+	debug.Configure(t.TempDir(), false, true)
+	t.Cleanup(func() { debug.Configure("", false, false) })
+	got := attachLoggingFlag("gitflow status")
+	if got != "gitflow status --debug" {
+		t.Fatalf("expected debug flag to be added, got %q", got)
+	}
+}
+
+func TestAttachLoggingFlag_DoesNotDuplicateFlag(t *testing.T) {
+	debug.Configure(t.TempDir(), false, true)
+	t.Cleanup(func() { debug.Configure("", false, false) })
+	got := attachLoggingFlag("gitflow status --debug")
+	if got != "gitflow status --debug" {
+		t.Fatalf("expected command to remain unchanged, got %q", got)
 	}
 }

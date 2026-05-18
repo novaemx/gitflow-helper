@@ -1,4 +1,4 @@
-<!-- gitflow-version: 0.6.5 -->
+<!-- gitflow-version: 0.6.6 -->
 # Copilot Instructions
 
 # Role: Principal Software Engineer (25+ YOE)

@@ -16,6 +16,9 @@ var version = "dev"
 // commit is injected at build time via -ldflags "-X main.commit=..."
 var commit = ""
 
+// buildDate is injected at build time via -ldflags "-X main.buildDate=..."
+var buildDate = ""
+
 var commitHashPattern = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
 
 func detectCommitHash() string {
@@ -52,6 +55,26 @@ func buildDisplayVersion(baseVersion, buildHash string) string {
 	return baseVersion + " (build " + hash + ")"
 }
 
+func detectBuildDate() string {
+	if exe, err := os.Executable(); err == nil {
+		if info, statErr := os.Stat(exe); statErr == nil {
+			return info.ModTime().UTC().Format("2006-01-02T15:04:05Z")
+		}
+	}
+	return "unknown"
+}
+
+func normalizeBuildDate(input string) string {
+	v := strings.TrimSpace(input)
+	if v == "" {
+		return "unknown"
+	}
+	if strings.EqualFold(v, "none") || strings.EqualFold(v, "unknown") {
+		return "unknown"
+	}
+	return v
+}
+
 func main() {
 	if version == "dev" {
 		if data, err := os.ReadFile("VERSION"); err == nil {
@@ -65,9 +88,14 @@ func main() {
 	if hash == "" {
 		hash = detectCommitHash()
 	}
+	compiledAt := normalizeBuildDate(buildDate)
+	if compiledAt == "unknown" {
+		compiledAt = detectBuildDate()
+	}
 
 	root := commands.NewRootCmd(version)
 	root.Version = buildDisplayVersion(version, hash)
+	debug.SetBuildInfo(root.Version, compiledAt, hash)
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
