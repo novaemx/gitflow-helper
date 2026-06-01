@@ -93,7 +93,7 @@ func TestEnd_NoopWhenNoMatchingStart(t *testing.T) {
 
 // ── PrintTimings ──────────────────────────────────────────────────────────
 
-func TestPrintTimings_WritesToStderrWhenDebugEnabled(t *testing.T) {
+func TestPrintTimings_WritesToLogFileWhenDebugEnabled(t *testing.T) {
 	resetDebugStateForTest(t)
 	defer resetDebugStateForTest(t)
 
@@ -103,20 +103,14 @@ func TestPrintTimings_WritesToStderrWhenDebugEnabled(t *testing.T) {
 	end := Start("timed-section")
 	end()
 
-	// Redirect stderr to a temporary file to capture output.
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	old := os.Stderr
-	os.Stderr = w
 	PrintTimings()
-	w.Close()
-	os.Stderr = old
 
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
+	path := currentLogPathForTest(t, root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	output := string(data)
 
 	if !strings.Contains(output, "TIMING REPORT") {
 		t.Fatalf("expected TIMING REPORT in output, got: %q", output)
@@ -141,17 +135,15 @@ func TestPrintTimings_EmptyTimings_NoOutput(t *testing.T) {
 	Configure(root, false, true)
 	// No Start/End calls — timings slice is empty.
 
-	r, w, _ := os.Pipe()
-	old := os.Stderr
-	os.Stderr = w
 	PrintTimings()
-	w.Close()
-	os.Stderr = old
 
-	buf := make([]byte, 1024)
-	n, _ := r.Read(buf)
-	if n > 0 {
-		t.Fatalf("expected no output for empty timings, got: %q", string(buf[:n]))
+	path := currentLogPathForTest(t, root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	if strings.Contains(string(data), "TIMING REPORT") {
+		t.Fatalf("expected no timing report for empty timings, got: %q", string(data))
 	}
 }
 
@@ -212,23 +204,21 @@ func TestLogf_LogOnly_WritesFileNotStderr(t *testing.T) {
 
 // ── Printf (debug level) ──────────────────────────────────────────────────
 
-func TestPrintf_WritesToStderrWhenDebugEnabled(t *testing.T) {
+func TestPrintf_WritesToLogFileWhenDebugEnabled(t *testing.T) {
 	resetDebugStateForTest(t)
 	defer resetDebugStateForTest(t)
 
 	root := t.TempDir()
 	Configure(root, false, true)
 
-	r, w, _ := os.Pipe()
-	old := os.Stderr
-	os.Stderr = w
 	Printf("debug value=%d", 42)
-	w.Close()
-	os.Stderr = old
 
-	buf := make([]byte, 1024)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
+	path := currentLogPathForTest(t, root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	output := string(data)
 	if !strings.Contains(output, "debug value=42") {
 		t.Fatalf("expected debug output, got: %q", output)
 	}
@@ -242,17 +232,15 @@ func TestPrintf_NoopWhenLogOnly(t *testing.T) {
 	Configure(root, true, false) // log only, not debug
 
 	// Printf requires LevelDebug — should produce no output at LevelLog.
-	r, w, _ := os.Pipe()
-	old := os.Stderr
-	os.Stderr = w
 	Printf("should-not-appear")
-	w.Close()
-	os.Stderr = old
 
-	buf := make([]byte, 1024)
-	n, _ := r.Read(buf)
-	if strings.Contains(string(buf[:n]), "should-not-appear") {
-		t.Fatal("Printf should not output when only log level is enabled")
+	path := currentLogPathForTest(t, root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	if strings.Contains(string(data), "should-not-appear") {
+		t.Fatal("Printf should not write when only log level is enabled")
 	}
 }
 

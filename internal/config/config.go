@@ -234,6 +234,28 @@ func SaveAIIntegrationChoice(root string, choice AIIntegrationChoice) error {
 	return writeProjectConfigMap(root, decoded)
 }
 
+// RemoveAIIntegrationChoice deletes the `ai_integration` key from the
+// project's config file (and the legacy on-disk file if present). If the
+// config ends up empty, the file is left in place with an empty JSON
+// object so subsequent Save calls do not re-create the file. Used by
+// `gitflow setup --uninstall`.
+func RemoveAIIntegrationChoice(root string) error {
+	decoded, _, err := loadProjectConfigMap(root)
+	if err != nil {
+		return err
+	}
+	if decoded != nil {
+		delete(decoded, "ai_integration")
+	}
+	// Write the (possibly empty) map back so the ai_integration entry is gone.
+	if decoded != nil {
+		return writeProjectConfigMap(root, decoded)
+	}
+	// No prior config file: just nuke the legacy file if it exists.
+	_ = os.Remove(legacyAIIntegrationPath(root))
+	return nil
+}
+
 func findProjectRootFrom(start string) string {
 	p := strings.TrimSpace(start)
 	if p == "" {

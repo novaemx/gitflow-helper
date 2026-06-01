@@ -1,0 +1,221 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  test:
+    name: test + coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: go test ./... -race -covermode=atomic -coverprofile=coverage.out
+
+      - name: Enforce per-package coverage >= 60%
+        run: |
+          set -e
+          # Run a second time with -cover (no -race) to capture per-package
+          # coverage percentages in the human-readable form we can parse.
+          # The -race run above already validates the tests themselves.
+          echo "Per-package coverage report:"
+          go test ./... -cover 2>&1 | tee /tmp/coverage.txt
+          echo
+          # Threshold is set to 60% to match the current floor of the project
+          # (cmd/gitflow). The target is 80% per package; see the follow-up
+          # tracking issue for the TDD plan to lift the worst offenders
+          # (internal/flow, internal/commands).
+          THRESHOLD=60
+          bad=0
+          while IFS= read -r line; do
+            case "$line" in
+              "ok  "*"coverage: "*" of statements")
+                pkg=$(echo "$line" | awk '{print $2}')
+                pct=$(echo "$line" | sed -E 's/.*coverage: ([0-9.]+)% of statements.*/\1/')
+                # awk float comparison (POSIX awk has no built-in float; use shell).
+                under=$(awk -v p="$pct" -v t="$THRESHOLD" 'BEGIN { print (p+0 < t) ? 1 : 0 }')
+                if [ "$under" = "1" ]; then
+                  printf '\033[31m::error file=%s::Package coverage %s%% is below the %s%% per-package gate (target: 80%%).\033[0m\n' "$pkg" "$pct" "$THRESHOLD"
+                  bad=$((bad+1))
+                else
+                  printf '  %-60s %5s%%\n' "$pkg" "$pct"
+                fi
+                ;;
+            esac
+          done < /tmp/coverage.txt
+          echo
+          if [ "$bad" -gt 0 ]; then
+            echo "::error::$bad package(s) below the ${THRESHOLD}%% per-package coverage gate. See annotations above."
+            exit 1
+          fi
+          echo "All packages >= ${THRESHOLD}% per-package coverage (target: 80%)."
+
+  release:
+    name: build + publish GitHub Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Extract release notes (### TL;DR) from CHANGELOG.md
+        id: notes
+        run: |
+          set -e
+          version="${GITHUB_REF_NAME#v}"
+          awk -v version="$version" '
+            BEGIN { section_header = "## [" version "] - " }
+            index($0, section_header) == 1 { in_version=1; next }
+            in_version && index($0, "## [") == 1 { in_version=0 }
+            in_version && /^### TL;DR/ { in_tldr=1; next }
+            in_tldr && /^### / { in_tldr=0 }
+            in_tldr { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::warning::No ### TL;DR block found for ${version}; falling back to git log"
+            prev_tag=$(git tag --sort=-version:refname | awk -v cur="$GITHUB_REF_NAME" '$0 != cur { print; exit }')
+            if [ -n "$prev_tag" ]; then
+              range="${prev_tag}..${GITHUB_REF_NAME}"
+            else
+              range="$GITHUB_REF_NAME"
+            fi
+            { echo "## Changes"; echo; git log --no-merges --pretty='- %s' "$range"; echo; echo "Range: $range"; } > notes.md
+          fi
+          { echo "## Release ${GITHUB_REF_NAME}"; echo; cat notes.md; } > notes-final.md
+          {
+            echo "content<<EOF"
+            cat notes-final.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke-test the linux/amd64 binary (native to this runner)
+        run: |
+          set -e
+          asset="gitflow-${GITHUB_REF_NAME#v}-linux-amd64.tar.gz"
+          gh release download "$GITHUB_REF_NAME" --pattern "$asset" --dir /tmp/smoke
+          tar -xzf "/tmp/smoke/$asset" -C /tmp/smoke gitflow
+          /tmp/smoke/gitflow --version
+          /tmp/smoke/gitflow --help > /dev/null
+          echo "Smoke test OK: $asset"
+
+  formula:
+    name: update homebrew formula + tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch of gitflow-helper
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get darwin-universal SHA256 from release checksums
+        id: sha
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -e
+          version=${VERSION#v}
+          gh release download "$VERSION" --pattern 'checksums.txt' --dir .
+          sha=$(awk -v f="gitflow-${version}-darwin-universal.tar.gz" '$2 == f { print $1 }' checksums.txt)
+          [ -n "$sha" ] || { echo "::error::darwin-universal sha not found in checksums.txt"; exit 1; }
+          echo "value=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version + url + sha256 in packaging/homebrew/gitflow.rb
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ steps.sha.outputs.value }}
+        run: |
+          set -e
+          version=${TAG#v}
+          awk -v version="$version" -v tag="$TAG" -v darwin_sha="$SHA" '
+            BEGIN { target_sha = "" }
+            /^[[:space:]]*version "/                          { sub(/version ".*"/,                "version \"" version "\"") }
+            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/ {
+              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/,
+                  "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") }
+            /gitflow-[^"]*-darwin-universal\.tar\.gz/         { target_sha = darwin_sha }
+            /^[[:space:]]*sha256 "/ {
+              if (target_sha != "") { sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); target_sha = "" }
+            }
+            { print }
+          ' packaging/homebrew/gitflow.rb > packaging/homebrew/gitflow.rb.tmp
+          mv packaging/homebrew/gitflow.rb.tmp packaging/homebrew/gitflow.rb
+
+      - name: Commit and push formula bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packaging/homebrew/gitflow.rb
+          git diff --cached --quiet \
+            || git commit -m "chore(release): bump homebrew formula to ${GITHUB_REF_NAME#v}"
+          git push
+
+      - name: Push to novaemx/homebrew-tap
+        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ steps.sha.outputs.value }}
+        run: |
+          set -e
+          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/novaemx/homebrew-tap.git" /tmp/tap
+          cd /tmp/tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          version=${TAG#v}
+          if [ ! -f Formula/gitflow.rb ]; then
+            echo "::error::Formula/gitflow.rb not found in homebrew-tap"
+            exit 1
+          fi
+          awk -v version="$version" -v tag="$TAG" -v darwin_sha="$SHA" '
+            BEGIN { target_sha = "" }
+            /^[[:space:]]*version "/                          { sub(/version ".*"/,                "version \"" version "\"") }
+            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/ {
+              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/,
+                  "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") }
+            /gitflow-[^"]*-darwin-universal\.tar\.gz/         { target_sha = darwin_sha }
+            /^[[:space:]]*sha256 "/ {
+              if (target_sha != "") { sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); target_sha = "" }
+            }
+            { print }
+          ' Formula/gitflow.rb > Formula/gitflow.rb.tmp
+          mv Formula/gitflow.rb.tmp Formula/gitflow.rb
+          git add Formula/gitflow.rb
+          git diff --cached --quiet \
+            || git commit -m "gitflow-helper ${version}"
+          git push origin main

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "gitflow": {
+      "command": "gitflow",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}

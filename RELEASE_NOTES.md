@@ -1,11 +1,15 @@
-# Release 0.6.6
+# Release 0.6.7
 
-**Date:** 2026-05-07
+**Date:** 2026-06-01
 
 ## What's New
 
+- Squash(feature): closure-pending-loose-ends
+- Merge feature 'fix-homebrew-formula-path-066' into develop
 - Merge feature 'mermaid-diagram-eye-candy' into develop
 - Add full-screen timeline diagram view
-- Merge feature 'cursor-command-playbook' into develop
-- Homologate skill routing across generated instructions
+
+## Bug Fixes
+
+- Rename formula path from gitflow-helper.rb to gitflow.rb
 

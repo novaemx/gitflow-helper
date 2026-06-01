@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-06-01
+
+### TL;DR
+This release turns `gitflow setup` into a complete, agent-friendly installation command and moves binary compilation from local-only builds into a deterministic GitHub Actions pipeline. Four new flags (`--yes`, `--force`, `--check`, `--uninstall`) round out the setup UX for non-interactive agents, and the new CI pipeline builds all 5 OS/arch targets plus nfpms on every `v*` tag push with a per-package coverage gate.
+
+### Added
+- Added `gitflow setup --yes` (`-y`) to auto-accept the AI integration consent dialog for non-interactive agents and CI runs.
+- Added `gitflow setup --force` (`-f`) to re-write rule files and skills even when on-disk content already matches the expected byte stream.
+- Added `gitflow setup --check` dry-run mode that reports what would be created or updated without writing to disk.
+- Added `gitflow setup --uninstall` to remove all installed artifacts and clear the consent entry from `.gitflow/config.json`.
+- Added `RemoveRulesForIDE` (companion-aware inverse of `EnsureRulesForIDE`) in `internal/ide/detect.go` for the uninstall path.
+- Added `RemoveAIIntegrationChoice` in `internal/config` to clear the consent entry during uninstall.
+- Added `SetForceRuleWrite` in `internal/ide/detect.go` to scope the `--force` flag to a single setup invocation.
+- Added GitHub Actions release pipeline at `.github/workflows/release.yml` that builds all 5 OS/arch targets + `darwin-universal` + nfpms via GoReleaser on `v*` tag push, smoke-tests the linux/amd64 binary, creates the GitHub Release, and auto-bumps `packaging/homebrew/gitflow.rb` and the `novaemx/homebrew-tap` formula.
+- Added per-package coverage gate (currently `>=60%`, target `80%`) to the release workflow, with per-package `::error::` annotations on regression.
+- Added auto-install of Claude Code companion artifacts (`CLAUDE.md`, `.claude/mcp.json`) when Cursor / VS Code / Copilot is the primary IDE and Claude Code is detected in the same environment.
+
+### Changed
+- Rewrote the README "Local-Only Release Policy" section as a "Release Pipeline" section documenting the new CI flow and keeping the local `make publish-*` targets as documented fallback.
+- Replaced the workflow's total-coverage gate with a per-package gate, emitting a tabular coverage report and `::error::` lines per failing package.
+- Updated the README IDE matrix to document the new Cursor + Claude Code companion install behavior.
+- Extended the `gitflow setup` command's `--help` text to document the four new flags.
+
+### Fixed
+- Renamed the Homebrew formula from `packaging/homebrew/gitflow-helper.rb` to `packaging/homebrew/gitflow.rb` to match the binary name and Homebrew naming convention.
+
 ## [0.6.6] - 2026-05-07
 
 ### TL;DR

@@ -61,6 +61,13 @@ func isDevRepo(projectRoot string) bool {
 }
 
 func ensureEmbeddedSkill(projectRoot, ideID string) (string, error) {
+	return ensureEmbeddedSkillWithForce(projectRoot, ideID, false)
+}
+
+// ensureEmbeddedSkillWithForce is the implementation behind
+// `gitflow setup --force`. When force is true, the byte-equality idempotency
+// check is skipped and the file is re-written unconditionally.
+func ensureEmbeddedSkillWithForce(projectRoot, ideID string, force bool) (string, error) {
 	path, err := skillPathForIDE(projectRoot, ideID)
 	if err != nil {
 		return "", err
@@ -82,9 +89,11 @@ func ensureEmbeddedSkill(projectRoot, ideID string) (string, error) {
 		return "", err
 	}
 
-	existing, err := os.ReadFile(path)
-	if err == nil && string(existing) == content {
-		return "", nil
+	if !force {
+		existing, err := os.ReadFile(path)
+		if err == nil && string(existing) == content {
+			return "", nil
+		}
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {

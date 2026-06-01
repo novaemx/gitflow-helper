@@ -36,9 +36,13 @@ func generateCursorRule(projectRoot string) (string, error) {
 	}
 	path := cursorRulePath(projectRoot)
 	content := cursorRuleContent()
-	existing, err := os.ReadFile(path)
-	if err == nil && string(existing) == content {
-		return "", nil
+	// When `--force` is in effect, always re-write even if content matches.
+	// The forceRuleWrite var is set by the setup command (see detect.go).
+	if !forceRuleWrite {
+		existing, err := os.ReadFile(path)
+		if err == nil && string(existing) == content {
+			return "", nil
+		}
 	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return "", err

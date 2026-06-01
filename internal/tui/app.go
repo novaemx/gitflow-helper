@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/novaemx/gitflow-helper/internal/config"
+	"github.com/novaemx/gitflow-helper/internal/debug"
 	"github.com/novaemx/gitflow-helper/internal/gitflow"
 	"github.com/novaemx/gitflow-helper/internal/ide"
 	mcpserver "github.com/novaemx/gitflow-helper/internal/mcp"
@@ -662,7 +663,7 @@ func (m model) startCommand(a action) (tea.Model, tea.Cmd) {
 // runCommandAsync executes a shell command in the background, captures output,
 // and sends it back to the TUI as a message — never leaves the AltScreen.
 func (m model) runCommandAsync(a action) tea.Cmd {
-	cmdStr := a.Command
+	cmdStr := attachLoggingFlag(a.Command)
 	label := a.Label
 	projectRoot := m.gf.Config.ProjectRoot
 	return func() tea.Msg {
@@ -698,6 +699,26 @@ func (m model) runCommandAsync(a action) tea.Cmd {
 			err:    err,
 		}
 	}
+}
+
+func attachLoggingFlag(cmd string) string {
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		return cmd
+	}
+	if strings.Contains(trimmed, " --debug") || strings.HasSuffix(trimmed, "--debug") {
+		return trimmed
+	}
+	if strings.Contains(trimmed, " --log") || strings.HasSuffix(trimmed, "--log") {
+		return trimmed
+	}
+	if debug.IsDebugEnabled() {
+		return trimmed + " --debug"
+	}
+	if debug.IsLogEnabled() {
+		return trimmed + " --log"
+	}
+	return trimmed
 }
 
 func (m model) View() string {

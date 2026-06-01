@@ -26,6 +26,9 @@ func resetDebugStateForTest(t *testing.T) {
 	}
 	logFilePath = ""
 	configuredRoot = ""
+	buildVersion = "unknown"
+	buildDate = "unknown"
+	buildCommit = "unknown"
 }
 
 func currentLogPathForTest(t *testing.T, root string) string {
@@ -103,5 +106,39 @@ func TestConfigure_DebugWritesDebugEntriesToLogFile(t *testing.T) {
 	}
 	if !IsDebugEnabled() {
 		t.Fatal("expected debug mode to be enabled")
+	}
+}
+
+func TestConfigure_HeaderIncludesRuntimeMetadata(t *testing.T) {
+	resetDebugStateForTest(t)
+	defer resetDebugStateForTest(t)
+
+	root := t.TempDir()
+	SetBuildInfo("1.2.3", "2026-05-17T00:00:00Z", "abc1234")
+	Configure(root, true, false)
+
+	path := currentLogPathForTest(t, root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "gitflow_version=1.2.3") {
+		t.Fatalf("expected version metadata in header, got %q", content)
+	}
+	if !strings.Contains(content, "gitflow_build_date=2026-05-17T00:00:00Z") {
+		t.Fatalf("expected build date metadata in header, got %q", content)
+	}
+	if !strings.Contains(content, "gitflow_build_commit=abc1234") {
+		t.Fatalf("expected build commit metadata in header, got %q", content)
+	}
+	if !strings.Contains(content, "os=") {
+		t.Fatalf("expected os metadata in header, got %q", content)
+	}
+	if !strings.Contains(content, "cpu_cores=") {
+		t.Fatalf("expected cpu metadata in header, got %q", content)
+	}
+	if !strings.Contains(content, "ram_total=") {
+		t.Fatalf("expected ram metadata in header, got %q", content)
 	}
 }

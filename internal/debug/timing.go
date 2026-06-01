@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -32,7 +33,71 @@ var (
 	logFile        *os.File
 	logFilePath    string
 	configuredRoot string
+	buildVersion   = "unknown"
+	buildDate      = "unknown"
+	buildCommit    = "unknown"
 )
+
+func normalizeBuildValue(value string) string {
+	if value == "" {
+		return "unknown"
+	}
+	return value
+}
+
+// SetBuildInfo stores build/runtime metadata that is emitted in log headers.
+func SetBuildInfo(version, compiledAt, commit string) {
+	mu.Lock()
+	defer mu.Unlock()
+	buildVersion = normalizeBuildValue(version)
+	buildDate = normalizeBuildValue(compiledAt)
+	buildCommit = normalizeBuildValue(commit)
+}
+
+func formatBytes(bytes uint64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+
+	switch {
+	case bytes >= gb:
+		return fmt.Sprintf("%.2f GiB", float64(bytes)/float64(gb))
+	case bytes >= mb:
+		return fmt.Sprintf("%.2f MiB", float64(bytes)/float64(mb))
+	case bytes >= kb:
+		return fmt.Sprintf("%.2f KiB", float64(bytes)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func logHeader(now time.Time, currentLevel Level) string {
+	ramText := "unknown"
+	if ramBytes, ok := totalSystemRAM(); ok {
+		ramText = formatBytes(ramBytes)
+	}
+
+	return fmt.Sprintf(
+		"\n===== Log capture started at %s (level=%s) =====\n"+
+			"gitflow_version=%s\n"+
+			"gitflow_build_date=%s\n"+
+			"gitflow_build_commit=%s\n"+
+			"os=%s arch=%s\n"+
+			"cpu_cores=%d\n"+
+			"ram_total=%s\n",
+		now.Format(time.RFC3339),
+		currentLevel.String(),
+		buildVersion,
+		buildDate,
+		buildCommit,
+		runtime.GOOS,
+		runtime.GOARCH,
+		runtime.NumCPU(),
+		ramText,
+	)
+}
 
 func envLevel() Level {
 	if os.Getenv("GITFLOW_DEBUG") == "1" {
@@ -100,7 +165,7 @@ func Configure(projectRoot string, logEnabled, debugEnabled bool) {
 	logFile = file
 	logFilePath = path
 	configuredRoot = root
-	_, _ = logFile.WriteString(fmt.Sprintf("\n===== Log capture started at %s (level=%s) =====\n", now.Format(time.RFC3339), level.String()))
+	_, _ = logFile.WriteString(logHeader(now, level))
 }
 
 func (l Level) String() string {
@@ -181,16 +246,12 @@ func writeLine(minLevel Level, prefix, format string, args ...any) {
 	mu.Lock()
 	enabled := level >= minLevel
 	file := logFile
-	emitToStderr := level >= LevelDebug
 	mu.Unlock()
 
 	if !enabled {
 		return
 	}
 
-	if emitToStderr {
-		_, _ = os.Stderr.WriteString(line)
-	}
 	if file != nil {
 		mu.Lock()
 		if logFile != nil {
@@ -230,7 +291,6 @@ func PrintTimings() {
 	report += fmt.Sprintf("  %-50s %10.3fms\n", "TOTAL", total.Seconds()*1000)
 	report += "======================\n\n"
 
-	_, _ = os.Stderr.WriteString(report)
 	if file != nil {
 		mu.Lock()
 		if logFile != nil {
