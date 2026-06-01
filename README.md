@@ -202,6 +202,15 @@ Run `gitflow setup` once per project. It auto-detects your IDE and creates:
 | Claude Code / Windsurf / Cline | IDE-specific rule file, IDE MCP config, `.agents/skills/gitflow/SKILL.md` |
 | Zed / Neovim / JetBrains / Unknown | IDE-specific files if applicable, `AGENTS.md`, `~/.agents/skills/gitflow/SKILL.md` |
 
+**Cursor / VS Code / Copilot + Claude Code companion install:** when the
+primary IDE is Cursor, VS Code, or Copilot *and* Claude Code is detected in
+the same environment (env vars `CLAUDE_*` / `ANTHROPIC_*`, or parent process
+`claude`), `gitflow setup` also installs Claude Code artifacts as a companion:
+`CLAUDE.md` and `.claude/mcp.json`. The skill is shared (single install under
+`.agents/skills/gitflow/SKILL.md`). No flag is needed; the companion install
+is fully automatic. To bypass, unset the Claude env vars before running
+`gitflow setup`.
+
 These files instruct the AI agent to run `gitflow --json status` before modifying any code, and the embedded skill is auto-updated if its content changes in newer gitflow binaries.
 
 ### What AGENTS.md Is For
@@ -275,12 +284,12 @@ make universal    # create macOS universal binary with lipo
 make test         # run tests
 make vet          # run go vet
 make release-local                    # build release artifacts locally (no publish)
-make release-local-github             # upload local artifacts to the latest existing GitHub release tag
-make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts
+make release-local-github             # upload local artifacts to the latest existing GitHub release tag (local fallback — CI is default)
+make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts (local fallback — CI is default)
 make publish-homebrew TAG=v0.5.12     # upload artifacts and sync ../homebrew-tap/Formula (tracked packaging/homebrew updates only on release/hotfix)
 make publish-winget TAG=v0.5.12       # upload artifacts, then update Winget version/installer/defaultLocale manifests
 make push-winget TAG=v0.5.12          # submit/update Winget package in microsoft/winget-pkgs via wingetcreate
-make publish-all TAG=v0.5.12          # upload once and update all package manifests
+make publish-all TAG=v0.5.12          # upload once and update all package manifests (local fallback)
 make install      # install to GOPATH/bin
 ```
 
@@ -304,17 +313,36 @@ make cover-package PKG=./internal/commands
 
 Keep `test/` out of releases and CI artifacts; these files are intended for local inspection and CI coverage steps.
 
-## Local-Only Release Policy
+## Release Pipeline
 
-This repository does not use GitHub Actions to compile binaries.
+Tag pushes (`v*`) trigger [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which performs the full release in three jobs:
 
-- All release binaries are built locally on maintainer machines.
-- GitHub Releases are used only as artifact hosting/distribution.
-- Homebrew and Winget manifests point to those GitHub Release artifacts.
+1. **`test`** — runs `go test ./... -race` and enforces a **per-package
+   coverage gate of `≥ 80%`**. Each package is checked independently; any
+   package below the threshold fails the job with an `::error::` annotation
+   naming the offending package.
+2. **`release`** — runs GoReleaser (`goreleaser release --clean`) using the
+   existing `.goreleaser.yml`. Produces all 5 OS/arch targets
+   (linux/amd64, linux/arm64, windows/amd64, darwin/amd64, darwin/arm64) +
+   the `darwin-universal` merge + nfpm packages (`.deb`, `.rpm`, Arch) +
+   `checksums.txt`. Smoke-tests the `linux/amd64` binary. Extracts the
+   `### TL;DR` block from `CHANGELOG.md` and uses it as the GitHub Release
+   body. Uploads everything to a new GitHub Release for the tag.
+3. **`formula`** — bumps `packaging/homebrew/gitflow.rb` on `main` with the
+   new version + URL + SHA256 (read from the just-published `checksums.txt`).
+   When the `HOMEBREW_TAP_GITHUB_TOKEN` secret is configured on the repo,
+   the same bump is mirrored to `novaemx/homebrew-tap/Formula/gitflow.rb`.
 
-### Publish Flow (No Cloud Build)
+### Local Fallback
+
+When CI is unavailable or for ad-hoc releases, the original local flow is
+preserved:
 
 ```bash
+# Build release artifacts locally only (no publish)
+make release-local
+
 # Upload local artifacts to the latest existing release tag
 make release-local-github
 
@@ -327,12 +355,12 @@ make publish-homebrew TAG=v0.5.12
 make publish-winget TAG=v0.5.12
 make push-winget TAG=v0.5.12
 
-# Note: tracked release metadata updates are restricted to release/hotfix branches.
-# On main/develop/feature/bugfix, publish-homebrew still syncs ../homebrew-tap/Formula.
-
 # Or do everything in one shot
 make publish-all TAG=v0.5.12
 ```
+
+The local fallback is fully equivalent to the CI pipeline; CI is just
+the deterministic default.
 
 ## License
 

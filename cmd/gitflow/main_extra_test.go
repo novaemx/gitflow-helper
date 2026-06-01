@@ -59,3 +59,38 @@ func TestBuildDisplayVersion_InvalidHashIgnored(t *testing.T) {
 		t.Fatalf("expected plain version when hash invalid, got %q", got)
 	}
 }
+
+func TestNormalizeBuildDate(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", "unknown"},
+		{"   ", "unknown"},
+		{"none", "unknown"},
+		{"NONE", "unknown"},
+		{"unknown", "unknown"},
+		{"UNKNOWN", "unknown"},
+		{"2026-05-31T12:34:56Z", "2026-05-31T12:34:56Z"},
+		{"  2026-01-01T00:00:00Z  ", "2026-01-01T00:00:00Z"},
+	}
+	for _, c := range cases {
+		if got := normalizeBuildDate(c.in); got != c.want {
+			t.Errorf("normalizeBuildDate(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestDetectBuildDate_OnRealBinary(t *testing.T) {
+	// detectBuildDate reads os.Executable()'s mtime. The current test
+	// binary itself is the executable, so it should yield a valid RFC3339
+	// timestamp rather than "unknown".
+	got := detectBuildDate()
+	if got == "unknown" {
+		t.Fatalf("expected non-unknown build date from test binary, got %q", got)
+	}
+	// Format must be RFC3339: YYYY-MM-DDTHH:MM:SSZ
+	if len(got) < len("2006-01-02T15:04:05Z") {
+		t.Errorf("expected RFC3339-length string, got %q", got)
+	}
+}

@@ -89,6 +89,17 @@ type ideRuleSpec struct {
 	generate func(string) (string, error)
 }
 
+// forceRuleWrite is set during a `--force` run. The cursor rule generator
+// (the only fully-regenerated rule) checks this var to skip the
+// content-equality idempotency check. The non-cursor rules are append-style
+// so the var does not affect them; for those, --force is implemented by
+// deleting the file before regeneration.
+var forceRuleWrite bool
+
+// SetForceRuleWrite toggles the package-level force flag. The setup command
+// uses this with a defer to scope the flag to a single invocation.
+func SetForceRuleWrite(v bool) { forceRuleWrite = v }
+
 var ideRuleRegistry = map[string]ideRuleSpec{
 	IDECursor:     {cursorRulePath, cursorRuleExists, generateCursorRule},
 	IDEVSCode:     {copilotPath, copilotRuleExists, generateCopilotInstructions},
@@ -101,12 +112,82 @@ var ideRuleRegistry = map[string]ideRuleSpec{
 	IDEJetBrains:  {jetbrainsRulePath, jetbrainsRuleExists, generateJetBrainsRule},
 }
 
-// EnsureRulesForIDE checks if rules exist for the detected IDE.
-// If missing, it creates them. Also ensures the embedded gitflow skill is
-// installed, AGENTS.md is present as a universal fallback, and MCP config for
-// IDEs that support it.
-// Returns list of newly created files (empty if all exist).
+// companionDisplayName maps an IDE id to its human-readable display name.
+var companionDisplayName = map[string]string{
+	IDEClaudeCode: "Claude Code",
+}
+
+// companionIDEs returns additional IDEs that should be auto-provisioned
+// alongside the primary IDE when they are also detected in the same
+// environment. The list is empty when no companion is detected.
+//
+// The matrix is intentionally narrow: today, only Cursor-family primaries
+// (Cursor, VSCode, Copilot, the legacy "both") companion-install Claude
+// Code, because real-world usage commonly pairs Cursor with Claude Code.
+// Other IDEs (Windsurf, Cline, Zed, ...) live in different ecosystems
+// and do not auto-companion-install anything.
+func companionIDEs(primary, projectRoot string) []string {
+	switch primary {
+	case IDECursor, IDEBoth, IDEVSCode, IDECopilot:
+		if detectClaudeCode(projectRoot) {
+			return []string{IDEClaudeCode}
+		}
+	}
+	return nil
+}
+
+// EnsureRulesForIDE checks if rules exist for the detected IDE and any
+// detected companion IDEs. For the primary it creates rules if missing,
+// ensures the embedded gitflow skill, AGENTS.md (for non-project-skill
+// IDEs), and MCP config (where supported). After the primary it
+// recursively provisions any IDE returned by companionIDEs() whose
+// detectXxx() returns true in the same environment.
+//
+// Recursion is bounded by a processed-set; a companion whose id equals
+// the primary is skipped.
+//
+// Returns list of newly created files (empty if all exist or on second
+// idempotent run).
 func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
+	processed := map[string]bool{}
+	return ensureRulesRecursive(projectRoot, detected, processed)
+}
+
+func ensureRulesRecursive(projectRoot string, detected DetectedIDE, processed map[string]bool) ([]string, error) {
+	if processed[detected.ID] {
+		return nil, nil
+	}
+	processed[detected.ID] = true
+
+	created, err := ensureRulesForSingleIDE(projectRoot, detected)
+	if err != nil {
+		return created, err
+	}
+
+	for _, companionID := range companionIDEs(detected.ID, projectRoot) {
+		if processed[companionID] {
+			continue
+		}
+		display := companionDisplayName[companionID]
+		if display == "" {
+			display = companionID
+		}
+		more, err := ensureRulesRecursive(projectRoot,
+			DetectedIDE{ID: companionID, DisplayName: display},
+			processed)
+		if err != nil {
+			return append(created, more...), err
+		}
+		created = append(created, more...)
+	}
+	return created, nil
+}
+
+// ensureRulesForSingleIDE contains the original EnsureRulesForIDE body:
+// generates the IDE-specific rule, installs the embedded skill, creates
+// AGENTS.md (when not redundant), provisions MCP config, and emits the
+// semver section for Cursor/Copilot families. No companion logic.
+func ensureRulesForSingleIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
 	var created []string
 
 	// Generate IDE-specific rules.
@@ -187,6 +268,106 @@ func EnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, erro
 	}
 
 	return created, nil
+}
+
+// planEnsureRulesForIDE returns the list of file paths that
+// EnsureRulesForIDE would create/modify for the detected IDE chain, without
+// writing to projectRoot. Implementation: runs EnsureRulesForIDE in a
+// throwaway temp dir and returns that file list. Used by `gitflow setup
+// --check` for dry-run reports.
+func planEnsureRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
+	tmpDir, err := os.MkdirTemp("", "gitflow-check-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+	return EnsureRulesForIDE(tmpDir, detected)
+}
+
+// RemoveRulesForIDE is the inverse of EnsureRulesForIDE: it deletes the
+// IDE-specific rule file, MCP config, project-scoped skill, and (for
+// non-project-skill IDEs) the AGENTS.md universal fallback. It mirrors the
+// companion-aware recursion so uninstalling the primary also removes any
+// companion artifacts (e.g. Cursor uninstall removes Claude Code companion
+// files too). Returns the list of paths that were removed.
+func RemoveRulesForIDE(projectRoot string, detected DetectedIDE) ([]string, error) {
+	processed := map[string]bool{}
+	return removeRulesRecursive(projectRoot, detected, processed)
+}
+
+func removeRulesRecursive(projectRoot string, detected DetectedIDE, processed map[string]bool) ([]string, error) {
+	if processed[detected.ID] {
+		return nil, nil
+	}
+	processed[detected.ID] = true
+
+	var removed []string
+
+	// 1. Remove IDE-specific rule file (e.g. .cursor/rules/gitflow-preflight.mdc)
+	if spec, ok := ideRuleRegistry[detected.ID]; ok {
+		rulePath := spec.path(projectRoot)
+		if _, err := os.Stat(rulePath); err == nil {
+			if rmErr := os.Remove(rulePath); rmErr == nil {
+				removed = append(removed, rulePath)
+			}
+		}
+	}
+
+	// 2. Remove MCP config (e.g. .cursor/mcp.json)
+	if MCPSupportedIDEs[detected.ID] {
+		mcpPath := mcpConfigPath(projectRoot, detected.ID)
+		if mcpPath != "" {
+			if _, err := os.Stat(mcpPath); err == nil {
+				if rmErr := os.Remove(mcpPath); rmErr == nil {
+					removed = append(removed, mcpPath)
+				}
+			}
+		}
+	}
+
+	// 3. Remove project-scoped skill (only for projectScopedSkillIDEs)
+	if projectScopedSkillIDEs[detected.ID] {
+		skillPath := projectSkillPath(projectRoot)
+		if _, err := os.Stat(skillPath); err == nil {
+			if rmErr := os.Remove(skillPath); rmErr == nil {
+				removed = append(removed, skillPath)
+			}
+		}
+		// Also try to remove the now-empty parent dirs.
+		_ = os.Remove(filepath.Dir(skillPath))
+		_ = os.Remove(filepath.Dir(filepath.Dir(skillPath)))
+	}
+
+	// 4. Remove AGENTS.md universal fallback (for non-project-skill IDEs)
+	if !projectScopedSkillIDEs[detected.ID] {
+		agentsMD := agentsPath(projectRoot)
+		if _, err := os.Stat(agentsMD); err == nil {
+			if rmErr := os.Remove(agentsMD); rmErr == nil {
+				removed = append(removed, agentsMD)
+			}
+		}
+	}
+
+	// 5. Recurse into companion IDEs (e.g. uninstalling Cursor also removes
+	//    Claude Code companion files).
+	for _, companionID := range companionIDEs(detected.ID, projectRoot) {
+		if processed[companionID] {
+			continue
+		}
+		display := companionDisplayName[companionID]
+		if display == "" {
+			display = companionID
+		}
+		more, err := removeRulesRecursive(projectRoot,
+			DetectedIDE{ID: companionID, DisplayName: display},
+			processed)
+		if err != nil {
+			return append(removed, more...), err
+		}
+		removed = append(removed, more...)
+	}
+
+	return removed, nil
 }
 
 // --- Individual IDE detectors ---
@@ -577,6 +758,11 @@ func parseWindowsAncestryOutput(raw string) []string {
 // Generate dispatches to the appropriate rule/instruction file generators.
 // For explicit setup: always generates for the specified IDE, installs the
 // embedded skill, ensures AGENTS.md, and writes MCP config when supported.
+//
+// For Cursor-family primaries (cursor, vscode, copilot), Generate also
+// installs any companion IDEs returned by companionIDEs() (e.g. Claude
+// Code when detected in the same environment). The "both" and "unknown"
+// branches keep their original multi-IDE fan-out behavior.
 func Generate(projectRoot, ideType string) ([]string, error) {
 	var files []string
 
@@ -603,6 +789,35 @@ func Generate(projectRoot, ideType string) ([]string, error) {
 					return nil, err
 				}
 				files = append(files, f)
+			}
+		}
+	}
+
+	// For Cursor-family primaries, also install any companion IDEs that
+	// are detected in the same environment. Mirrors the behavior of
+	// EnsureRulesForIDE so that `gitflow setup --ide cursor` and the
+	// auto-detect path stay consistent.
+	switch ideType {
+	case IDECursor, IDEVSCode, IDECopilot:
+		for _, companion := range companionIDEs(ideType, projectRoot) {
+			cspec, ok := ideRuleRegistry[companion]
+			if !ok {
+				continue
+			}
+			if skillPath, err := ensureEmbeddedSkill(projectRoot, companion); err != nil {
+				return nil, err
+			} else if skillPath != "" {
+				files = append(files, skillPath)
+			}
+			cf, err := cspec.generate(projectRoot)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, cf)
+			if MCPSupportedIDEs[companion] {
+				if p, err := EnsureMCPConfig(projectRoot, companion); err == nil && p != "" {
+					files = append(files, p)
+				}
 			}
 		}
 	}

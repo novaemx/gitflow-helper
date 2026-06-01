@@ -77,6 +77,46 @@ func TestEnsureRulesWithAIConsent_FirstRunDeclines(t *testing.T) {
 	}
 }
 
+// TestEnsureRulesWithAIConsent_CursorAccepts_AlsoInstallsClaudeCompanion
+// verifies that the full consent → install path also installs the Claude
+// Code companion artifacts when Claude is detected alongside the primary
+// Cursor IDE. Closes the most load-bearing test gap for the
+// `feature/claudecode-cursor-companion-install` change.
+func TestEnsureRulesWithAIConsent_CursorAccepts_AlsoInstallsClaudeCompanion(t *testing.T) {
+	t.Setenv("CLAUDE_SESSION", "1")
+	dir := t.TempDir()
+	home := t.TempDir()
+	prevHome := UserHomeDirFunc
+	UserHomeDirFunc = func() (string, error) { return home, nil }
+	t.Cleanup(func() { UserHomeDirFunc = prevHome })
+
+	prevAsk := AskAIIntegrationFunc
+	AskAIIntegrationFunc = func(_ DetectedIDE) (bool, error) { return true, nil }
+	t.Cleanup(func() { AskAIIntegrationFunc = prevAsk })
+
+	created, err := EnsureRulesWithAIConsent(dir, DetectedIDE{ID: IDECursor, DisplayName: "Cursor"}, true, "1.0.0")
+	if err != nil {
+		t.Fatalf("EnsureRulesWithAIConsent: %v", err)
+	}
+
+	// Primary Cursor artifacts present.
+	if !cursorRuleExists(dir) {
+		t.Error("expected Cursor rule after consent")
+	}
+	// Companion Claude Code artifacts present.
+	if !claudeCodeRuleExists(dir) {
+		t.Error("expected companion CLAUDE.md after consent")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".claude", "mcp.json")); err != nil {
+		t.Errorf("expected companion .claude/mcp.json: %v", err)
+	}
+	// At least 4 files: cursor rule + cursor mcp + claude rule + claude mcp
+	// (skill may be reported once or zero times depending on idempotency).
+	if len(created) < 4 {
+		t.Errorf("expected at least 4 created files, got %d", len(created))
+	}
+}
+
 func TestEnsureRulesWithAIConsent_UsesExistingEnabledChoice(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()
