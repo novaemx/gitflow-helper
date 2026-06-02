@@ -143,7 +143,7 @@ jobs:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get darwin-universal SHA256 from release checksums
+      - name: Get darwin-arm64 SHA256 from release checksums
         id: sha
         env:
           VERSION: ${{ github.ref_name }}
@@ -151,8 +151,8 @@ jobs:
           set -e
           version=${VERSION#v}
           gh release download "$VERSION" --pattern 'checksums.txt' --dir .
-          sha=$(awk -v f="gitflow-${version}-darwin-universal.tar.gz" '$2 == f { print $1 }' checksums.txt)
-          [ -n "$sha" ] || { echo "::error::darwin-universal sha not found in checksums.txt"; exit 1; }
+          sha=$(awk -v f="gitflow-${version}-darwin-arm64.tar.gz" '$2 == f { print $1 }' checksums.txt)
+          [ -n "$sha" ] || { echo "::error::darwin-arm64 sha not found in checksums.txt"; exit 1; }
           echo "value=${sha}" >> "$GITHUB_OUTPUT"
 
       - name: Bump version + url + sha256 in packaging/homebrew/gitflow.rb
@@ -165,10 +165,10 @@ jobs:
           awk -v version="$version" -v tag="$TAG" -v darwin_sha="$SHA" '
             BEGIN { target_sha = "" }
             /^[[:space:]]*version "/                          { sub(/version ".*"/,                "version \"" version "\"") }
-            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/ {
-              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/,
-                  "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") }
-            /gitflow-[^"]*-darwin-universal\.tar\.gz/         { target_sha = darwin_sha }
+            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/ {
+              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/,
+                  "releases/download/" tag "/gitflow-" version "-darwin-arm64.tar.gz") }
+            /gitflow-[^"]*-darwin-arm64\.tar\.gz/            { target_sha = darwin_sha }
             /^[[:space:]]*sha256 "/ {
               if (target_sha != "") { sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); target_sha = "" }
             }
@@ -205,10 +205,10 @@ jobs:
           awk -v version="$version" -v tag="$TAG" -v darwin_sha="$SHA" '
             BEGIN { target_sha = "" }
             /^[[:space:]]*version "/                          { sub(/version ".*"/,                "version \"" version "\"") }
-            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/ {
-              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-universal\.tar\.gz/,
-                  "releases/download/" tag "/gitflow-" version "-darwin-universal.tar.gz") }
-            /gitflow-[^"]*-darwin-universal\.tar\.gz/         { target_sha = darwin_sha }
+            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/ {
+              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/,
+                  "releases/download/" tag "/gitflow-" version "-darwin-arm64.tar.gz") }
+            /gitflow-[^"]*-darwin-arm64\.tar\.gz/            { target_sha = darwin_sha }
             /^[[:space:]]*sha256 "/ {
               if (target_sha != "") { sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); target_sha = "" }
             }

@@ -81,9 +81,9 @@ sudo dnf install gitflow-helper
 Download the latest binary for your platform from the [Releases](../../releases) page.
 
 ```bash
-# macOS (Intel + Apple Silicon)
-curl -LO https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-<version>-darwin-universal.tar.gz
-tar -xzf gitflow-<version>-darwin-universal.tar.gz
+# macOS Apple Silicon (arm64)
+curl -LO https://github.com/novaemx/gitflow-helper/releases/latest/download/gitflow-<version>-darwin-arm64.tar.gz
+tar -xzf gitflow-<version>-darwin-arm64.tar.gz
 sudo install -m 755 gitflow /usr/local/bin/gitflow
 
 # Linux x86_64 (tarball fallback)
@@ -278,19 +278,14 @@ If absent, the tool auto-detects common version files (package.json, pyproject.t
 ## Building
 
 ```bash
-make build        # build for current platform
-make build-all    # cross-compile linux/windows/macOS
-make universal    # create macOS universal binary with lipo
-make test         # run tests
-make vet          # run go vet
-make release-local                    # build release artifacts locally (no publish)
-make release-local-github             # upload local artifacts to the latest existing GitHub release tag (local fallback — CI is default)
-make publish-github TAG=v0.5.12       # create/update GitHub release and upload local artifacts (local fallback — CI is default)
-make publish-homebrew TAG=v0.5.12     # upload artifacts and sync ../homebrew-tap/Formula (tracked packaging/homebrew updates only on release/hotfix)
-make publish-winget TAG=v0.5.12       # upload artifacts, then update Winget version/installer/defaultLocale manifests
-make push-winget TAG=v0.5.12          # submit/update Winget package in microsoft/winget-pkgs via wingetcreate
-make publish-all TAG=v0.5.12          # upload once and update all package manifests (local fallback)
-make install      # install to GOPATH/bin
+make build            # build for current platform
+make build-all        # cross-compile linux/windows/macOS
+make universal        # create macOS universal binary with lipo
+make test             # run tests
+make vet              # run go vet
+make release-local    # build release artifacts locally (no publish — CI is the sole publisher)
+make release-snapshot # goreleaser --snapshot, validates config without publishing
+make install          # install to a user-writable dir (no sudo needed)
 ```
 
 ## Testing & Coverage
@@ -315,52 +310,56 @@ Keep `test/` out of releases and CI artifacts; these files are intended for loca
 
 ## Release Pipeline
 
+**GitHub Actions is the sole publisher.** Local `make` targets only build
+artifacts into `dist/`; they never push to the GitHub Release. Pushing source
+to a `release/*` or `hotfix/*` branch and finishing the branch produces the
+`v*` tag, which triggers the workflow below.
+
 Tag pushes (`v*`) trigger [`.github/workflows/release.yml`](.github/workflows/release.yml),
 which performs the full release in three jobs:
 
 1. **`test`** — runs `go test ./... -race` and enforces a **per-package
-   coverage gate of `≥ 80%`**. Each package is checked independently; any
-   package below the threshold fails the job with an `::error::` annotation
-   naming the offending package.
+   coverage gate of `≥ 60%`** (target 80%). Each package is checked
+   independently; any package below the threshold fails the job with an
+   `::error::` annotation naming the offending package.
 2. **`release`** — runs GoReleaser (`goreleaser release --clean`) using the
-   existing `.goreleaser.yml`. Produces all 5 OS/arch targets
-   (linux/amd64, linux/arm64, windows/amd64, darwin/amd64, darwin/arm64) +
-   the `darwin-universal` merge + nfpm packages (`.deb`, `.rpm`, Arch) +
-   `checksums.txt`. Smoke-tests the `linux/amd64` binary. Extracts the
-   `### TL;DR` block from `CHANGELOG.md` and uses it as the GitHub Release
-   body. Uploads everything to a new GitHub Release for the tag.
+   existing `.goreleaser.yml`. Produces 4 OS/arch targets (linux/amd64,
+   linux/arm64, windows/amd64, darwin/arm64) + nfpms (`.deb`, `.rpm`, Arch)
+   for both Linux architectures + `checksums.txt`. Smoke-tests the
+   `linux/amd64` binary. Extracts the `### TL;DR` block from `CHANGELOG.md`
+   and uses it as the GitHub Release body. Uploads everything to a new
+   GitHub Release for the tag.
 3. **`formula`** — bumps `packaging/homebrew/gitflow.rb` on `main` with the
    new version + URL + SHA256 (read from the just-published `checksums.txt`).
    When the `HOMEBREW_TAP_GITHUB_TOKEN` secret is configured on the repo,
    the same bump is mirrored to `novaemx/homebrew-tap/Formula/gitflow.rb`.
 
-### Local Fallback
+### Build matrix
 
-When CI is unavailable or for ad-hoc releases, the original local flow is
-preserved:
+| Platform | GOOS/GOARCH | Notes |
+|---|---|---|
+| Linux x86_64 | `linux/amd64` | `GOAMD64=v3` — AVX2 + FMA + BMI2, requires Haswell (2013)+ |
+| Linux ARM64 | `linux/arm64` | Graviton, Apple-Silicon Linux, Raspberry Pi 4/5 |
+| Windows x86_64 | `windows/amd64` | `GOAMD64=v3` — same Haswell+ baseline as Linux |
+| macOS Apple Silicon | `darwin/arm64` | Native Go 1.21+ codegen; macOS Intel discontinued |
+
+All builds use `-trimpath`, `-buildid=none`, `-ldflags="-s -w"`, and
+`-pgo=auto`. PGO is a no-op until a `default.pgo` profile is committed to the
+main package directory; once present, it activates automatically with no
+config change (typical 5–14% speedup on hot paths).
+
+### Local validation (no publish)
 
 ```bash
-# Build release artifacts locally only (no publish)
-make release-local
+# Lint the goreleaser config without producing artifacts
+goreleaser check
 
-# Upload local artifacts to the latest existing release tag
-make release-local-github
+# Build all 4 target archives into dist/ for inspection (no GitHub touch)
+make release-snapshot
 
-# Create/update the GitHub release and upload locally-built binaries
-make publish-github TAG=v0.5.12
-
-# Refresh package manifests to point at that GitHub release.
-# Each target now depends on publish-github, so artifacts are uploaded first.
-make publish-homebrew TAG=v0.5.12
-make publish-winget TAG=v0.5.12
-make push-winget TAG=v0.5.12
-
-# Or do everything in one shot
-make publish-all TAG=v0.5.12
+# Build a specific tag's artifacts into dist/ (no GitHub touch)
+make release-local TAG=v0.6.8
 ```
-
-The local fallback is fully equivalent to the CI pipeline; CI is just
-the deterministic default.
 
 ## License
 
