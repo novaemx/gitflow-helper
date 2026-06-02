@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-02
+
+### TL;DR
+Release pipeline is now CI-only and produces binaries tuned for maximum per-platform performance. The build matrix is reduced to `linux/amd64`, `linux/arm64`, `windows/amd64`, and `darwin/arm64`; macOS Intel is discontinued. Linux and Windows x86_64 binaries target the `GOAMD64=v3` micro-architecture (AVX2 + FMA, Haswell 2013+). Local `make publish-*` targets that pushed binaries via the `gh` CLI have been removed — the GitHub Actions release workflow is the sole publisher.
+
+### Changed
+- Cut the release matrix to 4 platforms: `linux/amd64`, `linux/arm64`, `windows/amd64`, `darwin/arm64`. Removed `darwin/amd64` (Intel Mac discontinued) and the derived `darwin-universal` archive.
+- Updated the Homebrew cask to download `gitflow-<ver>-darwin-arm64.tar.gz` instead of the old `darwin-universal.tar.gz`. The CI `formula` job now stamps the darwin-arm64 SHA into `packaging/homebrew/gitflow.rb` and `novaemx/homebrew-tap`.
+- Added per-platform max-performance build flags to `.goreleaser.yml`: `-trimpath`, `-buildid=none`, `-ldflags="-s -w"`, and `-pgo=auto` on every build. `-pgo=auto` is a no-op until a `default.pgo` profile is committed; once present it activates PGO with zero further config changes (typical 5–14% speedup on hot paths).
+- `linux/amd64` and `windows/amd64` now build with `GOAMD64=v3`, enabling AVX2 + FMA + BMI2 instructions. **Tradeoff:** these binaries require a Haswell (2013) or newer CPU. Pre-Haswell hosts must rebuild from source with `GOAMD64=v2` (or unset the env var). The CLI is a developer tool — modern hardware is the assumed baseline.
+- `darwin/arm64` keeps the standard Go 1.21+ Apple Silicon codegen (LSE atomics, NEON FP). There is no `GOARM64` micro-arch level; PGO is the main remaining lever.
+
+### Removed
+- Removed local `gh release upload` paths from the Makefile: `require-gh`, `validate-publish-context`, `validate-release-assets`, `validate-linux-packages`, `generate-linux-release-assets`, `generate-linux-repo-metadata`, `cleanup-release-assets`, `upload-release-assets`, `release-local-github`, `publish-github`, `publish-homebrew`, `publish-winget`, `push-winget`, `publish-linux`, `publish-all`, and the `release` (goreleaser-publish) target. The remaining `make release-local` and `make release-snapshot` only build artifacts into `dist/`; they never touch the network.
+- Removed the now-unused `HOMEBREW_TAP_FORMULA`, `HOMEBREW_TAP_GITHUB_TOKEN`, `LINUX_REPO_DIST_DIR`, and `LINUX_REPO_ASSET_FILES` Makefile variables.
+- Removed the `publish-all` aggregator target. The CI workflow (`.github/workflows/release.yml`) is now the only path that creates the GitHub Release and uploads binaries.
+
+### Compatibility
+- `gitflow-0.x.y-darwin-universal.tar.gz` is no longer published. Anyone relying on the universal archive should switch to `gitflow-0.x.y-darwin-arm64.tar.gz` (Apple Silicon).
+- `gitflow-0.x.y-windows-amd64.zip`, `gitflow-0.x.y-linux-amd64.tar.gz`, and `gitflow-0.x.y-linux-aarch64.tar.gz` URLs are unchanged.
+- Linux/Windows x86_64 binaries now require a Haswell (2013)+ CPU. See Changed section above.
+
 ## [0.6.7] - 2026-06-01
 
 ### TL;DR
