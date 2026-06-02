@@ -2,6 +2,19 @@ version: 2
 
 project_name: gitflow
 
+# Per-platform max-performance tuning:
+#   - CGO_ENABLED=0                 → static, no glibc coupling, single binary per platform
+#   - -trimpath                     → reproducible builds, smaller binaries, no local paths leaked
+#   - -pgo=auto                     → activates Profile-Guided Optimization when a default.pgo
+#                                    is present in the main package; no-op otherwise. Typical
+#                                    5–14% improvement on hot paths once a profile is committed.
+#   - -ldflags "-s -w -buildid=none"→ strip DWARF + build ID, faster startup, smaller binary
+#   - GOAMD64=v3 (x86_64 only)      → enables AVX2 + FMA + BMI2 instructions. Requires a
+#                                    Haswell (2013) or newer CPU. Traded for ~10–20% on
+#                                    compute-heavy code. The CLI runs on modern hardware only.
+#   - darwin-arm64                  → Go 1.21+ already emits Apple-Silicon-tuned code
+#                                    (LSE atomics, NEON FP). No GOARM64 level exists; PGO is
+#                                    the main lever.
 before:
   hooks:
     - go mod tidy
@@ -13,12 +26,16 @@ builds:
     binary: gitflow
     env:
       - CGO_ENABLED=0
+      - GOAMD64=v3
     goos:
       - linux
     goarch:
       - amd64
+    flags:
+      - -trimpath
+      - -pgo=auto
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -buildid=none
 
   - id: linux-arm64
     main: ./cmd/gitflow
@@ -29,32 +46,27 @@ builds:
       - linux
     goarch:
       - arm64
+    flags:
+      - -trimpath
+      - -pgo=auto
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -buildid=none
 
   - id: windows-amd64
     main: ./cmd/gitflow
     binary: gitflow
     env:
       - CGO_ENABLED=0
+      - GOAMD64=v3
     goos:
       - windows
     goarch:
       - amd64
+    flags:
+      - -trimpath
+      - -pgo=auto
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
-
-  - id: darwin-amd64
-    main: ./cmd/gitflow
-    binary: gitflow
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - darwin
-    goarch:
-      - amd64
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -buildid=none
 
   - id: darwin-arm64
     main: ./cmd/gitflow
@@ -65,19 +77,16 @@ builds:
       - darwin
     goarch:
       - arm64
+    flags:
+      - -trimpath
+      - -pgo=auto
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -buildid=none
 
-universal_binaries:
-  - id: darwin-universal
-    ids:
-      - darwin-amd64
-      - darwin-arm64
-    name_template: gitflow
-    replace: true
-
+# darwin-amd64 (Intel Mac) was removed: discontinued. See CHANGELOG.
+# darwin-universal was removed as a derived artifact (depends on darwin-amd64).
 archives:
-  - id: linux
+  - id: linux-amd64
     ids:
       - linux-amd64
     name_template: "{{ .ProjectName }}-{{ .Version }}-linux-amd64"
@@ -91,17 +100,17 @@ archives:
     formats:
       - tar.gz
 
-  - id: windows
+  - id: windows-amd64
     ids:
       - windows-amd64
     name_template: "{{ .ProjectName }}-{{ .Version }}-windows-amd64"
     formats:
       - zip
 
-  - id: darwin
+  - id: darwin-arm64
     ids:
-      - darwin-universal
-    name_template: "{{ .ProjectName }}-{{ .Version }}-darwin-universal"
+      - darwin-arm64
+    name_template: "{{ .ProjectName }}-{{ .Version }}-darwin-arm64"
     formats:
       - tar.gz
 
@@ -149,7 +158,7 @@ release:
 homebrew_casks:
   - name: gitflow-helper
     ids:
-      - darwin
+      - darwin-arm64
     binaries:
       - gitflow
     repository:
