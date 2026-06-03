@@ -186,13 +186,16 @@ jobs:
           git push
 
       - name: Push to novaemx/homebrew-tap
-        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         env:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           SHA: ${{ steps.sha.outputs.value }}
         run: |
           set -e
+          if [ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]; then
+            echo "::notice::HOMEBREW_TAP_GITHUB_TOKEN not set; skipping novaemx/homebrew-tap sync"
+            exit 0
+          fi
           git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/novaemx/homebrew-tap.git" /tmp/tap
           cd /tmp/tap
           git config user.name  "github-actions[bot]"
