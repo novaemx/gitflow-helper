@@ -1,9 +1,9 @@
 class Gitflow < Formula
   desc "Git Flow workflow helper with interactive TUI and CLI"
   homepage "https://github.com/novaemx/gitflow-helper"
-  url "https://github.com/novaemx/gitflow-helper/releases/download/v0.6.6/gitflow-0.6.6-darwin-universal.tar.gz"
-  version "0.6.6"
-  sha256 "a2d865dc78f34147f6cf82982a6ed3124af4a79a237cd0fb3f1ac6790b2a3b43"
+  url "https://github.com/novaemx/gitflow-helper/releases/download/v0.7.0/gitflow-0.7.0-darwin-arm64.tar.gz"
+  version "0.7.0"
+  sha256 "efb62b6281d0d55c1033bee87234a5c452ef2517f492f0a3d3b27a684626645f"
   license "MIT"
 
   def install
