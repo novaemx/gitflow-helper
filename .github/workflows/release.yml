@@ -134,6 +134,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Smoke-test the linux/amd64 binary (native to this runner)
+        env:
+          # gh CLI in GH Actions now requires GH_TOKEN (not GITHUB_TOKEN)
+          # to download release artifacts. github.token is auto-injected.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           asset="gitflow-${GITHUB_REF_NAME#v}-linux-amd64.tar.gz"
@@ -158,6 +162,9 @@ jobs:
         id: sha
         env:
           VERSION: ${{ github.ref_name }}
+          # gh CLI in GH Actions now requires GH_TOKEN (not GITHUB_TOKEN)
+          # to download release artifacts. github.token is auto-injected.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           version=${VERSION#v}
