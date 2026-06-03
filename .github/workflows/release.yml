@@ -97,6 +97,9 @@ jobs:
         run: |
           set -e
           version="${GITHUB_REF_NAME#v}"
+          # Write notes under $RUNNER_TEMP so they don't dirty the workspace
+          # (GoReleaser refuses to run when the repo has untracked files).
+          notes_dir="${RUNNER_TEMP:-/tmp}"
           awk -v version="$version" '
             BEGIN { section_header = "## [" version "] - " }
             index($0, section_header) == 1 { in_version=1; next }
@@ -104,8 +107,8 @@ jobs:
             in_version && /^### TL;DR/ { in_tldr=1; next }
             in_tldr && /^### / { in_tldr=0 }
             in_tldr { print }
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
+          ' CHANGELOG.md > "$notes_dir/notes.md"
+          if [ ! -s "$notes_dir/notes.md" ]; then
             echo "::warning::No ### TL;DR block found for ${version}; falling back to git log"
             prev_tag=$(git tag --sort=-version:refname | awk -v cur="$GITHUB_REF_NAME" '$0 != cur { print; exit }')
             if [ -n "$prev_tag" ]; then
@@ -113,12 +116,12 @@ jobs:
             else
               range="$GITHUB_REF_NAME"
             fi
-            { echo "## Changes"; echo; git log --no-merges --pretty='- %s' "$range"; echo; echo "Range: $range"; } > notes.md
+            { echo "## Changes"; echo; git log --no-merges --pretty='- %s' "$range"; echo; echo "Range: $range"; } > "$notes_dir/notes.md"
           fi
-          { echo "## Release ${GITHUB_REF_NAME}"; echo; cat notes.md; } > notes-final.md
+          { echo "## Release ${GITHUB_REF_NAME}"; echo; cat "$notes_dir/notes.md"; } > "$notes_dir/notes-final.md"
           {
             echo "content<<EOF"
-            cat notes-final.md
+            cat "$notes_dir/notes-final.md"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
