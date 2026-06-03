@@ -28,6 +28,14 @@ jobs:
         run: go mod download
 
       - name: Run tests with coverage
+        env:
+          # Some tests spawn in-process git operations (merges, tag creation).
+          # The runner has no default git identity, so commits fail with
+          # "Committer identity unknown". Set a stable identity for the test run.
+          GIT_AUTHOR_NAME:     "github-actions[bot]"
+          GIT_AUTHOR_EMAIL:    "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME:  "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
         run: go test ./... -race -covermode=atomic -coverprofile=coverage.out
 
       - name: Enforce per-package coverage >= 60%
