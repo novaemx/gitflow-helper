@@ -186,7 +186,7 @@ jobs:
           git push
 
       - name: Push to novaemx/homebrew-tap
-        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         env:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
