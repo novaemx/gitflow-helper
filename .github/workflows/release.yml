@@ -180,13 +180,16 @@ jobs:
         run: |
           set -e
           version=${TAG#v}
+          # Match any gitflow-*-{darwin-universal,darwin-arm64}.tar.gz URL so the
+          # bump works on the v0.6.6 → v0.7.0 transition (universal → arm64)
+          # and on any later version that already uses arm64.
           awk -v version="$version" -v tag="$TAG" -v darwin_sha="$SHA" '
             BEGIN { target_sha = "" }
             /^[[:space:]]*version "/                          { sub(/version ".*"/,                "version \"" version "\"") }
-            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/ {
-              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/,
+            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-(universal|arm64)\.tar\.gz/ {
+              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-(universal|arm64)\.tar\.gz/,
                   "releases/download/" tag "/gitflow-" version "-darwin-arm64.tar.gz") }
-            /gitflow-[^"]*-darwin-arm64\.tar\.gz/            { target_sha = darwin_sha }
+            /gitflow-[^"]*-darwin-(universal|arm64)\.tar\.gz/ { target_sha = darwin_sha }
             /^[[:space:]]*sha256 "/ {
               if (target_sha != "") { sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); target_sha = "" }
             }
@@ -226,10 +229,10 @@ jobs:
           awk -v version="$version" -v tag="$TAG" -v darwin_sha="$SHA" '
             BEGIN { target_sha = "" }
             /^[[:space:]]*version "/                          { sub(/version ".*"/,                "version \"" version "\"") }
-            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/ {
-              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-arm64\.tar\.gz/,
+            /releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-(universal|arm64)\.tar\.gz/ {
+              sub(/releases\/download\/v[^\/]*\/gitflow-[^"]*-darwin-(universal|arm64)\.tar\.gz/,
                   "releases/download/" tag "/gitflow-" version "-darwin-arm64.tar.gz") }
-            /gitflow-[^"]*-darwin-arm64\.tar\.gz/            { target_sha = darwin_sha }
+            /gitflow-[^"]*-darwin-(universal|arm64)\.tar\.gz/ { target_sha = darwin_sha }
             /^[[:space:]]*sha256 "/ {
               if (target_sha != "") { sub(/sha256 ".*"/, "sha256 \"" target_sha "\""); target_sha = "" }
             }
